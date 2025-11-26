@@ -160,7 +160,7 @@ jobs:
           cache-to: type=registry,ref=${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME }}:buildcache,mode=max
 
       - name: Upload image artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: container-image
           path: /tmp/image.tar
@@ -220,7 +220,7 @@ jobs:
           sarif_file: trivy-results.sarif
 
       - name: Upload scan results as artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         if: always()
         with:
           name: security-scan-results
@@ -272,7 +272,7 @@ jobs:
             -o spdx-json=sbom.json
 
       - name: Upload SBOM as artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: sbom
           path: sbom.json
@@ -546,7 +546,7 @@ jobs:
           kubectl apply --dry-run=client -f install.yaml
 
       - name: Upload manifest as artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: install-manifest
           path: install.yaml
@@ -587,7 +587,7 @@ jobs:
             cmd/main.go
 
       - name: Upload binary
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: binary-${{ matrix.goos }}-${{ matrix.goarch }}
           path: optipod-${{ matrix.goos }}-${{ matrix.goarch }}
@@ -612,7 +612,7 @@ jobs:
           cat checksums.txt
 
       - name: Upload checksums
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: checksums
           path: binaries/checksums.txt
