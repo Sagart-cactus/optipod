@@ -38,11 +38,11 @@ func TestProperty_ProviderConfigurability(t *testing.T) {
 	properties.Property("valid configurations create providers successfully", prop.ForAll(
 		func(providerType string, prometheusURL string) bool {
 			var config ProviderConfig
-			
+
 			switch providerType {
 			case "metrics-server":
 				config = ProviderConfig{
-					Type:             ProviderTypeMetricsServer,
+					Type:             "metrics-server",
 					Clientset:        fake.NewSimpleClientset(),
 					MetricsClientset: metricsfake.NewSimpleClientset(),
 				}
@@ -52,7 +52,7 @@ func TestProperty_ProviderConfigurability(t *testing.T) {
 					prometheusURL = "http://prometheus:9090"
 				}
 				config = ProviderConfig{
-					Type:          ProviderTypePrometheus,
+					Type:          "prometheus",
 					PrometheusURL: prometheusURL,
 				}
 			default:
@@ -63,14 +63,14 @@ func TestProperty_ProviderConfigurability(t *testing.T) {
 				_, err := NewProvider(config)
 				return err != nil // Should return an error
 			}
-			
+
 			provider, err := NewProvider(config)
-			
+
 			// Valid configurations should succeed
 			if providerType == "metrics-server" || providerType == "prometheus" {
 				return err == nil && provider != nil
 			}
-			
+
 			// Invalid configurations should fail gracefully
 			return err != nil
 		},
@@ -92,23 +92,23 @@ func TestProperty_ProviderInitializationErrors(t *testing.T) {
 	properties.Property("missing required config returns clear error", prop.ForAll(
 		func(includeClientset bool, includeMetricsClientset bool) bool {
 			config := ProviderConfig{
-				Type: ProviderTypeMetricsServer,
+				Type: "metrics-server",
 			}
-			
+
 			if includeClientset {
 				config.Clientset = fake.NewSimpleClientset()
 			}
 			if includeMetricsClientset {
 				config.MetricsClientset = metricsfake.NewSimpleClientset()
 			}
-			
+
 			provider, err := NewProvider(config)
-			
+
 			// If both are provided, should succeed
 			if includeClientset && includeMetricsClientset {
 				return err == nil && provider != nil
 			}
-			
+
 			// If either is missing, should fail with clear error
 			return err != nil && provider == nil
 		},
@@ -130,49 +130,49 @@ func TestProperty_FallbackMechanism(t *testing.T) {
 	properties.Property("fallback succeeds when primary fails", prop.ForAll(
 		func(primaryValid bool, fallbackValid bool) bool {
 			var primary, fallback ProviderConfig
-			
+
 			if primaryValid {
 				primary = ProviderConfig{
-					Type:             ProviderTypeMetricsServer,
+					Type:             "metrics-server",
 					Clientset:        fake.NewSimpleClientset(),
 					MetricsClientset: metricsfake.NewSimpleClientset(),
 				}
 			} else {
 				// Invalid primary (missing required fields)
 				primary = ProviderConfig{
-					Type: ProviderTypeMetricsServer,
+					Type: "metrics-server",
 				}
 			}
-			
+
 			if fallbackValid {
 				fallback = ProviderConfig{
-					Type:          ProviderTypePrometheus,
+					Type:          "prometheus",
 					PrometheusURL: "http://prometheus:9090",
 				}
 			} else {
 				// Invalid fallback (missing required fields)
 				fallback = ProviderConfig{
-					Type: ProviderTypePrometheus,
+					Type: "prometheus",
 				}
 			}
-			
+
 			provider, err := NewProviderWithFallback(primary, fallback)
-			
+
 			// If primary is valid, should succeed
 			if primaryValid {
 				return err == nil && provider != nil
 			}
-			
+
 			// If primary is invalid but fallback is valid, should succeed
 			if !primaryValid && fallbackValid {
 				return err == nil && provider != nil
 			}
-			
+
 			// If both are invalid, should fail
 			if !primaryValid && !fallbackValid {
 				return err != nil && provider == nil
 			}
-			
+
 			return true
 		},
 		gen.Bool(),
@@ -193,17 +193,17 @@ func TestProperty_ProviderCreationDeterminism(t *testing.T) {
 	properties.Property("same config produces consistent results", prop.ForAll(
 		func(providerType string) bool {
 			var config ProviderConfig
-			
+
 			switch providerType {
 			case "metrics-server":
 				config = ProviderConfig{
-					Type:             ProviderTypeMetricsServer,
+					Type:             "metrics-server",
 					Clientset:        fake.NewSimpleClientset(),
 					MetricsClientset: metricsfake.NewSimpleClientset(),
 				}
 			case "prometheus":
 				config = ProviderConfig{
-					Type:          ProviderTypePrometheus,
+					Type:          "prometheus",
 					PrometheusURL: "http://prometheus:9090",
 				}
 			default:
@@ -211,11 +211,11 @@ func TestProperty_ProviderCreationDeterminism(t *testing.T) {
 					Type: ProviderType(providerType),
 				}
 			}
-			
+
 			// Create provider twice with same config
 			provider1, err1 := NewProvider(config)
 			provider2, err2 := NewProvider(config)
-			
+
 			// Both should succeed or both should fail
 			if err1 != nil && err2 != nil {
 				return true // Both failed consistently
@@ -223,7 +223,7 @@ func TestProperty_ProviderCreationDeterminism(t *testing.T) {
 			if err1 == nil && err2 == nil {
 				return provider1 != nil && provider2 != nil // Both succeeded
 			}
-			
+
 			return false // Inconsistent results
 		},
 		gen.OneConstOf("metrics-server", "prometheus", "invalid"),

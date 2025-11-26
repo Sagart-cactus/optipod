@@ -106,12 +106,12 @@ func init() {
 // RegisterMetrics registers all OptiPod metrics with the controller-runtime metrics registry
 func RegisterMetrics() {
 	// Use Register instead of MustRegister to avoid panics if metrics are already registered
-	metrics.Registry.Register(WorkloadsMonitored)
-	metrics.Registry.Register(WorkloadsUpdated)
-	metrics.Registry.Register(WorkloadsSkipped)
-	metrics.Registry.Register(ReconciliationDuration)
-	metrics.Registry.Register(MetricsCollectionDuration)
-	metrics.Registry.Register(ReconciliationErrors)
-	metrics.Registry.Register(RecommendationsTotal)
-	metrics.Registry.Register(ApplicationsTotal)
+	_ = metrics.Registry.Register(WorkloadsMonitored)
+	_ = metrics.Registry.Register(WorkloadsUpdated)
+	_ = metrics.Registry.Register(WorkloadsSkipped)
+	_ = metrics.Registry.Register(ReconciliationDuration)
+	_ = metrics.Registry.Register(MetricsCollectionDuration)
+	_ = metrics.Registry.Register(ReconciliationErrors)
+	_ = metrics.Registry.Register(RecommendationsTotal)
+	_ = metrics.Registry.Register(ApplicationsTotal)
 }

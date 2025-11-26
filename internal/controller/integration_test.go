@@ -172,7 +172,7 @@ var _ = Describe("Integration Tests", func() {
 
 				// Check for Ready condition
 				for _, condition := range updatedPolicy.Status.Conditions {
-					if condition.Type == "Ready" && condition.Status == metav1.ConditionTrue {
+					if condition.Type == ConditionTypeReady && condition.Status == metav1.ConditionTrue {
 						return true
 					}
 				}
@@ -249,7 +249,7 @@ var _ = Describe("Integration Tests", func() {
 							Memory:    &memory,
 						},
 					},
-					Status: "Recommended",
+					Status: StatusRecommended,
 				},
 			}
 
@@ -275,7 +275,7 @@ var _ = Describe("Integration Tests", func() {
 
 				return len(updatedPolicy.Status.Workloads) == 1 &&
 					updatedPolicy.Status.Workloads[0].Name == "test-workload" &&
-					updatedPolicy.Status.Workloads[0].Status == "Recommended"
+					updatedPolicy.Status.Workloads[0].Status == StatusRecommended
 			}, timeout, interval).Should(BeTrue())
 
 			// Clean up
@@ -362,13 +362,13 @@ var _ = Describe("Integration Tests", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			// Should find 3 workloads: 2 deployments + 1 statefulset
-			Expect(len(workloads)).To(Equal(3))
+			Expect(workloads).To(HaveLen(3))
 
 			// Verify workload types
 			deploymentCount := 0
 			statefulSetCount := 0
 			for _, w := range workloads {
-				if w.Kind == "Deployment" {
+				if w.Kind == KindDeployment {
 					deploymentCount++
 				} else if w.Kind == "StatefulSet" {
 					statefulSetCount++
@@ -453,7 +453,7 @@ var _ = Describe("Integration Tests", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			// Should only find workload in allowed-ns (denied-ns is excluded)
-			Expect(len(workloads)).To(Equal(1))
+			Expect(workloads).To(HaveLen(1))
 			Expect(workloads[0].Namespace).To(Equal("allowed-ns"))
 
 			// Clean up

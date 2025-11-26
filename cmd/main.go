@@ -204,40 +204,40 @@ func main() {
 	}
 
 	// Initialize components for workload processing
-	config := ctrl.GetConfigOrDie()
-	
+	restConfig := ctrl.GetConfigOrDie()
+
 	// Create Kubernetes clientset for metrics-server provider
-	clientset, err := kubernetes.NewForConfig(config)
+	clientset, err := kubernetes.NewForConfig(restConfig)
 	if err != nil {
 		setupLog.Error(err, "unable to create kubernetes clientset")
 		os.Exit(1)
 	}
-	
+
 	// Create metrics clientset
-	metricsClientset, err := metricsclientset.NewForConfig(config)
+	metricsClientset, err := metricsclientset.NewForConfig(restConfig)
 	if err != nil {
 		setupLog.Error(err, "unable to create metrics clientset")
 		os.Exit(1)
 	}
-	
+
 	// Create dynamic client for workload patching
-	dynamicClient, err := dynamic.NewForConfig(config)
+	dynamicClient, err := dynamic.NewForConfig(restConfig)
 	if err != nil {
 		setupLog.Error(err, "unable to create dynamic client")
 		os.Exit(1)
 	}
-	
+
 	// Create discovery client for feature detection
-	discoveryClient, err := discovery.NewDiscoveryClientForConfig(config)
+	discoveryClient, err := discovery.NewDiscoveryClientForConfig(restConfig)
 	if err != nil {
 		setupLog.Error(err, "unable to create discovery client")
 		os.Exit(1)
 	}
-	
+
 	// Initialize metrics provider based on operator configuration
 	var metricsProvider metrics.MetricsProvider
 	providerType := metrics.ProviderType(operatorConfig.GetMetricsProvider())
-	
+
 	switch providerType {
 	case metrics.ProviderTypePrometheus:
 		metricsProvider, err = metrics.NewProvider(metrics.ProviderConfig{
@@ -252,25 +252,26 @@ func main() {
 		})
 	default:
 		// Default to metrics-server with fallback
-		setupLog.Info("Unknown metrics provider, defaulting to metrics-server", "provider", operatorConfig.GetMetricsProvider())
+		setupLog.Info("Unknown metrics provider, defaulting to metrics-server",
+			"provider", operatorConfig.GetMetricsProvider())
 		metricsProvider, err = metrics.NewProvider(metrics.ProviderConfig{
 			Type:             metrics.ProviderTypeMetricsServer,
 			Clientset:        clientset,
 			MetricsClientset: metricsClientset,
 		})
 	}
-	
+
 	if err != nil {
 		setupLog.Error(err, "unable to create metrics provider")
 		os.Exit(1)
 	}
-	
+
 	// Initialize recommendation engine
 	recommendationEngine := recommendation.NewEngine()
-	
+
 	// Initialize application engine with global dry-run setting from operator config
 	applicationEngine := application.NewEngine(mgr.GetClient(), dynamicClient, discoveryClient, operatorConfig.IsDryRun())
-	
+
 	// Initialize workload processor
 	workloadProcessor := controller.NewWorkloadProcessor(
 		metricsProvider,

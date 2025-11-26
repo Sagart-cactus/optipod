@@ -157,13 +157,13 @@ func (r *OptimizationPolicyReconciler) Reconcile(ctx context.Context, req ctrl.R
 		workloadStatuses = append(workloadStatuses, *status)
 
 		// Emit events and track metrics based on status
-		if status.Status == "Applied" {
+		if status.Status == StatusApplied {
 			if r.EventRecorder != nil {
 				r.EventRecorder.RecordWorkloadUpdateSuccess(policy, workload.Name, workload.Namespace, "InPlace")
 			}
 			updatedCount++
 			observability.ApplicationsTotal.WithLabelValues(policy.Name, "InPlace").Inc()
-		} else if status.Status == "Skipped" {
+		} else if status.Status == StatusSkipped {
 			log.Info("Skipped workload", "workload", workload.Name, "reason", status.Reason)
 			if r.EventRecorder != nil {
 				r.EventRecorder.RecordWorkloadSkipped(policy, workload.Name, workload.Namespace, status.Reason)

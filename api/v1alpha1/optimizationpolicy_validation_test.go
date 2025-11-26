@@ -478,7 +478,7 @@ func TestProperty_PolicyValidation(t *testing.T) {
 					Namespace: "default",
 				},
 				Spec: OptimizationPolicySpec{
-					Mode: ModeAuto,
+					Mode:     ModeAuto,
 					Selector: WorkloadSelector{
 						// No selectors specified
 					},

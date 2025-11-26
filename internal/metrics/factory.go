@@ -29,7 +29,7 @@ type ProviderType string
 const (
 	// ProviderTypeMetricsServer uses Kubernetes metrics-server
 	ProviderTypeMetricsServer ProviderType = "metrics-server"
-	
+
 	// ProviderTypePrometheus uses Prometheus
 	ProviderTypePrometheus ProviderType = "prometheus"
 )
@@ -38,13 +38,13 @@ const (
 type ProviderConfig struct {
 	// Type specifies which provider to use
 	Type ProviderType
-	
+
 	// PrometheusURL is the URL for Prometheus (required if Type is prometheus)
 	PrometheusURL string
-	
+
 	// Clientset is the Kubernetes clientset (required if Type is metrics-server)
 	Clientset kubernetes.Interface
-	
+
 	// MetricsClientset is the metrics clientset (required if Type is metrics-server)
 	MetricsClientset metricsclientset.Interface
 }
@@ -62,7 +62,7 @@ func NewProvider(config ProviderConfig) (MetricsProvider, error) {
 			return nil, fmt.Errorf("metrics clientset is required for metrics-server provider")
 		}
 		return NewMetricsServerProvider(config.Clientset, config.MetricsClientset), nil
-		
+
 	case ProviderTypePrometheus:
 		if config.PrometheusURL == "" {
 			return nil, fmt.Errorf("prometheus URL is required for prometheus provider")
@@ -72,7 +72,7 @@ func NewProvider(config ProviderConfig) (MetricsProvider, error) {
 			return nil, fmt.Errorf("failed to create prometheus provider: %w", err)
 		}
 		return provider, nil
-		
+
 	default:
 		return nil, fmt.Errorf("unknown provider type: %s", config.Type)
 	}
@@ -87,9 +87,9 @@ func NewProviderWithFallback(primary, fallback ProviderConfig) (MetricsProvider,
 	if err == nil {
 		return provider, nil
 	}
-	
+
 	primaryErr := err
-	
+
 	// Try fallback provider
 	provider, err = NewProvider(fallback)
 	if err == nil {
@@ -97,7 +97,7 @@ func NewProviderWithFallback(primary, fallback ProviderConfig) (MetricsProvider,
 		fmt.Printf("Primary provider failed (%v), using fallback provider\n", primaryErr)
 		return provider, nil
 	}
-	
+
 	// Both failed
 	return nil, fmt.Errorf("primary provider failed (%v) and fallback provider failed (%v)", primaryErr, err)
 }

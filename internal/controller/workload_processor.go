@@ -23,8 +23,8 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 
 	optipodv1alpha1 "github.com/optipod/optipod/api/v1alpha1"
@@ -43,10 +43,10 @@ type ApplicationEngine interface {
 
 // WorkloadProcessor handles the processing of individual workloads
 type WorkloadProcessor struct {
-	metricsProvider       metrics.MetricsProvider
-	recommendationEngine  *recommendation.Engine
-	applicationEngine     ApplicationEngine
-	metricsProviderType   string
+	metricsProvider      metrics.MetricsProvider
+	recommendationEngine *recommendation.Engine
+	applicationEngine    ApplicationEngine
+	metricsProviderType  string
 }
 
 // NewWorkloadProcessor creates a new workload processor
@@ -80,7 +80,7 @@ func (wp *WorkloadProcessor) ProcessWorkload(
 	switch policy.Spec.Mode {
 	case optipodv1alpha1.ModeDisabled:
 		// Skip processing but preserve status
-		status.Status = "Skipped"
+		status.Status = StatusSkipped
 		status.Reason = "Policy is disabled"
 		return status, nil
 
@@ -93,7 +93,7 @@ func (wp *WorkloadProcessor) ProcessWorkload(
 	// Get containers from workload
 	containers, err := wp.getContainers(workload)
 	if err != nil {
-		status.Status = "Error"
+		status.Status = StatusError
 		status.Reason = fmt.Sprintf("Failed to extract containers: %v", err)
 		return status, err
 	}
@@ -122,7 +122,7 @@ func (wp *WorkloadProcessor) ProcessWorkload(
 		// Track metrics collection duration
 		metricsTimer := observability.MetricsCollectionDuration.WithLabelValues(wp.metricsProviderType)
 		metricsStartTime := time.Now()
-		
+
 		containerMetrics, err := wp.metricsProvider.GetContainerMetrics(
 			ctx,
 			workload.Namespace,
@@ -130,9 +130,9 @@ func (wp *WorkloadProcessor) ProcessWorkload(
 			container.Name,
 			rollingWindow,
 		)
-		
+
 		metricsTimer.Observe(time.Since(metricsStartTime).Seconds())
-		
+
 		if err != nil {
 			// Handle missing metrics error
 			hasMetricsError = true
@@ -143,7 +143,7 @@ func (wp *WorkloadProcessor) ProcessWorkload(
 		// Compute recommendation
 		rec, err := wp.recommendationEngine.ComputeRecommendation(containerMetrics, policy)
 		if err != nil {
-			status.Status = "Error"
+			status.Status = StatusError
 			status.Reason = fmt.Sprintf("Failed to compute recommendation for container %s: %v", container.Name, err)
 			return status, err
 		}
@@ -159,7 +159,7 @@ func (wp *WorkloadProcessor) ProcessWorkload(
 
 	// If we have metrics errors, prevent changes
 	if hasMetricsError {
-		status.Status = "Skipped"
+		status.Status = StatusSkipped
 		status.Reason = fmt.Sprintf("Missing metrics: %s", metricsErrorMsg)
 		status.Recommendations = recommendations
 		now := metav1.Now()
@@ -174,7 +174,7 @@ func (wp *WorkloadProcessor) ProcessWorkload(
 
 	// In Recommend mode, we only store recommendations
 	if policy.Spec.Mode == optipodv1alpha1.ModeRecommend {
-		status.Status = "Recommended"
+		status.Status = StatusRecommended
 		status.Reason = "Recommendations computed, not applied (Recommend mode)"
 		return status, nil
 	}
@@ -186,7 +186,7 @@ func (wp *WorkloadProcessor) ProcessWorkload(
 			// Convert workload to application.Workload format
 			appWorkload, err := wp.convertToApplicationWorkload(workload)
 			if err != nil {
-				status.Status = "Error"
+				status.Status = StatusError
 				status.Reason = fmt.Sprintf("Failed to convert workload: %v", err)
 				return status, err
 			}
@@ -200,13 +200,13 @@ func (wp *WorkloadProcessor) ProcessWorkload(
 			// Check if we can apply
 			decision, err := wp.applicationEngine.CanApply(ctx, appWorkload, appRec, policy)
 			if err != nil {
-				status.Status = "Error"
+				status.Status = StatusError
 				status.Reason = fmt.Sprintf("Failed to determine if changes can be applied: %v", err)
 				return status, err
 			}
 
 			if !decision.CanApply {
-				status.Status = "Skipped"
+				status.Status = StatusSkipped
 				status.Reason = decision.Reason
 				return status, nil
 			}
@@ -214,7 +214,7 @@ func (wp *WorkloadProcessor) ProcessWorkload(
 			// Apply the changes
 			err = wp.applicationEngine.Apply(ctx, appWorkload, rec.Container, appRec, policy)
 			if err != nil {
-				status.Status = "Error"
+				status.Status = StatusError
 				status.Reason = fmt.Sprintf("Failed to apply changes to container %s: %v", rec.Container, err)
 				return status, err
 			}
@@ -226,7 +226,7 @@ func (wp *WorkloadProcessor) ProcessWorkload(
 			}
 		}
 
-		status.Status = "Applied"
+		status.Status = StatusApplied
 		status.Reason = "Recommendations applied successfully"
 		return status, nil
 	}

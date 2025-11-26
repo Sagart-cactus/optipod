@@ -37,6 +37,13 @@ import (
 	"github.com/optipod/optipod/internal/recommendation"
 )
 
+// Workload kind constants
+const (
+	kindDeployment  = "Deployment"
+	kindStatefulSet = "StatefulSet"
+	kindDaemonSet   = "DaemonSet"
+)
+
 // ApplyMethod defines how resource changes should be applied
 type ApplyMethod string
 
@@ -208,11 +215,11 @@ func (e *Engine) getCurrentResources(workload *Workload) (map[string]corev1.Reso
 	var err error
 
 	switch workload.Kind {
-	case "Deployment":
+	case kindDeployment:
 		containers, _, err = unstructured.NestedSlice(workload.Object.Object, "spec", "template", "spec", "containers")
-	case "StatefulSet":
+	case kindStatefulSet:
 		containers, _, err = unstructured.NestedSlice(workload.Object.Object, "spec", "template", "spec", "containers")
-	case "DaemonSet":
+	case kindDaemonSet:
 		containers, _, err = unstructured.NestedSlice(workload.Object.Object, "spec", "template", "spec", "containers")
 	default:
 		return nil, fmt.Errorf("unsupported workload kind: %s", workload.Kind)
@@ -328,11 +335,11 @@ func (e *Engine) buildResourcePatch(
 	var err error
 
 	switch workload.Kind {
-	case "Deployment":
+	case kindDeployment:
 		containers, _, err = unstructured.NestedSlice(workload.Object.Object, "spec", "template", "spec", "containers")
-	case "StatefulSet":
+	case kindStatefulSet:
 		containers, _, err = unstructured.NestedSlice(workload.Object.Object, "spec", "template", "spec", "containers")
-	case "DaemonSet":
+	case kindDaemonSet:
 		containers, _, err = unstructured.NestedSlice(workload.Object.Object, "spec", "template", "spec", "containers")
 	default:
 		return nil, fmt.Errorf("unsupported workload kind: %s", workload.Kind)
@@ -407,19 +414,19 @@ func (e *Engine) buildResourcePatch(
 // getGVR returns the GroupVersionResource for a workload kind
 func (e *Engine) getGVR(kind string) (schema.GroupVersionResource, error) {
 	switch kind {
-	case "Deployment":
+	case kindDeployment:
 		return schema.GroupVersionResource{
 			Group:    "apps",
 			Version:  "v1",
 			Resource: "deployments",
 		}, nil
-	case "StatefulSet":
+	case kindStatefulSet:
 		return schema.GroupVersionResource{
 			Group:    "apps",
 			Version:  "v1",
 			Resource: "statefulsets",
 		}, nil
-	case "DaemonSet":
+	case kindDaemonSet:
 		return schema.GroupVersionResource{
 			Group:    "apps",
 			Version:  "v1",

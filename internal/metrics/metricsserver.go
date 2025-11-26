@@ -96,7 +96,7 @@ func (m *MetricsServerProvider) GetContainerMetrics(ctx context.Context, namespa
 	}
 
 	// Compute percentiles
-	cpuMetrics := computePercentiles(cpuSamples, true)  // CPU in millicores
+	cpuMetrics := computePercentiles(cpuSamples, true)        // CPU in millicores
 	memoryMetrics := computePercentiles(memorySamples, false) // Memory in bytes
 
 	return &ContainerMetrics{

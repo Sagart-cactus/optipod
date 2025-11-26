@@ -27,11 +27,11 @@ import (
 	"github.com/leanovate/gopter/prop"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/version"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
 
@@ -486,7 +486,6 @@ func TestProperty_UpdatesPreserveLimits(t *testing.T) {
 	properties.TestingRun(t, gopter.ConsoleReporter(false))
 }
 
-
 // Feature: k8s-workload-rightsizing, Property 28: RBAC respect
 // For any workload where RBAC prevents read or update operations, the system should not
 // attempt to monitor or modify it, and should surface appropriate status conditions and
@@ -541,7 +540,7 @@ type mockDynamicClient struct {
 	shouldReturnForbidden bool
 }
 
-func (m *mockDynamicClient) Resource(resource schema.GroupVersionResource) dynamic.NamespaceableResourceInterface {
+func (m *mockDynamicClient) Resource(gvr schema.GroupVersionResource) dynamic.NamespaceableResourceInterface {
 	return &mockNamespaceableResource{shouldReturnForbidden: m.shouldReturnForbidden}
 }
 

@@ -105,13 +105,13 @@ func TestProperty_MonitoringInitiatesMetricsCollection(t *testing.T) {
 		func(workloadName string, namespace string, containerName string) bool {
 			// Ensure non-empty strings
 			if workloadName == "" {
-				workloadName = "test-workload"
+				workloadName = TestWorkloadName
 			}
 			if namespace == "" {
-				namespace = "default"
+				namespace = TestNamespace
 			}
 			if containerName == "" {
-				containerName = "test-container"
+				containerName = TestContainerName
 			}
 			// Create a mock metrics provider
 			mockProvider := &mockMetricsProvider{
@@ -224,13 +224,13 @@ func TestProperty_MissingMetricsPreventChanges(t *testing.T) {
 		func(workloadName string, namespace string, containerName string) bool {
 			// Ensure non-empty strings
 			if workloadName == "" {
-				workloadName = "test-workload"
+				workloadName = TestWorkloadName
 			}
 			if namespace == "" {
-				namespace = "default"
+				namespace = TestNamespace
 			}
 			if containerName == "" {
-				containerName = "test-container"
+				containerName = TestContainerName
 			}
 
 			// Create a mock metrics provider that returns an error
@@ -316,7 +316,7 @@ func TestProperty_MissingMetricsPreventChanges(t *testing.T) {
 			// 3. Status indicates the change was skipped due to missing metrics
 			return err == nil &&
 				!mockAppEngine.applyCalled &&
-				status.Status == "Skipped" &&
+				status.Status == StatusSkipped &&
 				status.Reason != ""
 		},
 		gen.AlphaString(),
@@ -336,13 +336,13 @@ func TestProperty_RecommendModePreventsMod(t *testing.T) {
 		func(workloadName string, namespace string, containerName string) bool {
 			// Ensure non-empty strings
 			if workloadName == "" {
-				workloadName = "test-workload"
+				workloadName = TestWorkloadName
 			}
 			if namespace == "" {
-				namespace = "default"
+				namespace = TestNamespace
 			}
 			if containerName == "" {
-				containerName = "test-container"
+				containerName = TestContainerName
 			}
 
 			// Create a mock metrics provider with valid metrics
@@ -443,7 +443,7 @@ func TestProperty_RecommendModePreventsMod(t *testing.T) {
 			return err == nil &&
 				!mockAppEngine.applyCalled &&
 				len(status.Recommendations) > 0 &&
-				status.Status == "Recommended"
+				status.Status == StatusRecommended
 		},
 		gen.AlphaString(),
 		gen.AlphaString(),
@@ -462,13 +462,13 @@ func TestProperty_AutoModeAppliesChanges(t *testing.T) {
 		func(workloadName string, namespace string, containerName string) bool {
 			// Ensure non-empty strings
 			if workloadName == "" {
-				workloadName = "test-workload"
+				workloadName = TestWorkloadName
 			}
 			if namespace == "" {
-				namespace = "default"
+				namespace = TestNamespace
 			}
 			if containerName == "" {
-				containerName = "test-container"
+				containerName = TestContainerName
 			}
 
 			// Create a mock metrics provider with valid metrics
@@ -568,7 +568,7 @@ func TestProperty_AutoModeAppliesChanges(t *testing.T) {
 			// 4. LastApplied timestamp is set
 			return err == nil &&
 				mockAppEngine.applyCalled &&
-				status.Status == "Applied" &&
+				status.Status == StatusApplied &&
 				status.LastApplied != nil
 		},
 		gen.AlphaString(),
@@ -588,13 +588,13 @@ func TestProperty_DisabledModeStopsProcessing(t *testing.T) {
 		func(workloadName string, namespace string, containerName string) bool {
 			// Ensure non-empty strings
 			if workloadName == "" {
-				workloadName = "test-workload"
+				workloadName = TestWorkloadName
 			}
 			if namespace == "" {
-				namespace = "default"
+				namespace = TestNamespace
 			}
 			if containerName == "" {
-				containerName = "test-container"
+				containerName = TestContainerName
 			}
 
 			// Create a mock metrics provider
@@ -696,7 +696,7 @@ func TestProperty_DisabledModeStopsProcessing(t *testing.T) {
 			return err == nil &&
 				!mockProvider.getMetricsCalled &&
 				!mockAppEngine.applyCalled &&
-				status.Status == "Skipped" &&
+				status.Status == StatusSkipped &&
 				len(status.Recommendations) == 0
 		},
 		gen.AlphaString(),
@@ -716,13 +716,13 @@ func TestProperty_StatusTimestampTracking(t *testing.T) {
 		func(workloadName string, namespace string, containerName string, isAutoMode bool) bool {
 			// Ensure non-empty strings
 			if workloadName == "" {
-				workloadName = "test-workload"
+				workloadName = TestWorkloadName
 			}
 			if namespace == "" {
-				namespace = "default"
+				namespace = TestNamespace
 			}
 			if containerName == "" {
-				containerName = "test-container"
+				containerName = TestContainerName
 			}
 
 			// Create a mock metrics provider with valid metrics
@@ -883,13 +883,13 @@ func TestProperty_RecommendationFormatCompleteness(t *testing.T) {
 		func(workloadName string, namespace string, containerName string, numContainers int) bool {
 			// Ensure non-empty strings
 			if workloadName == "" {
-				workloadName = "test-workload"
+				workloadName = TestWorkloadName
 			}
 			if namespace == "" {
-				namespace = "default"
+				namespace = TestNamespace
 			}
 			if containerName == "" {
-				containerName = "test-container"
+				containerName = TestContainerName
 			}
 			// Ensure at least 1 container, max 5 for testing
 			if numContainers < 1 {

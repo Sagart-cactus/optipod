@@ -34,6 +34,13 @@ import (
 	"github.com/optipod/optipod/internal/metrics"
 )
 
+// Test constants
+const (
+	TestNamespace     = "default"
+	TestPodName       = "test-pod"
+	TestContainerName = "test-container"
+)
+
 // mockMetricsProvider tracks the number of API calls made
 type mockMetricsProvider struct {
 	callCount int32
@@ -98,13 +105,13 @@ func TestProperty_APICallEfficiency(t *testing.T) {
 		func(namespace string, podName string, containerName string, numRepeatedCalls int) bool {
 			// Ensure non-empty strings
 			if namespace == "" {
-				namespace = "default"
+				namespace = TestNamespace
 			}
 			if podName == "" {
-				podName = "test-pod"
+				podName = TestPodName
 			}
 			if containerName == "" {
-				containerName = "test-container"
+				containerName = TestContainerName
 			}
 			// Ensure at least 2 calls to test caching, max 10 for reasonable test time
 			if numRepeatedCalls < 2 {
@@ -187,7 +194,7 @@ func TestProperty_WorkloadCacheEfficiency(t *testing.T) {
 				policyName = "test-policy"
 			}
 			if namespace == "" {
-				namespace = "default"
+				namespace = TestNamespace
 			}
 			// Ensure at least 2 calls to test caching, max 10 for reasonable test time
 			if numRepeatedCalls < 2 {
@@ -282,13 +289,13 @@ func TestProperty_CacheInvalidation(t *testing.T) {
 		func(namespace string, podName string, containerName string) bool {
 			// Ensure non-empty strings
 			if namespace == "" {
-				namespace = "default"
+				namespace = TestNamespace
 			}
 			if podName == "" {
-				podName = "test-pod"
+				podName = TestPodName
 			}
 			if containerName == "" {
-				containerName = "test-container"
+				containerName = TestContainerName
 			}
 
 			// Test metrics cache invalidation
@@ -407,13 +414,13 @@ func TestProperty_CacheSequentialAccess(t *testing.T) {
 		func(namespace string, podName string, containerName string, numSequentialCalls int) bool {
 			// Ensure non-empty strings
 			if namespace == "" {
-				namespace = "default"
+				namespace = TestNamespace
 			}
 			if podName == "" {
-				podName = "test-pod"
+				podName = TestPodName
 			}
 			if containerName == "" {
-				containerName = "test-container"
+				containerName = TestContainerName
 			}
 			// Ensure reasonable number of calls
 			if numSequentialCalls < 2 {

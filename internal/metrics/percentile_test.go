@@ -40,7 +40,7 @@ func TestProperty_PercentileOrdering(t *testing.T) {
 
 			// Test with CPU (millicore format)
 			cpuMetrics := computePercentiles(samples, true)
-			
+
 			// Verify ordering: P50 <= P90 <= P99
 			p50Value := cpuMetrics.P50.MilliValue()
 			p90Value := cpuMetrics.P90.MilliValue()
@@ -55,7 +55,7 @@ func TestProperty_PercentileOrdering(t *testing.T) {
 
 			// Test with Memory (byte format)
 			memMetrics := computePercentiles(samples, false)
-			
+
 			p50Mem := memMetrics.P50.Value()
 			p90Mem := memMetrics.P90.Value()
 			p99Mem := memMetrics.P99.Value()
@@ -110,7 +110,7 @@ func TestProperty_PercentileBounds(t *testing.T) {
 			}
 
 			metrics := computePercentiles(samples, true)
-			
+
 			p50 := metrics.P50.MilliValue()
 			p90 := metrics.P90.MilliValue()
 			p99 := metrics.P99.MilliValue()
@@ -156,7 +156,7 @@ func TestProperty_PercentileIdenticalValues(t *testing.T) {
 			}
 
 			metrics := computePercentiles(samples, true)
-			
+
 			p50 := metrics.P50.MilliValue()
 			p90 := metrics.P90.MilliValue()
 			p99 := metrics.P99.MilliValue()

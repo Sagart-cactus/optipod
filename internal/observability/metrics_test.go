@@ -126,13 +126,13 @@ func TestProperty_PrometheusMetricsExposure(t *testing.T) {
 
 			// Verify all required metrics are present
 			requiredMetrics := map[string]bool{
-				"optipod_workloads_monitored":              false,
-				"optipod_workloads_updated":                false,
-				"optipod_workloads_skipped":                false,
-				"optipod_reconciliation_duration_seconds":  false,
-				"optipod_reconciliation_errors_total":      false,
-				"optipod_recommendations_total":            false,
-				"optipod_applications_total":               false,
+				"optipod_workloads_monitored":             false,
+				"optipod_workloads_updated":               false,
+				"optipod_workloads_skipped":               false,
+				"optipod_reconciliation_duration_seconds": false,
+				"optipod_reconciliation_errors_total":     false,
+				"optipod_recommendations_total":           false,
+				"optipod_applications_total":              false,
 			}
 
 			for _, mf := range metricFamilies {

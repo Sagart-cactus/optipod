@@ -93,7 +93,7 @@ func (c *WorkloadCache) InvalidateAll() {
 }
 
 // GetOrDiscover retrieves workloads from cache or discovers them if not cached
-func (c *WorkloadCache) GetOrDiscover(ctx context.Context, client client.Client, policy *optipodv1alpha1.OptimizationPolicy) ([]discovery.Workload, error) {
+func (c *WorkloadCache) GetOrDiscover(ctx context.Context, k8sClient client.Client, policy *optipodv1alpha1.OptimizationPolicy) ([]discovery.Workload, error) {
 	policyKey := getPolicyKey(policy)
 
 	// Try to get from cache first
@@ -102,7 +102,7 @@ func (c *WorkloadCache) GetOrDiscover(ctx context.Context, client client.Client,
 	}
 
 	// Not in cache, discover workloads
-	workloads, err := discovery.DiscoverWorkloads(ctx, client, policy)
+	workloads, err := discovery.DiscoverWorkloads(ctx, k8sClient, policy)
 	if err != nil {
 		return nil, err
 	}

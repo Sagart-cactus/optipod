@@ -97,7 +97,7 @@ func (p *PrometheusProvider) HealthCheck(ctx context.Context) error {
 	// Query Prometheus build info as a health check
 	_, err := p.client.Buildinfo(ctx)
 	if err != nil {
-		return fmt.Errorf("Prometheus health check failed: %w", err)
+		return fmt.Errorf("prometheus health check failed: %w", err)
 	}
 	return nil
 }
@@ -106,7 +106,7 @@ func (p *PrometheusProvider) HealthCheck(ctx context.Context) error {
 func (p *PrometheusProvider) queryRange(ctx context.Context, query string, window time.Duration) ([]float64, error) {
 	end := time.Now()
 	start := end.Add(-window)
-	
+
 	// Use 30-second step for reasonable granularity
 	step := 30 * time.Second
 
@@ -152,21 +152,21 @@ func (p *PrometheusProvider) queryRange(ctx context.Context, query string, windo
 func formatDuration(d time.Duration) string {
 	// Convert to seconds, minutes, hours, or days as appropriate
 	seconds := int(d.Seconds())
-	
+
 	if seconds < 60 {
 		return fmt.Sprintf("%ds", seconds)
 	}
-	
+
 	minutes := seconds / 60
 	if minutes < 60 {
 		return fmt.Sprintf("%dm", minutes)
 	}
-	
+
 	hours := minutes / 60
 	if hours < 24 {
 		return fmt.Sprintf("%dh", hours)
 	}
-	
+
 	days := hours / 24
 	return fmt.Sprintf("%dd", days)
 }

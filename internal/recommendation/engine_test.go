@@ -29,6 +29,10 @@ import (
 	"github.com/optipod/optipod/internal/metrics"
 )
 
+const (
+	percentileP90 = "P90"
+)
+
 // Feature: k8s-workload-rightsizing, Property 4: Bounds enforcement
 // Validates: Requirements 2.1, 2.2, 2.3, 2.4, 2.5
 //
@@ -130,7 +134,7 @@ func TestProperty_BoundsEnforcement(t *testing.T) {
 		// Safety factor
 		gen.Float64Range(1.0, 3.0),
 		// Percentile selection
-		gen.OneConstOf("P50", "P90", "P99", ""),
+		gen.OneConstOf("P50", percentileP90, "P99", ""),
 	))
 
 	properties.TestingRun(t, gopter.ConsoleReporter(false))
@@ -184,7 +188,7 @@ func TestProperty_SafetyFactorApplication(t *testing.T) {
 			case "P99":
 				expectedCPU = cpuP99
 				expectedMem = memP99
-			case "P90", "":
+			case percentileP90, "":
 				expectedCPU = cpuP90
 				expectedMem = memP90
 			default:
@@ -255,7 +259,7 @@ func TestProperty_SafetyFactorApplication(t *testing.T) {
 		// Safety factor
 		gen.Float64Range(1.0, 2.0),
 		// Percentile selection
-		gen.OneConstOf("P50", "P90", "P99", ""),
+		gen.OneConstOf("P50", percentileP90, "P99", ""),
 	))
 
 	properties.TestingRun(t, gopter.ConsoleReporter(false))
