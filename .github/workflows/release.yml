@@ -1,0 +1,741 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., v1.0.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: write        # Create releases and upload artifacts
+  packages: write        # Push to GHCR
+  id-token: write       # Keyless signing with cosign
+  security-events: write # Upload security scan results
+
+env:
+  REGISTRY_GHCR: ghcr.io
+  REGISTRY_DOCKERHUB: docker.io
+  IMAGE_NAME: ${{ github.repository }}
+  PLATFORMS: linux/amd64,linux/arm64,linux/s390x,linux/ppc64le
+  GO_VERSION: '1.21'
+
+jobs:
+  setup:
+    name: Setup and Validate
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.get_version.outputs.version }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get version from tag or input
+        id: get_version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION="${GITHUB_REF#refs/tags/}"
+          fi
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "Version: ${VERSION}"
+
+      - name: Validate version format
+        run: |
+          VERSION="${{ steps.get_version.outputs.version }}"
+          if ! echo "${VERSION}" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$'; then
+            echo "Error: Invalid version format '${VERSION}'. Expected format: v1.2.3 or v1.2.3-alpha.1"
+            exit 1
+          fi
+          echo "Version format is valid: ${VERSION}"
+
+  lint:
+    name: Run Linting
+    runs-on: ubuntu-latest
+    needs: setup
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Run linter
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.5.0
+
+  test:
+    name: Run Unit Tests
+    runs-on: ubuntu-latest
+    needs: setup
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Run unit tests
+        run: |
+          go mod tidy
+          make test
+
+  test-e2e:
+    name: Run E2E Tests
+    runs-on: ubuntu-latest
+    needs: setup
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Install kind
+        run: |
+          curl -Lo ./kind https://kind.sigs.k8s.io/dl/latest/kind-linux-$(go env GOARCH)
+          chmod +x ./kind
+          sudo mv ./kind /usr/local/bin/kind
+
+      - name: Verify kind installation
+        run: kind version
+
+      - name: Run E2E tests
+        run: |
+          go mod tidy
+          make test-e2e
+
+  build:
+    name: Build Multi-Architecture Images
+    runs-on: ubuntu-latest
+    needs: [setup, lint, test, test-e2e]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver-opts: |
+            image=moby/buildkit:latest
+
+      - name: Build multi-architecture images
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: ${{ env.PLATFORMS }}
+          push: false
+          load: false
+          outputs: type=docker,dest=/tmp/image.tar
+          tags: |
+            ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME }}:${{ needs.setup.outputs.version }}
+          build-args: |
+            VERSION=${{ needs.setup.outputs.version }}
+            COMMIT=${{ github.sha }}
+            BUILD_DATE=${{ github.event.repository.updated_at }}
+          labels: |
+            org.opencontainers.image.source=${{ github.repositoryUrl }}
+            org.opencontainers.image.version=${{ needs.setup.outputs.version }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.licenses=Apache-2.0
+            org.opencontainers.image.created=${{ github.event.repository.updated_at }}
+          cache-from: type=registry,ref=${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME }}:buildcache
+          cache-to: type=registry,ref=${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME }}:buildcache,mode=max
+
+      - name: Upload image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: container-image
+          path: /tmp/image.tar
+          retention-days: 1
+
+  security-scan:
+    name: Security Scanning
+    runs-on: ubuntu-latest
+    needs: [setup, build]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download image artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: container-image
+          path: /tmp
+
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+
+      - name: Install Trivy
+        run: |
+          wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
+          echo "deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main" | sudo tee -a /etc/apt/sources.list.d/trivy.list
+          sudo apt-get update
+          sudo apt-get install trivy
+
+      - name: Run Trivy vulnerability scanner
+        run: |
+          trivy image \
+            --format sarif \
+            --output trivy-results.sarif \
+            --severity CRITICAL,HIGH,MEDIUM,LOW \
+            ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME }}:${{ needs.setup.outputs.version }}
+
+      - name: Generate JSON report
+        run: |
+          trivy image \
+            --format json \
+            --output trivy-results.json \
+            --severity CRITICAL,HIGH,MEDIUM,LOW \
+            ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME }}:${{ needs.setup.outputs.version }}
+
+      - name: Generate table report
+        run: |
+          trivy image \
+            --format table \
+            --severity CRITICAL,HIGH,MEDIUM,LOW \
+            ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME }}:${{ needs.setup.outputs.version }}
+
+      - name: Upload SARIF to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-results.sarif
+
+      - name: Upload scan results as artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: security-scan-results
+          path: |
+            trivy-results.sarif
+            trivy-results.json
+          retention-days: 30
+
+      - name: Check for critical/high vulnerabilities
+        run: |
+          CRITICAL=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="CRITICAL")] | length' trivy-results.json)
+          HIGH=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="HIGH")] | length' trivy-results.json)
+          
+          echo "Critical vulnerabilities: $CRITICAL"
+          echo "High vulnerabilities: $HIGH"
+          
+          if [ "$CRITICAL" -gt 0 ] || [ "$HIGH" -gt 0 ]; then
+            echo "Error: Found $CRITICAL critical and $HIGH high severity vulnerabilities"
+            echo "Release blocked due to security vulnerabilities"
+            exit 1
+          fi
+          
+          echo "No critical or high severity vulnerabilities found"
+
+  sbom:
+    name: Generate SBOM
+    runs-on: ubuntu-latest
+    needs: [setup, build]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download image artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: container-image
+          path: /tmp
+
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+
+      - name: Install Syft
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
+
+      - name: Generate SBOM in SPDX JSON format
+        run: |
+          syft ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME }}:${{ needs.setup.outputs.version }} \
+            -o spdx-json=sbom.json
+
+      - name: Upload SBOM as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: sbom.json
+          retention-days: 90
+
+  sign:
+    name: Sign Images
+    runs-on: ubuntu-latest
+    needs: [setup, build, security-scan, sbom]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download image artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: container-image
+          path: /tmp
+
+      - name: Download SBOM
+        uses: actions/download-artifact@v4
+        with:
+          name: sbom
+          path: /tmp
+
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY_GHCR }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push image to GHCR (temporary for signing)
+        run: |
+          docker push ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME }}:${{ needs.setup.outputs.version }}
+
+      - name: Sign container image with keyless signing
+        env:
+          COSIGN_EXPERIMENTAL: 1
+        run: |
+          cosign sign --yes \
+            ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME }}:${{ needs.setup.outputs.version }}
+
+      - name: Generate provenance attestation
+        env:
+          COSIGN_EXPERIMENTAL: 1
+        run: |
+          echo "{
+            \"buildType\": \"https://github.com/Attestations/GitHubActionsWorkflow@v1\",
+            \"builder\": {
+              \"id\": \"https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}\"
+            },
+            \"invocation\": {
+              \"configSource\": {
+                \"uri\": \"git+https://github.com/${{ github.repository }}\",
+                \"digest\": {
+                  \"sha1\": \"${{ github.sha }}\"
+                },
+                \"entryPoint\": \".github/workflows/release.yml\"
+              }
+            },
+            \"metadata\": {
+              \"buildInvocationId\": \"${{ github.run_id }}\",
+              \"buildStartedOn\": \"${{ github.event.repository.updated_at }}\",
+              \"completeness\": {
+                \"parameters\": true,
+                \"environment\": false,
+                \"materials\": false
+              },
+              \"reproducible\": false
+            },
+            \"materials\": [
+              {
+                \"uri\": \"git+https://github.com/${{ github.repository }}\",
+                \"digest\": {
+                  \"sha1\": \"${{ github.sha }}\"
+                }
+              }
+            ]
+          }" > provenance.json
+          
+          cosign attest --yes \
+            --predicate provenance.json \
+            --type slsaprovenance \
+            ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME }}:${{ needs.setup.outputs.version }}
+
+      - name: Attach SBOM as attestation
+        env:
+          COSIGN_EXPERIMENTAL: 1
+        run: |
+          cosign attest --yes \
+            --predicate /tmp/sbom.json \
+            --type spdx \
+            ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME }}:${{ needs.setup.outputs.version }}
+
+      - name: Verify signature
+        env:
+          COSIGN_EXPERIMENTAL: 1
+        run: |
+          cosign verify \
+            ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME }}:${{ needs.setup.outputs.version }} | jq .
+
+  publish-ghcr:
+    name: Publish to GitHub Container Registry
+    runs-on: ubuntu-latest
+    needs: [setup, build, security-scan, sign]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY_GHCR }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract version components
+        id: version
+        run: |
+          VERSION="${{ needs.setup.outputs.version }}"
+          # Remove 'v' prefix
+          VERSION_NO_V="${VERSION#v}"
+          
+          # Extract major.minor.patch
+          MAJOR=$(echo $VERSION_NO_V | cut -d. -f1)
+          MINOR=$(echo $VERSION_NO_V | cut -d. -f2)
+          PATCH=$(echo $VERSION_NO_V | cut -d. -f3 | cut -d- -f1)
+          
+          echo "full=${VERSION}" >> $GITHUB_OUTPUT
+          echo "major=${MAJOR}" >> $GITHUB_OUTPUT
+          echo "minor=${MAJOR}.${MINOR}" >> $GITHUB_OUTPUT
+          echo "patch=${MAJOR}.${MINOR}.${PATCH}" >> $GITHUB_OUTPUT
+
+      - name: Build and push multi-platform image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: ${{ env.PLATFORMS }}
+          push: true
+          tags: |
+            ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.full }}
+            ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.minor }}
+            ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.major }}
+            ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME }}:latest
+          build-args: |
+            VERSION=${{ needs.setup.outputs.version }}
+            COMMIT=${{ github.sha }}
+            BUILD_DATE=${{ github.event.repository.updated_at }}
+          labels: |
+            org.opencontainers.image.source=${{ github.repositoryUrl }}
+            org.opencontainers.image.version=${{ needs.setup.outputs.version }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.licenses=Apache-2.0
+            org.opencontainers.image.created=${{ github.event.repository.updated_at }}
+          cache-from: type=registry,ref=${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME }}:buildcache
+          cache-to: type=registry,ref=${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME }}:buildcache,mode=max
+
+      - name: Verify image is pullable
+        run: |
+          docker pull ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.full }}
+          docker pull ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME }}:latest
+
+  publish-dockerhub:
+    name: Publish to Docker Hub (Optional)
+    runs-on: ubuntu-latest
+    needs: [setup, build, security-scan, sign]
+    if: ${{ secrets.DOCKERHUB_USERNAME != '' && secrets.DOCKERHUB_TOKEN != '' }}
+    continue-on-error: true
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY_DOCKERHUB }}
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Extract version components
+        id: version
+        run: |
+          VERSION="${{ needs.setup.outputs.version }}"
+          # Remove 'v' prefix
+          VERSION_NO_V="${VERSION#v}"
+          
+          # Extract major.minor.patch
+          MAJOR=$(echo $VERSION_NO_V | cut -d. -f1)
+          MINOR=$(echo $VERSION_NO_V | cut -d. -f2)
+          PATCH=$(echo $VERSION_NO_V | cut -d. -f3 | cut -d- -f1)
+          
+          echo "full=${VERSION}" >> $GITHUB_OUTPUT
+          echo "major=${MAJOR}" >> $GITHUB_OUTPUT
+          echo "minor=${MAJOR}.${MINOR}" >> $GITHUB_OUTPUT
+          echo "patch=${MAJOR}.${MINOR}.${PATCH}" >> $GITHUB_OUTPUT
+
+      - name: Build and push to Docker Hub
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: ${{ env.PLATFORMS }}
+          push: true
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/optipod:${{ steps.version.outputs.full }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/optipod:${{ steps.version.outputs.minor }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/optipod:${{ steps.version.outputs.major }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/optipod:latest
+          build-args: |
+            VERSION=${{ needs.setup.outputs.version }}
+            COMMIT=${{ github.sha }}
+            BUILD_DATE=${{ github.event.repository.updated_at }}
+          labels: |
+            org.opencontainers.image.source=${{ github.repositoryUrl }}
+            org.opencontainers.image.version=${{ needs.setup.outputs.version }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.licenses=Apache-2.0
+            org.opencontainers.image.created=${{ github.event.repository.updated_at }}
+          cache-from: type=registry,ref=${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME }}:buildcache
+
+      - name: Verify Docker Hub image
+        run: |
+          docker pull ${{ secrets.DOCKERHUB_USERNAME }}/optipod:${{ steps.version.outputs.full }} || echo "Warning: Failed to verify Docker Hub image"
+
+  generate-manifests:
+    name: Generate Deployment Manifests
+    runs-on: ubuntu-latest
+    needs: [setup, publish-ghcr]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Install kustomize
+        run: |
+          curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
+          sudo mv kustomize /usr/local/bin/
+
+      - name: Update image reference in kustomization
+        run: |
+          cd config/manager
+          kustomize edit set image controller=${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME }}:${{ needs.setup.outputs.version }}
+
+      - name: Build consolidated manifest
+        run: |
+          cd config/default
+          kustomize build . > ../../install.yaml
+
+      - name: Validate manifest with kubectl dry-run
+        run: |
+          kubectl apply --dry-run=client -f install.yaml
+
+      - name: Upload manifest as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: install-manifest
+          path: install.yaml
+          retention-days: 90
+
+  build-binaries:
+    name: Build Binaries
+    runs-on: ubuntu-latest
+    needs: [setup]
+    strategy:
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+          - goos: linux
+            goarch: arm64
+          - goos: darwin
+            goarch: amd64
+          - goos: darwin
+            goarch: arm64
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build binary
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: 0
+        run: |
+          go build -a -o optipod-${{ matrix.goos }}-${{ matrix.goarch }} \
+            -ldflags "-X main.version=${{ needs.setup.outputs.version }} -X main.commit=${{ github.sha }}" \
+            cmd/main.go
+
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: binary-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: optipod-${{ matrix.goos }}-${{ matrix.goarch }}
+          retention-days: 90
+
+  generate-checksums:
+    name: Generate Checksums
+    runs-on: ubuntu-latest
+    needs: [setup, build-binaries]
+    steps:
+      - name: Download all binaries
+        uses: actions/download-artifact@v4
+        with:
+          pattern: binary-*
+          path: binaries
+          merge-multiple: true
+
+      - name: Generate SHA256 checksums
+        run: |
+          cd binaries
+          sha256sum * > checksums.txt
+          cat checksums.txt
+
+      - name: Upload checksums
+        uses: actions/upload-artifact@v4
+        with:
+          name: checksums
+          path: binaries/checksums.txt
+          retention-days: 90
+
+  create-release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: [setup, publish-ghcr, generate-manifests, generate-checksums, sbom, security-scan]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download install manifest
+        uses: actions/download-artifact@v4
+        with:
+          name: install-manifest
+          path: artifacts
+
+      - name: Download binaries
+        uses: actions/download-artifact@v4
+        with:
+          pattern: binary-*
+          path: artifacts/binaries
+          merge-multiple: true
+
+      - name: Download checksums
+        uses: actions/download-artifact@v4
+        with:
+          name: checksums
+          path: artifacts
+
+      - name: Download SBOM
+        uses: actions/download-artifact@v4
+        with:
+          name: sbom
+          path: artifacts
+
+      - name: Download security scan results
+        uses: actions/download-artifact@v4
+        with:
+          name: security-scan-results
+          path: artifacts
+
+      - name: Generate release notes
+        id: release_notes
+        run: |
+          VERSION="${{ needs.setup.outputs.version }}"
+          
+          # Get previous tag
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          
+          # Generate changelog
+          if [ -n "$PREV_TAG" ]; then
+            CHANGELOG=$(git log ${PREV_TAG}..HEAD --pretty=format:"- %s (%h)" --no-merges)
+          else
+            CHANGELOG=$(git log --pretty=format:"- %s (%h)" --no-merges)
+          fi
+          
+          # Create release notes
+          cat > release_notes.md <<EOF
+          ## OptiPod ${VERSION}
+          
+          ### Container Images
+          
+          - \`ghcr.io/${{ github.repository }}:${VERSION}\`
+          - \`ghcr.io/${{ github.repository }}:latest\`
+          
+          ### Installation
+          
+          \`\`\`bash
+          kubectl apply -f https://github.com/${{ github.repository }}/releases/download/${VERSION}/install.yaml
+          \`\`\`
+          
+          ### What's Changed
+          
+          ${CHANGELOG}
+          
+          ### Artifacts
+          
+          - **install.yaml**: Complete Kubernetes deployment manifest
+          - **Binaries**: Pre-built binaries for multiple platforms
+          - **sbom.json**: Software Bill of Materials
+          - **trivy-results.json**: Security scan results
+          - **checksums.txt**: SHA256 checksums for all binaries
+          
+          ### Verification
+          
+          Verify image signature:
+          \`\`\`bash
+          cosign verify ghcr.io/${{ github.repository }}:${VERSION}
+          \`\`\`
+          
+          **Full Changelog**: https://github.com/${{ github.repository }}/compare/${PREV_TAG}...${VERSION}
+          EOF
+          
+          cat release_notes.md
+
+      - name: Check if pre-release
+        id: prerelease
+        run: |
+          VERSION="${{ needs.setup.outputs.version }}"
+          if echo "$VERSION" | grep -qE '(alpha|beta|rc)'; then
+            echo "is_prerelease=true" >> $GITHUB_OUTPUT
+          else
+            echo "is_prerelease=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ needs.setup.outputs.version }}
+          name: Release ${{ needs.setup.outputs.version }}
+          body_path: release_notes.md
+          draft: false
+          prerelease: ${{ steps.prerelease.outputs.is_prerelease }}
+          files: |
+            artifacts/install.yaml
+            artifacts/binaries/*
+            artifacts/checksums.txt
+            artifacts/sbom.json
+            artifacts/trivy-results.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
