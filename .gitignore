@@ -29,4 +29,22 @@ go.work.sum
 
 # Editor/IDE
 # .idea/
-# .vscode/
+.vscode/
+
+# Build artifacts
+/bin/
+/main
+/optipod
+manager
+
+# Test artifacts and logs
+*.log
+cover.out
+coverage.*
+
+# Verification and checkpoint files
+*_VERIFICATION.md
+*_CHECKPOINT_SUMMARY.md
+E2E_TEST_IMPLEMENTATION.md
+TASK_*.md
+TEST_*.md
