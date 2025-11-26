@@ -1,0 +1,79 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: manager-role
+rules:
+# Workload read permissions
+- apiGroups:
+  - apps
+  resources:
+  - deployments
+  - statefulsets
+  - daemonsets
+  verbs:
+  - get
+  - list
+  - watch
+# Workload update permissions
+- apiGroups:
+  - apps
+  resources:
+  - deployments
+  - statefulsets
+  - daemonsets
+  verbs:
+  - patch
+  - update
+# CRD permissions
+- apiGroups:
+  - optipod.optipod.io
+  resources:
+  - optimizationpolicies
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - optipod.optipod.io
+  resources:
+  - optimizationpolicies/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - optipod.optipod.io
+  resources:
+  - optimizationpolicies/status
+  verbs:
+  - get
+  - patch
+  - update
+# Event permissions
+- apiGroups:
+  - ""
+  resources:
+  - events
+  verbs:
+  - create
+  - patch
+# Metrics permissions
+- apiGroups:
+  - metrics.k8s.io
+  resources:
+  - pods
+  verbs:
+  - get
+  - list
+# Namespace read permissions for multi-tenant scoping
+- apiGroups:
+  - ""
+  resources:
+  - namespaces
+  verbs:
+  - get
+  - list
+  - watch

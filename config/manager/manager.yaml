@@ -1,0 +1,120 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  labels:
+    control-plane: controller-manager
+    app.kubernetes.io/name: optipod
+    app.kubernetes.io/managed-by: kustomize
+  name: system
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: controller-manager
+  namespace: system
+  labels:
+    control-plane: controller-manager
+    app.kubernetes.io/name: optipod
+    app.kubernetes.io/managed-by: kustomize
+spec:
+  selector:
+    matchLabels:
+      control-plane: controller-manager
+      app.kubernetes.io/name: optipod
+  replicas: 1
+  template:
+    metadata:
+      annotations:
+        kubectl.kubernetes.io/default-container: manager
+      labels:
+        control-plane: controller-manager
+        app.kubernetes.io/name: optipod
+    spec:
+      # TODO(user): Uncomment the following code to configure the nodeAffinity expression
+      # according to the platforms which are supported by your solution.
+      # It is considered best practice to support multiple architectures. You can
+      # build your manager image using the makefile target docker-buildx.
+      # affinity:
+      #   nodeAffinity:
+      #     requiredDuringSchedulingIgnoredDuringExecution:
+      #       nodeSelectorTerms:
+      #         - matchExpressions:
+      #           - key: kubernetes.io/arch
+      #             operator: In
+      #             values:
+      #               - amd64
+      #               - arm64
+      #               - ppc64le
+      #               - s390x
+      #           - key: kubernetes.io/os
+      #             operator: In
+      #             values:
+      #               - linux
+      securityContext:
+        # Projects are configured by default to adhere to the "restricted" Pod Security Standards.
+        # This ensures that deployments meet the highest security requirements for Kubernetes.
+        # For more details, see: https://kubernetes.io/docs/concepts/security/pod-security-standards/#restricted
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - command:
+        - /manager
+        args:
+          # Leader election for high availability (single replica with leader election)
+          - --leader-elect=true
+          # Health and metrics endpoints
+          - --health-probe-bind-address=:8081
+          - --metrics-bind-address=:8080
+          # OptiPod-specific configuration
+          - --metrics-provider=prometheus
+          - --prometheus-url=http://prometheus-k8s.monitoring.svc:9090
+          - --dry-run=false
+          - --reconciliation-interval=5m
+        image: controller:latest
+        name: manager
+        ports:
+        - containerPort: 8080
+          name: metrics
+          protocol: TCP
+        - containerPort: 8081
+          name: health
+          protocol: TCP
+        securityContext:
+          readOnlyRootFilesystem: true
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - "ALL"
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8081
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: 8081
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        # Resource configuration for control-plane efficiency
+        # Requirements: 17.3, 17.4 - minimal CPU/memory for idle state
+        resources:
+          limits:
+            cpu: 500m
+            memory: 512Mi
+          requests:
+            cpu: 100m
+            memory: 128Mi
+        volumeMounts:
+        - name: config
+          mountPath: /etc/optipod
+          readOnly: true
+      volumes:
+      - name: config
+        configMap:
+          name: optipod-config
+          optional: true
+      serviceAccountName: controller-manager
+      terminationGracePeriodSeconds: 10

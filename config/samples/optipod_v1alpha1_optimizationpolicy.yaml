@@ -1,0 +1,42 @@
+apiVersion: optipod.optipod.io/v1alpha1
+kind: OptimizationPolicy
+metadata:
+  name: production-workloads
+  namespace: default
+spec:
+  mode: Auto
+  
+  selector:
+    namespaceSelector:
+      matchLabels:
+        environment: production
+    workloadSelector:
+      matchLabels:
+        optimize: "true"
+    namespaces:
+      allow:
+        - default
+        - production
+      deny:
+        - kube-system
+  
+  metricsConfig:
+    provider: prometheus
+    rollingWindow: 24h
+    percentile: P90
+    safetyFactor: 1.2
+  
+  resourceBounds:
+    cpu:
+      min: "100m"
+      max: "4000m"
+    memory:
+      min: "128Mi"
+      max: "8Gi"
+  
+  updateStrategy:
+    allowInPlaceResize: true
+    allowRecreate: false
+    updateRequestsOnly: true
+  
+  reconciliationInterval: 5m

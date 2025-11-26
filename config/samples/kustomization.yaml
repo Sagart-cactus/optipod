@@ -1,0 +1,4 @@
+## Append samples of your project ##
+resources:
+- optipod_v1alpha1_optimizationpolicy.yaml
+# +kubebuilder:scaffold:manifestskustomizesamples
