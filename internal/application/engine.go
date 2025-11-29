@@ -172,7 +172,7 @@ func (e *Engine) CanApply(
 }
 
 // detectInPlaceResize detects if in-place pod resize is supported
-func (e *Engine) detectInPlaceResize(ctx context.Context) (bool, error) {
+func (e *Engine) detectInPlaceResize(ctx context.Context) (bool, error) { //nolint:unparam // ctx may be used in future
 	// Get server version
 	serverVersion, err := e.discoveryClient.ServerVersion()
 	if err != nil {

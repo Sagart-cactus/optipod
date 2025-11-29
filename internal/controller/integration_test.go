@@ -368,7 +368,7 @@ var _ = Describe("Integration Tests", func() {
 			deploymentCount := 0
 			statefulSetCount := 0
 			for _, w := range workloads {
-				if w.Kind == KindDeployment {
+				if w.Kind == KindDeployment { //nolint:staticcheck // Simple if is clearer than switch
 					deploymentCount++
 				} else if w.Kind == "StatefulSet" {
 					statefulSetCount++

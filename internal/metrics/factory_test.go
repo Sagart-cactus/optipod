@@ -40,13 +40,13 @@ func TestProperty_ProviderConfigurability(t *testing.T) {
 			var config ProviderConfig
 
 			switch providerType {
-			case "metrics-server":
+			case "metrics-server": //nolint:goconst // Testing against existing constant
 				config = ProviderConfig{
 					Type:             "metrics-server",
 					Clientset:        fake.NewSimpleClientset(),
 					MetricsClientset: metricsfake.NewSimpleClientset(),
 				}
-			case "prometheus":
+			case "prometheus": //nolint:goconst // Testing against existing constant
 				// Use a valid URL format
 				if prometheusURL == "" {
 					prometheusURL = "http://prometheus:9090"
@@ -195,13 +195,13 @@ func TestProperty_ProviderCreationDeterminism(t *testing.T) {
 			var config ProviderConfig
 
 			switch providerType {
-			case "metrics-server":
+			case "metrics-server": //nolint:goconst // Testing against existing constant
 				config = ProviderConfig{
 					Type:             "metrics-server",
 					Clientset:        fake.NewSimpleClientset(),
 					MetricsClientset: metricsfake.NewSimpleClientset(),
 				}
-			case "prometheus":
+			case "prometheus": //nolint:goconst // Testing against existing constant
 				config = ProviderConfig{
 					Type:          "prometheus",
 					PrometheusURL: "http://prometheus:9090",

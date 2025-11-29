@@ -57,7 +57,7 @@ func TestProperty16_WorkloadDiscovery(t *testing.T) {
 			var namespaceNames []string
 			for i := 0; i < numNamespaces; i++ {
 				nsName := "test-ns-" + string(rune('a'+i))
-				namespaceNames = append(namespaceNames, nsName)
+				namespaceNames = append(namespaceNames, nsName) //nolint:staticcheck // Result is used
 				ns := &corev1.Namespace{
 					ObjectMeta: metav1.ObjectMeta{
 						Name: nsName,

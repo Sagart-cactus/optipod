@@ -155,7 +155,7 @@ func discoverDeployments(ctx context.Context, c client.Client, namespace string,
 		return nil, err
 	}
 
-	var workloads []Workload
+	var workloads []Workload //nolint:prealloc // Size unknown
 	for _, deployment := range deploymentList.Items {
 		workloads = append(workloads, Workload{
 			Kind:      "Deployment",
@@ -189,7 +189,7 @@ func discoverStatefulSets(ctx context.Context, c client.Client, namespace string
 		return nil, err
 	}
 
-	var workloads []Workload
+	var workloads []Workload //nolint:prealloc // Size unknown
 	for _, statefulSet := range statefulSetList.Items {
 		workloads = append(workloads, Workload{
 			Kind:      "StatefulSet",
@@ -223,7 +223,7 @@ func discoverDaemonSets(ctx context.Context, c client.Client, namespace string, 
 		return nil, err
 	}
 
-	var workloads []Workload
+	var workloads []Workload //nolint:prealloc // Size unknown
 	for _, daemonSet := range daemonSetList.Items {
 		workloads = append(workloads, Workload{
 			Kind:      "DaemonSet",

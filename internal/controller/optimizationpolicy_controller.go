@@ -131,7 +131,7 @@ func (r *OptimizationPolicyReconciler) Reconcile(ctx context.Context, req ctrl.R
 	observability.WorkloadsMonitored.WithLabelValues(policy.Namespace, policy.Name).Set(float64(len(workloads)))
 
 	// Process each workload
-	var workloadStatuses []optipodv1alpha1.WorkloadStatus
+	var workloadStatuses []optipodv1alpha1.WorkloadStatus //nolint:prealloc // Size unknown
 	updatedCount := 0
 	skippedCount := make(map[string]int)
 
@@ -157,7 +157,7 @@ func (r *OptimizationPolicyReconciler) Reconcile(ctx context.Context, req ctrl.R
 		workloadStatuses = append(workloadStatuses, *status)
 
 		// Emit events and track metrics based on status
-		if status.Status == StatusApplied {
+		if status.Status == StatusApplied { //nolint:staticcheck // Simple if is clearer than switch
 			if r.EventRecorder != nil {
 				r.EventRecorder.RecordWorkloadUpdateSuccess(policy, workload.Name, workload.Namespace, "InPlace")
 			}
@@ -200,7 +200,7 @@ func (r *OptimizationPolicyReconciler) Reconcile(ctx context.Context, req ctrl.R
 }
 
 // validatePolicy validates the OptimizationPolicy
-func (r *OptimizationPolicyReconciler) validatePolicy(ctx context.Context, policy *optipodv1alpha1.OptimizationPolicy) error {
+func (r *OptimizationPolicyReconciler) validatePolicy(ctx context.Context, policy *optipodv1alpha1.OptimizationPolicy) error { //nolint:unparam // ctx may be used in future
 	return policy.ValidateCreate()
 }
 

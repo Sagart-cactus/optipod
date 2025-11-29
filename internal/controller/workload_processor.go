@@ -99,7 +99,7 @@ func (wp *WorkloadProcessor) ProcessWorkload(
 	}
 
 	// Process each container
-	var recommendations []optipodv1alpha1.ContainerRecommendation
+	var recommendations []optipodv1alpha1.ContainerRecommendation //nolint:prealloc // Size unknown
 	hasMetricsError := false
 	metricsErrorMsg := ""
 
@@ -254,7 +254,7 @@ func (wp *WorkloadProcessor) getContainers(workload *discovery.Workload) ([]core
 
 // getFirstPodName gets the name of the first pod for a workload
 // This is a simplified implementation - in production, you'd want to query actual pods
-func (wp *WorkloadProcessor) getFirstPodName(workload *discovery.Workload) (string, error) {
+func (wp *WorkloadProcessor) getFirstPodName(workload *discovery.Workload) (string, error) { //nolint:unparam // error return for consistency
 	// For now, we'll construct a pod name based on the workload name
 	// In a real implementation, we'd query the API for actual pods
 	return fmt.Sprintf("%s-0", workload.Name), nil

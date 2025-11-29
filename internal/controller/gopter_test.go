@@ -1032,7 +1032,7 @@ func TestProperty_RecommendationFormatCompleteness(t *testing.T) {
 
 				// Explanation should be present (optional but good practice)
 				// We don't enforce this as a hard requirement, but check it exists
-				if rec.Explanation == "" {
+				if rec.Explanation == "" { //nolint:staticcheck // Empty branch is intentional
 					// This is acceptable, but we note it
 				}
 			}
