@@ -1,11 +1,11 @@
 # OptiPod
 
-[![CI](https://github.com/yourusername/optipod/actions/workflows/ci.yml/badge.svg)](https://github.com/yourusername/optipod/actions/workflows/ci.yml)
-[![Lint](https://github.com/yourusername/optipod/actions/workflows/lint.yml/badge.svg)](https://github.com/yourusername/optipod/actions/workflows/lint.yml)
-[![Tests](https://github.com/yourusername/optipod/actions/workflows/test.yml/badge.svg)](https://github.com/yourusername/optipod/actions/workflows/test.yml)
-[![E2E Tests](https://github.com/yourusername/optipod/actions/workflows/test-e2e.yml/badge.svg)](https://github.com/yourusername/optipod/actions/workflows/test-e2e.yml)
-[![Release](https://github.com/yourusername/optipod/actions/workflows/release.yml/badge.svg)](https://github.com/yourusername/optipod/actions/workflows/release.yml)
-[![Go Version](https://img.shields.io/github/go-mod/go-version/yourusername/optipod)](https://github.com/yourusername/optipod)
+[![CI](https://github.com/Sagart-cactus/optipod/actions/workflows/ci.yml/badge.svg)](https://github.com/Sagart-cactus/optipod/actions/workflows/ci.yml)
+[![Lint](https://github.com/Sagart-cactus/optipod/actions/workflows/lint.yml/badge.svg)](https://github.com/Sagart-cactus/optipod/actions/workflows/lint.yml)
+[![Tests](https://github.com/Sagart-cactus/optipod/actions/workflows/test.yml/badge.svg)](https://github.com/Sagart-cactus/optipod/actions/workflows/test.yml)
+[![E2E Tests](https://github.com/Sagart-cactus/optipod/actions/workflows/test-e2e.yml/badge.svg)](https://github.com/Sagart-cactus/optipod/actions/workflows/test-e2e.yml)
+[![Release](https://github.com/Sagart-cactus/optipod/actions/workflows/release.yml/badge.svg)](https://github.com/Sagart-cactus/optipod/actions/workflows/release.yml)
+[![Go Version](https://img.shields.io/github/go-mod/go-version/Sagart-cactus/optipod)](https://github.com/Sagart-cactus/optipod)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
 OptiPod is an open-source, Kubernetes-native operator that automatically rightsizes CPU and memory requests for your workloads based on real-time and historical usage patterns. It helps reduce cloud costs by eliminating over-provisioning while maintaining safety margins to prevent performance issues.
@@ -30,20 +30,20 @@ OptiPod is an open-source, Kubernetes-native operator that automatically rightsi
 
 ### Installation
 
-1. **Install the CRDs**:
+1. **Install using the release manifest**:
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/yourusername/optipod/main/config/crd/bases/optipod.optipod.io_optimizationpolicies.yaml
+kubectl apply -f https://github.com/Sagart-cactus/optipod/releases/latest/download/install.yaml
 ```
 
-2. **Deploy the operator**:
+Or install a specific version:
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/yourusername/optipod/main/dist/install.yaml
+kubectl apply -f https://github.com/Sagart-cactus/optipod/releases/download/v1.0.0/install.yaml
 ```
 
-3. **Verify the installation**:
+2. **Verify the installation**:
 ```bash
 kubectl get pods -n optipod-system
-kubectl logs -n optipod-system deployment/optipod-controller-manager
+kubectl logs -n optipod-system deployment/optipod-manager
 ```
 
 ### Create Your First Policy
@@ -106,9 +106,8 @@ kubectl describe optimizationpolicy production-workloads
 - [Installation Guide](docs/INSTALLATION.md) - Detailed installation instructions
 - [CRD Reference](docs/CRD_REFERENCE.md) - Complete OptimizationPolicy field documentation
 - [Example Policies](docs/EXAMPLES.md) - Common use case examples
-- [Metrics Configuration](docs/METRICS.md) - How to configure metrics providers
-- [Troubleshooting Guide](docs/TROUBLESHOOTING.md) - Common issues and solutions
-- [Architecture](docs/ARCHITECTURE.md) - System design and components
+- [CI/CD Testing Guide](docs/ci-cd-testing.md) - How to test and validate workflows
+- [CI/CD Implementation](docs/ci-cd-implementation-summary.md) - CI/CD pipeline details
 
 ## How It Works
 
@@ -137,7 +136,7 @@ kubectl describe optimizationpolicy production-workloads
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/optipod.git
+git clone https://github.com/Sagart-cactus/optipod.git
 cd optipod
 
 # Build the operator
@@ -145,6 +144,9 @@ make build
 
 # Run tests
 make test
+
+# Run E2E tests
+make test-e2e
 
 # Build and push Docker image
 make docker-build docker-push IMG=your-registry/optipod:tag
@@ -176,8 +178,8 @@ This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENS
 
 ## Support
 
-- **Issues**: Report bugs and request features via [GitHub Issues](https://github.com/yourusername/optipod/issues)
-- **Discussions**: Ask questions in [GitHub Discussions](https://github.com/yourusername/optipod/discussions)
+- **Issues**: Report bugs and request features via [GitHub Issues](https://github.com/Sagart-cactus/optipod/issues)
+- **Discussions**: Ask questions in [GitHub Discussions](https://github.com/Sagart-cactus/optipod/discussions)
 - **Documentation**: Full documentation at [docs/](docs/)
 
 ## Acknowledgments
