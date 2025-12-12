@@ -38,9 +38,9 @@ type PolicySelector struct {
 }
 
 // NewPolicySelector creates a new policy selector
-func NewPolicySelector(client client.Client) *PolicySelector {
+func NewPolicySelector(c client.Client) *PolicySelector {
 	return &PolicySelector{
-		client: client,
+		client: c,
 	}
 }
 

@@ -44,6 +44,8 @@ const (
 	kindDeployment  = "Deployment"
 	kindStatefulSet = "StatefulSet"
 	kindDaemonSet   = "DaemonSet"
+	// FieldManagerName is the field manager name used by optipod
+	FieldManagerName = "optipod"
 )
 
 // ApplyMethod defines how resource changes should be applied

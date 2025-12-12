@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
+	"strings"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -71,8 +72,8 @@ func (r *OptimizationPolicyReconciler) Reconcile(ctx context.Context, req ctrl.R
 	}()
 
 	// Fetch the OptimizationPolicy instance
-	policy := &optipodv1alpha1.OptimizationPolicy{}
-	if err := r.Get(ctx, req.NamespacedName, policy); err != nil {
+	optimizationPolicy := &optipodv1alpha1.OptimizationPolicy{}
+	if err := r.Get(ctx, req.NamespacedName, optimizationPolicy); err != nil {
 		if apierrors.IsNotFound(err) {
 			// Policy was deleted, nothing to do
 			log.Info("OptimizationPolicy not found, likely deleted", "name", req.NamespacedName)
@@ -83,14 +84,14 @@ func (r *OptimizationPolicyReconciler) Reconcile(ctx context.Context, req ctrl.R
 		return ctrl.Result{}, err
 	}
 
-	log.Info("Starting reconciliation", "policy", policy.Name, "namespace", policy.Namespace, "mode", policy.Spec.Mode)
+	log.Info("Starting reconciliation", "policy", optimizationPolicy.Name, "namespace", optimizationPolicy.Namespace, "mode", optimizationPolicy.Spec.Mode)
 
 	// Validate the policy
-	if err := r.validatePolicy(ctx, policy); err != nil {
-		log.Error(err, "Policy validation failed", "policy", policy.Name)
+	if err := r.validatePolicy(ctx, optimizationPolicy); err != nil {
+		log.Error(err, "Policy validation failed", "policy", optimizationPolicy.Name)
 
 		// Update status to reflect validation error
-		if statusErr := r.updatePolicyStatus(ctx, policy, metav1.Condition{
+		if statusErr := r.updatePolicyStatus(ctx, optimizationPolicy, metav1.Condition{
 			Type:               "Ready",
 			Status:             metav1.ConditionFalse,
 			Reason:             "ValidationFailed",
@@ -103,20 +104,20 @@ func (r *OptimizationPolicyReconciler) Reconcile(ctx context.Context, req ctrl.R
 
 		// Emit event for validation error
 		if r.EventRecorder != nil {
-			r.EventRecorder.RecordPolicyValidationError(policy, policy.Name, err)
+			r.EventRecorder.RecordPolicyValidationError(optimizationPolicy, optimizationPolicy.Name, err)
 		} else if r.Recorder != nil {
-			r.Recorder.Event(policy, corev1.EventTypeWarning, "ValidationFailed",
+			r.Recorder.Event(optimizationPolicy, corev1.EventTypeWarning, "ValidationFailed",
 				fmt.Sprintf("Policy validation failed: %v", err))
 		}
-		observability.ReconciliationErrors.WithLabelValues(policy.Name, "validation_error").Inc()
+		observability.ReconciliationErrors.WithLabelValues(optimizationPolicy.Name, "validation_error").Inc()
 
 		// Don't requeue on validation errors - user needs to fix the policy
 		return ctrl.Result{}, nil
 	}
 
 	// Policy is valid, update status
-	log.Info("Policy validation passed, updating status to Ready", "policy", policy.Name)
-	if err := r.updatePolicyStatus(ctx, policy, metav1.Condition{
+	log.Info("Policy validation passed, updating status to Ready", "policy", optimizationPolicy.Name)
+	if err := r.updatePolicyStatus(ctx, optimizationPolicy, metav1.Condition{
 		Type:               "Ready",
 		Status:             metav1.ConditionTrue,
 		Reason:             "PolicyValid",
@@ -126,36 +127,36 @@ func (r *OptimizationPolicyReconciler) Reconcile(ctx context.Context, req ctrl.R
 		log.Error(err, "Failed to update policy status to Ready")
 		return ctrl.Result{}, err
 	}
-	log.Info("Successfully updated policy status to Ready", "policy", policy.Name)
+	log.Info("Successfully updated policy status to Ready", "policy", optimizationPolicy.Name)
 
 	// Use workload-centric processing with policy weights
-	processedCount, discoveredCount, err := r.processWorkloadsWithPolicySelection(ctx, policy)
+	processedCount, discoveredCount, err := r.processWorkloadsWithPolicySelection(ctx, optimizationPolicy)
 	if err != nil {
 		log.Error(err, "Failed to process workloads with policy selection")
 		return ctrl.Result{}, err
 	}
 
 	// Update policy status with summary
-	if err := r.updatePolicySummary(ctx, policy, discoveredCount, processedCount); err != nil {
+	if err := r.updatePolicySummary(ctx, optimizationPolicy, discoveredCount, processedCount); err != nil {
 		log.Error(err, "Failed to update policy summary")
 		return ctrl.Result{}, err
 	}
 
 	// Calculate requeue interval with adaptive scheduling
-	requeueAfter := r.calculateRequeueInterval(policy, discoveredCount, processedCount)
+	requeueAfter := r.calculateRequeueInterval(optimizationPolicy, discoveredCount, processedCount)
 
-	log.Info("Successfully reconciled OptimizationPolicy", "policy", policy.Name, "requeueAfter", requeueAfter)
+	log.Info("Successfully reconciled OptimizationPolicy", "policy", optimizationPolicy.Name, "requeueAfter", requeueAfter)
 	return ctrl.Result{RequeueAfter: requeueAfter}, nil
 }
 
 // validatePolicy validates the OptimizationPolicy
-func (r *OptimizationPolicyReconciler) validatePolicy(ctx context.Context, policy *optipodv1alpha1.OptimizationPolicy) error { //nolint:unparam // ctx may be used in future
-	return policy.ValidateCreate()
+func (r *OptimizationPolicyReconciler) validatePolicy(ctx context.Context, pol *optipodv1alpha1.OptimizationPolicy) error { //nolint:unparam // ctx may be used in future
+	return pol.ValidateCreate()
 }
 
 // updatePolicyStatus updates the policy status with the given condition
 // Uses retry logic to handle concurrent modification conflicts
-func (r *OptimizationPolicyReconciler) updatePolicyStatus(ctx context.Context, policy *optipodv1alpha1.OptimizationPolicy, condition metav1.Condition) error {
+func (r *OptimizationPolicyReconciler) updatePolicyStatus(ctx context.Context, pol *optipodv1alpha1.OptimizationPolicy, condition metav1.Condition) error {
 	log := logf.FromContext(ctx)
 
 	// Retry configuration for status updates
@@ -166,10 +167,10 @@ func (r *OptimizationPolicyReconciler) updatePolicyStatus(ctx context.Context, p
 	for attempt := 0; attempt < maxRetries; attempt++ {
 		// Fetch the latest version to avoid conflicts
 		latest := &optipodv1alpha1.OptimizationPolicy{}
-		if err := r.Get(ctx, client.ObjectKeyFromObject(policy), latest); err != nil {
+		if err := r.Get(ctx, client.ObjectKeyFromObject(pol), latest); err != nil {
 			if apierrors.IsNotFound(err) {
 				// Policy was deleted
-				log.Info("Policy was deleted during status update", "policy", policy.Name)
+				log.Info("Policy was deleted during status update", "policy", pol.Name)
 				return nil
 			}
 			return err
@@ -224,7 +225,7 @@ func (r *OptimizationPolicyReconciler) updatePolicyStatus(ctx context.Context, p
 					delay = time.Second
 				}
 				log.V(1).Info("Conflict updating policy status, retrying",
-					"policy", policy.Name,
+					"policy", pol.Name,
 					"attempt", attempt+1,
 					"delay", delay)
 				time.Sleep(delay)
@@ -243,7 +244,7 @@ func (r *OptimizationPolicyReconciler) updatePolicyStatus(ctx context.Context, p
 }
 
 // processWorkloadsParallel processes workloads concurrently for better performance
-func (r *OptimizationPolicyReconciler) processWorkloadsParallel(ctx context.Context, workloads []discovery.Workload, policy *optipodv1alpha1.OptimizationPolicy) (int, error) {
+func (r *OptimizationPolicyReconciler) processWorkloadsParallel(ctx context.Context, workloads []discovery.Workload, policyObj *optipodv1alpha1.OptimizationPolicy) (int, error) {
 	log := logf.FromContext(ctx)
 
 	if r.WorkloadProcessor == nil {
@@ -271,7 +272,7 @@ func (r *OptimizationPolicyReconciler) processWorkloadsParallel(ctx context.Cont
 			defer func() { <-sem }() // Release semaphore
 
 			// Process workload
-			status, err := r.WorkloadProcessor.ProcessWorkload(ctx, &wl, policy)
+			status, err := r.WorkloadProcessor.ProcessWorkload(ctx, &wl, policyObj)
 
 			// Send result
 			res := result{
@@ -296,9 +297,9 @@ func (r *OptimizationPolicyReconciler) processWorkloadsParallel(ctx context.Cont
 
 		if res.err != nil {
 			log.Error(res.err, "Failed to process workload", "workload", res.workload)
-			r.Recorder.Event(policy, corev1.EventTypeWarning, "ProcessingFailed",
+			r.Recorder.Event(policyObj, corev1.EventTypeWarning, "ProcessingFailed",
 				fmt.Sprintf("Failed to process workload %s: %v", res.workload, res.err))
-			observability.ReconciliationErrors.WithLabelValues(policy.Name, "processing_error").Inc()
+			observability.ReconciliationErrors.WithLabelValues(policyObj.Name, "processing_error").Inc()
 			continue
 		}
 
@@ -309,23 +310,23 @@ func (r *OptimizationPolicyReconciler) processWorkloadsParallel(ctx context.Cont
 		case StatusApplied:
 			if r.EventRecorder != nil {
 				parts := splitWorkloadName(res.workload)
-				r.EventRecorder.RecordWorkloadUpdateSuccess(policy, parts[1], parts[0], "InPlace")
+				r.EventRecorder.RecordWorkloadUpdateSuccess(policyObj, parts[1], parts[0], "InPlace")
 			}
 			updatedCount++
-			observability.ApplicationsTotal.WithLabelValues(policy.Name, "InPlace").Inc()
+			observability.ApplicationsTotal.WithLabelValues(policyObj.Name, "InPlace").Inc()
 
 		case StatusSkipped:
 			skippedCount["skipped"]++
 
 		case "Recommended":
-			observability.RecommendationsTotal.WithLabelValues(policy.Name).Inc()
+			observability.RecommendationsTotal.WithLabelValues(policyObj.Name).Inc()
 		}
 	}
 
 	// Update metrics
-	observability.WorkloadsUpdated.WithLabelValues(policy.Namespace, policy.Name).Set(float64(updatedCount))
+	observability.WorkloadsUpdated.WithLabelValues(policyObj.Namespace, policyObj.Name).Set(float64(updatedCount))
 	for reason, count := range skippedCount {
-		observability.WorkloadsSkipped.WithLabelValues(policy.Namespace, policy.Name, reason).Set(float64(count))
+		observability.WorkloadsSkipped.WithLabelValues(policyObj.Namespace, policyObj.Name, reason).Set(float64(count))
 	}
 
 	log.Info("Completed parallel workload processing",
@@ -336,19 +337,9 @@ func (r *OptimizationPolicyReconciler) processWorkloadsParallel(ctx context.Cont
 	return processedCount, nil
 }
 
-// splitWorkloadName splits "namespace/name" into [namespace, name]
-func splitWorkloadName(workload string) []string {
-	parts := make([]string, 2)
-	for i, part := range []string{"default", "unknown"} {
-		parts[i] = part
-	}
-	// Simple split - in production would use strings.Split
-	return parts
-}
-
 // updatePolicySummary updates the policy status with summary information
 // Uses retry logic to handle concurrent modification conflicts
-func (r *OptimizationPolicyReconciler) updatePolicySummary(ctx context.Context, policy *optipodv1alpha1.OptimizationPolicy, discovered, processed int) error {
+func (r *OptimizationPolicyReconciler) updatePolicySummary(ctx context.Context, pol *optipodv1alpha1.OptimizationPolicy, discovered, processed int) error {
 	log := logf.FromContext(ctx)
 
 	// Retry configuration for summary updates
@@ -359,10 +350,10 @@ func (r *OptimizationPolicyReconciler) updatePolicySummary(ctx context.Context, 
 	for attempt := 0; attempt < maxRetries; attempt++ {
 		// Fetch the latest version to avoid conflicts
 		latest := &optipodv1alpha1.OptimizationPolicy{}
-		if err := r.Get(ctx, client.ObjectKeyFromObject(policy), latest); err != nil {
+		if err := r.Get(ctx, client.ObjectKeyFromObject(pol), latest); err != nil {
 			if apierrors.IsNotFound(err) {
 				// Policy was deleted
-				log.Info("Policy was deleted during summary update", "policy", policy.Name)
+				log.Info("Policy was deleted during summary update", "policy", pol.Name)
 				return nil
 			}
 			return err
@@ -395,7 +386,7 @@ func (r *OptimizationPolicyReconciler) updatePolicySummary(ctx context.Context, 
 					delay = time.Second
 				}
 				log.V(1).Info("Conflict updating policy summary, retrying",
-					"policy", policy.Name,
+					"policy", pol.Name,
 					"attempt", attempt+1,
 					"delay", delay)
 				time.Sleep(delay)
@@ -414,20 +405,20 @@ func (r *OptimizationPolicyReconciler) updatePolicySummary(ctx context.Context, 
 }
 
 // calculateRequeueInterval calculates an adaptive requeue interval based on workload stability
-func (r *OptimizationPolicyReconciler) calculateRequeueInterval(policy *optipodv1alpha1.OptimizationPolicy, discovered, processed int) time.Duration {
+func (r *OptimizationPolicyReconciler) calculateRequeueInterval(policyObj *optipodv1alpha1.OptimizationPolicy, discovered, processed int) time.Duration {
 	// Base interval from policy
-	baseInterval := policy.Spec.ReconciliationInterval.Duration
+	baseInterval := policyObj.Spec.ReconciliationInterval.Duration
 	if baseInterval == 0 {
 		baseInterval = 5 * time.Minute // Default 5 minutes
 	}
 
 	// For Disabled mode, use longer intervals
-	if policy.Spec.Mode == optipodv1alpha1.ModeDisabled {
+	if policyObj.Spec.Mode == optipodv1alpha1.ModeDisabled {
 		return baseInterval * 4 // 20 minutes for disabled policies
 	}
 
 	// For Recommend mode, use slightly longer intervals since no changes are applied
-	if policy.Spec.Mode == optipodv1alpha1.ModeRecommend {
+	if policyObj.Spec.Mode == optipodv1alpha1.ModeRecommend {
 		return baseInterval * 2 // 10 minutes for recommend mode
 	}
 
@@ -525,6 +516,16 @@ func (r *OptimizationPolicyReconciler) processWorkloadsWithPolicySelection(ctx c
 		"processed", processedCount)
 
 	return processedCount, len(workloads), nil
+}
+
+// splitWorkloadName splits a workload identifier in "namespace/name" format
+func splitWorkloadName(workload string) []string {
+	parts := strings.Split(workload, "/")
+	if len(parts) == 2 {
+		return parts // [namespace, name]
+	}
+	// Fallback for invalid format
+	return []string{"default", "unknown"}
 }
 
 // SetupWithManager sets up the controller with the Manager.

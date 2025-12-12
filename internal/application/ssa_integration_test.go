@@ -199,7 +199,7 @@ func TestSSAIntegration(t *testing.T) {
 	// Verify managedFields shows "optipod" as owner
 	foundOptipodManager := false
 	for _, mf := range updatedDeployment.ManagedFields {
-		if mf.Manager == "optipod" && mf.Operation == metav1.ManagedFieldsOperationApply {
+		if mf.Manager == FieldManagerName && mf.Operation == metav1.ManagedFieldsOperationApply {
 			foundOptipodManager = true
 			break
 		}
@@ -373,10 +373,10 @@ func TestSSAFieldOwnershipWithMultipleManagers(t *testing.T) {
 	foundOptipodManager := false
 	foundOtherManager := false
 	for _, mf := range updatedDeployment.ManagedFields {
-		if mf.Manager == "optipod" && mf.Operation == metav1.ManagedFieldsOperationApply {
+		if mf.Manager == FieldManagerName && mf.Operation == metav1.ManagedFieldsOperationApply {
 			foundOptipodManager = true
 		}
-		if mf.Manager != "optipod" {
+		if mf.Manager != FieldManagerName {
 			foundOtherManager = true
 		}
 	}
@@ -444,7 +444,7 @@ func TestProperty_FieldOwnershipTracking(t *testing.T) {
 			// Verify managedFields contains optipod as manager
 			foundOptipod := false
 			for _, mf := range mockClient.managedFields {
-				if mf.Manager == "optipod" && mf.Operation == metav1.ManagedFieldsOperationApply {
+				if mf.Manager == FieldManagerName && mf.Operation == metav1.ManagedFieldsOperationApply {
 					foundOptipod = true
 					break
 				}
@@ -574,7 +574,7 @@ func TestProperty_ConsistentFieldManager(t *testing.T) {
 				return false
 			}
 
-			_, hasOptipod := fieldManagers["optipod"]
+			_, hasOptipod := fieldManagers[FieldManagerName]
 			return hasOptipod
 		},
 		gen.IntRange(1, 5),
@@ -634,7 +634,7 @@ func TestProperty_ApplyOperationType(t *testing.T) {
 
 			// Verify all operations are "Apply" not "Update"
 			for _, mf := range mockClient.managedFields {
-				if mf.Manager == "optipod" {
+				if mf.Manager == FieldManagerName {
 					// SSA should use Apply operation
 					if mf.Operation != metav1.ManagedFieldsOperationApply {
 						return false

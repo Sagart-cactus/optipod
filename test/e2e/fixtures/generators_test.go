@@ -7,11 +7,6 @@ import (
 	"github.com/optipod/optipod/test/e2e/helpers"
 )
 
-const (
-	// TrueString represents the string "true" used in labels and comparisons
-	TrueString = "true"
-)
-
 func TestPolicyConfigGenerator(t *testing.T) {
 	generator := NewPolicyConfigGenerator()
 

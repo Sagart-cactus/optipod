@@ -111,7 +111,7 @@ func (cv *CoverageValidator) parseRequirements() ([]string, error) {
 	criteriaRegex := regexp.MustCompile(`(?m)^\d+\.\s+WHEN.*?THE.*?SHALL.*?$`)
 	matches := criteriaRegex.FindAllString(string(content), -1)
 
-	var requirements []string
+	requirements := make([]string, 0)
 	for _, match := range matches {
 		requirements = append(requirements, strings.TrimSpace(match))
 	}
@@ -130,7 +130,7 @@ func (cv *CoverageValidator) parseProperties() ([]string, error) {
 	propertyRegex := regexp.MustCompile(`Property \d+:.*?\n\*For any\*.*?\n\*\*Validates:.*?\*\*`)
 	matches := propertyRegex.FindAllString(string(content), -1)
 
-	var properties []string
+	properties := make([]string, 0)
 	for _, match := range matches {
 		properties = append(properties, strings.TrimSpace(match))
 	}
@@ -317,7 +317,8 @@ func (cv *CoverageValidator) generateRecommendations(report *TestCoverageReport)
 	var recommendations []string
 
 	if report.CoveragePercent < 80 {
-		recommendations = append(recommendations, "Overall test coverage is below 80%. Consider adding more comprehensive tests.")
+		recommendations = append(recommendations,
+			"Overall test coverage is below 80%. Consider adding more comprehensive tests.")
 	}
 
 	uncoveredReqs := 0
@@ -328,7 +329,9 @@ func (cv *CoverageValidator) generateRecommendations(report *TestCoverageReport)
 	}
 
 	if uncoveredReqs > 0 {
-		recommendations = append(recommendations, fmt.Sprintf("%d requirements lack test coverage. Add tests that reference these requirements.", uncoveredReqs))
+		recommendations = append(recommendations, fmt.Sprintf(
+			"%d requirements lack test coverage. Add tests that reference these requirements.",
+			uncoveredReqs))
 	}
 
 	unimplementedProps := 0
@@ -339,11 +342,14 @@ func (cv *CoverageValidator) generateRecommendations(report *TestCoverageReport)
 	}
 
 	if unimplementedProps > 0 {
-		recommendations = append(recommendations, fmt.Sprintf("%d correctness properties are not implemented as tests. Add property-based tests for these.", unimplementedProps))
+		recommendations = append(recommendations, fmt.Sprintf(
+			"%d correctness properties are not implemented as tests. Add property-based tests for these.",
+			unimplementedProps))
 	}
 
 	if len(report.TestFiles) < 8 {
-		recommendations = append(recommendations, "Consider organizing tests into more focused test files for better maintainability.")
+		recommendations = append(recommendations,
+			"Consider organizing tests into more focused test files for better maintainability.")
 	}
 
 	return recommendations

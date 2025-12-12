@@ -10,6 +10,11 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+const (
+	// TrueString represents the string "true" used in labels and comparisons
+	TrueString = "true"
+)
+
 // PolicyConfigGenerator generates OptimizationPolicy configurations for testing
 type PolicyConfigGenerator struct {
 	rand *rand.Rand
@@ -59,7 +64,10 @@ func (g *PolicyConfigGenerator) GenerateBasicPolicyConfig(name string, mode v1al
 }
 
 // GeneratePolicyWithBounds generates a policy with specific resource bounds
-func (g *PolicyConfigGenerator) GeneratePolicyWithBounds(name string, cpuMin, cpuMax, memMin, memMax string) helpers.PolicyConfig {
+func (g *PolicyConfigGenerator) GeneratePolicyWithBounds(
+	name string,
+	cpuMin, cpuMax, memMin, memMax string,
+) helpers.PolicyConfig {
 	config := g.GenerateBasicPolicyConfig(name, v1alpha1.ModeRecommend)
 	config.ResourceBounds = helpers.ResourceBounds{
 		CPU: helpers.ResourceBound{
@@ -138,7 +146,10 @@ func NewWorkloadConfigGenerator() *WorkloadConfigGenerator {
 }
 
 // GenerateBasicWorkloadConfig generates a basic workload configuration
-func (g *WorkloadConfigGenerator) GenerateBasicWorkloadConfig(name string, workloadType helpers.WorkloadType) helpers.WorkloadConfig {
+func (g *WorkloadConfigGenerator) GenerateBasicWorkloadConfig(
+	name string,
+	workloadType helpers.WorkloadType,
+) helpers.WorkloadConfig {
 	replicas := int32(1)
 	if workloadType == helpers.WorkloadTypeDaemonSet {
 		replicas = 0 // DaemonSets don't use replicas
@@ -168,7 +179,11 @@ func (g *WorkloadConfigGenerator) GenerateBasicWorkloadConfig(name string, workl
 }
 
 // GenerateWorkloadWithResources generates a workload with specific resource requirements
-func (g *WorkloadConfigGenerator) GenerateWorkloadWithResources(name string, workloadType helpers.WorkloadType, cpuReq, memReq, cpuLim, memLim string) helpers.WorkloadConfig {
+func (g *WorkloadConfigGenerator) GenerateWorkloadWithResources(
+	name string,
+	workloadType helpers.WorkloadType,
+	cpuReq, memReq, cpuLim, memLim string,
+) helpers.WorkloadConfig {
 	config := g.GenerateBasicWorkloadConfig(name, workloadType)
 	config.Resources = helpers.ResourceRequirements{
 		Requests: helpers.ResourceList{
@@ -256,7 +271,7 @@ func (g *WorkloadConfigGenerator) GenerateMultiContainerWorkloadConfig(name stri
 	}
 
 	config.Containers = containers
-	config.Labels["multi-container"] = "true"
+	config.Labels["multi-container"] = TrueString
 	config.Labels["container-count"] = fmt.Sprintf("%d", containerCount)
 
 	return config
@@ -690,7 +705,7 @@ func (g *TestScenarioGenerator) GeneratePolicyModeScenario(mode v1alpha1.PolicyM
 	// Adjust workload labels for mode-specific testing
 	switch mode {
 	case v1alpha1.ModeAuto:
-		workload.Labels["auto-update"] = "true"
+		workload.Labels["auto-update"] = TrueString
 	case v1alpha1.ModeDisabled:
 		workload.Labels["test-disabled"] = "true"
 	}

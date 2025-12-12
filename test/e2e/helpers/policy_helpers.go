@@ -20,9 +20,9 @@ type PolicyHelper struct {
 }
 
 // NewPolicyHelper creates a new PolicyHelper instance
-func NewPolicyHelper(client client.Client, namespace string) *PolicyHelper {
+func NewPolicyHelper(k8sClient client.Client, namespace string) *PolicyHelper {
 	return &PolicyHelper{
-		client:    client,
+		client:    k8sClient,
 		namespace: namespace,
 	}
 }
@@ -175,7 +175,7 @@ func (h *PolicyHelper) ValidatePolicyBehavior(policyName string, expectedMode v1
 		// In Disabled mode, we expect no workload processing
 		// We can check that WorkloadsDiscovered and WorkloadsProcessed are 0
 		if policy.Status.WorkloadsDiscovered > 0 || policy.Status.WorkloadsProcessed > 0 {
-			return fmt.Errorf("Disabled mode policy should not process any workloads, but found %d discovered and %d processed",
+			return fmt.Errorf("disabled mode policy should not process any workloads, but found %d discovered and %d processed",
 				policy.Status.WorkloadsDiscovered, policy.Status.WorkloadsProcessed)
 		}
 	}

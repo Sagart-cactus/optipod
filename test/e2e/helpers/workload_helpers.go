@@ -27,9 +27,9 @@ type WorkloadHelper struct {
 }
 
 // NewWorkloadHelper creates a new WorkloadHelper instance
-func NewWorkloadHelper(client client.Client, namespace string) *WorkloadHelper {
+func NewWorkloadHelper(c client.Client, namespace string) *WorkloadHelper {
 	return &WorkloadHelper{
-		client:    client,
+		client:    c,
 		namespace: namespace,
 	}
 }

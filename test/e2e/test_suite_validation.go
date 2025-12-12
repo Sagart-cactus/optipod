@@ -20,9 +20,9 @@ type TestSuiteValidator struct {
 }
 
 // NewTestSuiteValidator creates a new test suite validator
-func NewTestSuiteValidator(client client.Client, namespace string) *TestSuiteValidator {
+func NewTestSuiteValidator(k8sClient client.Client, namespace string) *TestSuiteValidator {
 	return &TestSuiteValidator{
-		client:    client,
+		client:    k8sClient,
 		namespace: namespace,
 	}
 }
@@ -614,8 +614,8 @@ func (result *ValidationResult) PrintValidationReport() {
 }
 
 // ValidateTestSuiteHealth performs a quick health check of the test suite
-func ValidateTestSuiteHealth(ctx context.Context, client client.Client) error {
-	validator := NewTestSuiteValidator(client, "test-validation")
+func ValidateTestSuiteHealth(ctx context.Context, k8sClient client.Client) error {
+	validator := NewTestSuiteValidator(k8sClient, "test-validation")
 
 	result, err := validator.ValidateTestSuite(ctx)
 	if err != nil {

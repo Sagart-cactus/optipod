@@ -226,9 +226,11 @@ var _ = Describe("Error Handling Unit Tests", func() {
 			for _, tc := range testCases {
 				err := validationHelper.ValidateMemorySafety("test-workload", "test-namespace", tc.originalMemory, tc.currentMemory)
 				if tc.shouldBeSafe {
-					Expect(err).NotTo(HaveOccurred(), fmt.Sprintf("Memory change from %s to %s should be safe", tc.originalMemory, tc.currentMemory))
+					Expect(err).NotTo(HaveOccurred(), fmt.Sprintf(
+						"Memory change from %s to %s should be safe", tc.originalMemory, tc.currentMemory))
 				} else {
-					Expect(err).To(HaveOccurred(), fmt.Sprintf("Memory change from %s to %s should be flagged as unsafe", tc.originalMemory, tc.currentMemory))
+					Expect(err).To(HaveOccurred(), fmt.Sprintf(
+						"Memory change from %s to %s should be flagged as unsafe", tc.originalMemory, tc.currentMemory))
 				}
 			}
 		})

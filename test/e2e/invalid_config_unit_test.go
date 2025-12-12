@@ -25,40 +25,45 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+// Helper function to create test policy with invalid bounds
+func createInvalidBoundsPolicy(name string, cpuMin, cpuMax, memMin, memMax string) *v1alpha1.OptimizationPolicy {
+	return &v1alpha1.OptimizationPolicy{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: "test",
+		},
+		Spec: v1alpha1.OptimizationPolicySpec{
+			Mode: v1alpha1.ModeAuto,
+			Selector: v1alpha1.WorkloadSelector{
+				WorkloadSelector: &metav1.LabelSelector{
+					MatchLabels: map[string]string{"app": "test"},
+				},
+			},
+			MetricsConfig: v1alpha1.MetricsConfig{
+				Provider:   "prometheus",
+				Percentile: "P90",
+			},
+			ResourceBounds: v1alpha1.ResourceBounds{
+				CPU: v1alpha1.ResourceBound{
+					Min: resource.MustParse(cpuMin),
+					Max: resource.MustParse(cpuMax),
+				},
+				Memory: v1alpha1.ResourceBound{
+					Min: resource.MustParse(memMin),
+					Max: resource.MustParse(memMax),
+				},
+			},
+			UpdateStrategy: v1alpha1.UpdateStrategy{
+				AllowInPlaceResize: true,
+			},
+		},
+	}
+}
+
 var _ = Describe("Invalid Configuration Unit Tests", func() {
 	Context("Policy Validation", func() {
 		It("should reject policies with invalid CPU resource bounds (min > max)", func() {
-			policy := &v1alpha1.OptimizationPolicy{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "invalid-cpu-bounds",
-					Namespace: "test",
-				},
-				Spec: v1alpha1.OptimizationPolicySpec{
-					Mode: v1alpha1.ModeAuto,
-					Selector: v1alpha1.WorkloadSelector{
-						WorkloadSelector: &metav1.LabelSelector{
-							MatchLabels: map[string]string{"app": "test"},
-						},
-					},
-					MetricsConfig: v1alpha1.MetricsConfig{
-						Provider:   "prometheus",
-						Percentile: "P90",
-					},
-					ResourceBounds: v1alpha1.ResourceBounds{
-						CPU: v1alpha1.ResourceBound{
-							Min: resource.MustParse("2000m"), // 2 cores
-							Max: resource.MustParse("1000m"), // 1 core - invalid!
-						},
-						Memory: v1alpha1.ResourceBound{
-							Min: resource.MustParse("1Gi"),
-							Max: resource.MustParse("2Gi"),
-						},
-					},
-					UpdateStrategy: v1alpha1.UpdateStrategy{
-						AllowInPlaceResize: true,
-					},
-				},
-			}
+			policy := createInvalidBoundsPolicy("invalid-cpu-bounds", "2000m", "1000m", "1Gi", "2Gi")
 
 			err := policy.ValidateCreate()
 			Expect(err).To(HaveOccurred(), "Policy creation should fail with invalid CPU bounds")
@@ -67,37 +72,7 @@ var _ = Describe("Invalid Configuration Unit Tests", func() {
 		})
 
 		It("should reject policies with invalid memory resource bounds (min > max)", func() {
-			policy := &v1alpha1.OptimizationPolicy{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "invalid-memory-bounds",
-					Namespace: "test",
-				},
-				Spec: v1alpha1.OptimizationPolicySpec{
-					Mode: v1alpha1.ModeAuto,
-					Selector: v1alpha1.WorkloadSelector{
-						WorkloadSelector: &metav1.LabelSelector{
-							MatchLabels: map[string]string{"app": "test"},
-						},
-					},
-					MetricsConfig: v1alpha1.MetricsConfig{
-						Provider:   "prometheus",
-						Percentile: "P90",
-					},
-					ResourceBounds: v1alpha1.ResourceBounds{
-						CPU: v1alpha1.ResourceBound{
-							Min: resource.MustParse("100m"),
-							Max: resource.MustParse("1000m"),
-						},
-						Memory: v1alpha1.ResourceBound{
-							Min: resource.MustParse("4Gi"), // 4GB
-							Max: resource.MustParse("2Gi"), // 2GB - invalid!
-						},
-					},
-					UpdateStrategy: v1alpha1.UpdateStrategy{
-						AllowInPlaceResize: true,
-					},
-				},
-			}
+			policy := createInvalidBoundsPolicy("invalid-memory-bounds", "100m", "1000m", "4Gi", "2Gi")
 
 			err := policy.ValidateCreate()
 			Expect(err).To(HaveOccurred(), "Policy creation should fail with invalid memory bounds")

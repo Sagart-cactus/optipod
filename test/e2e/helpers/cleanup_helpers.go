@@ -22,9 +22,9 @@ type CleanupHelper struct {
 }
 
 // NewCleanupHelper creates a new CleanupHelper instance
-func NewCleanupHelper(client client.Client) *CleanupHelper {
+func NewCleanupHelper(k8sClient client.Client) *CleanupHelper {
 	return &CleanupHelper{
-		client:    client,
+		client:    k8sClient,
 		resources: make([]ResourceRef, 0),
 	}
 }
@@ -228,7 +228,7 @@ func (h *CleanupHelper) deleteResource(resource ResourceRef) error {
 
 // waitForNamespaceDeletion waits for a namespace to be fully deleted
 func (h *CleanupHelper) waitForNamespaceDeletion(namespaceName string) error {
-	return wait.PollImmediate(2*time.Second, 2*time.Minute, func() (bool, error) {
+	return wait.PollUntilContextTimeout(context.TODO(), 2*time.Second, 2*time.Minute, true, func(ctx context.Context) (bool, error) {
 		namespace := &corev1.Namespace{}
 		err := h.client.Get(context.TODO(), types.NamespacedName{Name: namespaceName}, namespace)
 		if errors.IsNotFound(err) {

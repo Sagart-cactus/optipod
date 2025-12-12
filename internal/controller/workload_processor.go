@@ -60,14 +60,14 @@ func NewWorkloadProcessor(
 	metricsProvider metrics.MetricsProvider,
 	recommendationEngine *recommendation.Engine,
 	applicationEngine ApplicationEngine,
-	client client.Client,
+	k8sClient client.Client,
 ) *WorkloadProcessor {
 	return &WorkloadProcessor{
 		metricsProvider:      metricsProvider,
 		recommendationEngine: recommendationEngine,
 		applicationEngine:    applicationEngine,
 		metricsProviderType:  "metrics-server", // Default, can be made configurable
-		client:               client,
+		client:               k8sClient,
 	}
 }
 

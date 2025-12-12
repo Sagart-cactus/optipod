@@ -19,9 +19,9 @@ type ValidationHelper struct {
 }
 
 // NewValidationHelper creates a new ValidationHelper instance
-func NewValidationHelper(client client.Client) *ValidationHelper {
+func NewValidationHelper(c client.Client) *ValidationHelper {
 	return &ValidationHelper{
-		client: client,
+		client: c,
 	}
 }
 
@@ -146,13 +146,13 @@ func (h *ValidationHelper) ValidateWorkloadUpdate(workloadName, namespace string
 	case v1alpha1.ModeAuto:
 		// In Auto mode, we expect workloads to be processed and updated
 		if targetPolicy.Status.WorkloadsProcessed == 0 {
-			return fmt.Errorf("Auto mode policy should have processed workloads")
+			return fmt.Errorf("auto mode policy should have processed workloads")
 		}
 
 	case v1alpha1.ModeRecommend:
 		// In Recommend mode, we expect workloads to be discovered but not necessarily updated
 		if targetPolicy.Status.WorkloadsDiscovered == 0 {
-			return fmt.Errorf("Recommend mode policy should have discovered workloads")
+			return fmt.Errorf("recommend mode policy should have discovered workloads")
 		}
 
 	case v1alpha1.ModeDisabled:
@@ -170,17 +170,15 @@ func (h *ValidationHelper) ValidateMetrics(expectedMetrics []string) error {
 	// This would typically involve making HTTP requests to the metrics endpoint
 	// For now, we'll implement a basic validation structure
 
-	// Expected OptipPod metrics
-	defaultExpectedMetrics := []string{
-		"optipod_workloads_monitored",
-		"optipod_reconciliation_duration_seconds",
-		"optipod_recommendations_generated_total",
-		"optipod_updates_applied_total",
-		"controller_runtime_reconcile_total",
-	}
-
 	if expectedMetrics == nil {
-		expectedMetrics = defaultExpectedMetrics
+		// Expected OptipPod metrics
+		_ = []string{ // Keep for reference but not used in current implementation
+			"optipod_workloads_monitored",
+			"optipod_reconciliation_duration_seconds",
+			"optipod_recommendations_generated_total",
+			"optipod_updates_applied_total",
+			"controller_runtime_reconcile_total",
+		}
 	}
 
 	// TODO: Implement actual metrics endpoint validation
@@ -368,51 +366,36 @@ func (h *ValidationHelper) ValidateErrorHandling(err error, expectedErrorType st
 		return fmt.Errorf("expected error of type %s but got no error", expectedErrorType)
 	}
 
+	errorMsg := err.Error()
+	return h.validateSpecificErrorType(errorMsg, expectedErrorType)
+}
+
+func (h *ValidationHelper) validateSpecificErrorType(errorMsg, expectedErrorType string) error {
 	switch expectedErrorType {
 	case "validation", "validation_error":
-		if !strings.Contains(err.Error(), "validation") && !strings.Contains(err.Error(), "invalid") {
-			return fmt.Errorf("expected validation error but got: %s", err.Error())
-		}
+		return h.validateErrorContains(errorMsg, []string{"validation", "invalid"}, "validation")
 	case "invalid_bounds":
-		if !strings.Contains(err.Error(), "min") || !strings.Contains(err.Error(), "max") {
-			return fmt.Errorf("expected bounds validation error but got: %s", err.Error())
+		if !strings.Contains(errorMsg, "min") || !strings.Contains(errorMsg, "max") {
+			return fmt.Errorf("expected bounds validation error but got: %s", errorMsg)
 		}
 	case "conflict":
-		if !strings.Contains(err.Error(), "conflict") && !strings.Contains(err.Error(), "resource version") {
-			return fmt.Errorf("expected conflict error but got: %s", err.Error())
-		}
+		return h.validateErrorContains(errorMsg, []string{"conflict", "resource version"}, "conflict")
 	case "not-found":
-		if !strings.Contains(err.Error(), "not found") {
-			return fmt.Errorf("expected not found error but got: %s", err.Error())
-		}
+		return h.validateErrorContains(errorMsg, []string{"not found"}, "not found")
 	case "metrics":
-		if !strings.Contains(err.Error(), "metrics") && !strings.Contains(err.Error(), "unavailable") {
-			return fmt.Errorf("expected metrics error but got: %s", err.Error())
-		}
+		return h.validateErrorContains(errorMsg, []string{"metrics", "unavailable"}, "metrics")
 	case "recoverable_error":
-		if !strings.Contains(err.Error(), "recoverable") && !strings.Contains(err.Error(), "retry") && !strings.Contains(err.Error(), "temporary") {
-			return fmt.Errorf("expected recoverable error but got: %s", err.Error())
-		}
+		return h.validateErrorContains(errorMsg, []string{"recoverable", "retry", "temporary"}, "recoverable")
 	case "transient_error":
-		if !strings.Contains(err.Error(), "transient") && !strings.Contains(err.Error(), "temporary") && !strings.Contains(err.Error(), "connection") {
-			return fmt.Errorf("expected transient error but got: %s", err.Error())
-		}
+		return h.validateErrorContains(errorMsg, []string{"transient", "temporary", "connection"}, "transient")
 	case "permanent_error":
-		if !strings.Contains(err.Error(), "permanent") && !strings.Contains(err.Error(), "invalid") && !strings.Contains(err.Error(), "configuration") {
-			return fmt.Errorf("expected permanent error but got: %s", err.Error())
-		}
+		return h.validateErrorContains(errorMsg, []string{"permanent", "invalid", "configuration"}, "permanent")
 	case "missing_selector":
-		if !strings.Contains(err.Error(), "selector") {
-			return fmt.Errorf("expected selector error but got: %s", err.Error())
-		}
+		return h.validateErrorContains(errorMsg, []string{"selector"}, "selector")
 	case "invalid_safety_factor":
-		if !strings.Contains(err.Error(), "safety factor") && !strings.Contains(err.Error(), "safety") {
-			return fmt.Errorf("expected safety factor error but got: %s", err.Error())
-		}
+		return h.validateErrorContains(errorMsg, []string{"safety factor", "safety"}, "safety factor")
 	case "zero_resource":
-		if !strings.Contains(err.Error(), "greater than zero") && !strings.Contains(err.Error(), "zero") {
-			return fmt.Errorf("expected zero resource error but got: %s", err.Error())
-		}
+		return h.validateErrorContains(errorMsg, []string{"greater than zero", "zero"}, "zero resource")
 	case "unknown_error":
 		// For unknown errors, just validate that we got an error
 		return nil
@@ -421,6 +404,15 @@ func (h *ValidationHelper) ValidateErrorHandling(err error, expectedErrorType st
 	}
 
 	return nil
+}
+
+func (h *ValidationHelper) validateErrorContains(errorMsg string, keywords []string, errorType string) error {
+	for _, keyword := range keywords {
+		if strings.Contains(errorMsg, keyword) {
+			return nil
+		}
+	}
+	return fmt.Errorf("expected %s error but got: %s", errorType, errorMsg)
 }
 
 // ValidateConfigurationRejection validates that invalid configurations are properly rejected

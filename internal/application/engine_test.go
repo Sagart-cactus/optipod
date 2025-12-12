@@ -39,11 +39,6 @@ import (
 	"github.com/optipod/optipod/internal/recommendation"
 )
 
-const (
-	// FieldManagerName is the field manager name used by optipod
-	FieldManagerName = "optipod"
-)
-
 // mockDiscoveryClient is a mock implementation of discovery.DiscoveryInterface
 type mockDiscoveryClient struct {
 	discovery.DiscoveryInterface
@@ -1669,11 +1664,7 @@ func TestProperty_LimitMultipliersAppliedCorrectly(t *testing.T) {
 
 			// Verify memory limit matches the calculation
 			expectedMemValue := int64(float64(rec.Memory.Value()) * memMult)
-			if memoryLimit.Value() != expectedMemValue {
-				return false
-			}
-
-			return true
+			return memoryLimit.Value() == expectedMemValue
 		},
 		gen.Int64Range(100, 4000),
 		gen.Int64Range(128, 8192),
@@ -1723,11 +1714,7 @@ func TestProperty_DefaultLimitMultipliers(t *testing.T) {
 
 			// Verify memory limit uses default multiplier (1.1)
 			expectedMemValue := int64(float64(rec.Memory.Value()) * 1.1)
-			if memoryLimit.Value() != expectedMemValue {
-				return false
-			}
-
-			return true
+			return memoryLimit.Value() == expectedMemValue
 		},
 		gen.Int64Range(100, 4000),
 		gen.Int64Range(128, 8192),
