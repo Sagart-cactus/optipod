@@ -13,6 +13,7 @@ OptiPod is an open-source, Kubernetes-native operator that automatically rightsi
 ## Features
 
 - **Automatic Resource Optimization**: Continuously monitors workload resource usage and adjusts CPU and memory requests based on actual consumption
+- **Server-Side Apply (SSA)**: Field-level ownership tracking prevents conflicts with GitOps tools like ArgoCD - OptiPod owns only resource requests/limits while other tools manage different fields
 - **Multiple Operational Modes**: Choose between Auto (automatic application), Recommend (review before applying), or Disabled modes
 - **Safety-First Approach**: Configurable safety factors, min/max bounds, and intelligent handling of in-place resize vs pod recreation
 - **Pluggable Metrics Backends**: Support for Prometheus, metrics-server, and custom metrics providers
@@ -106,6 +107,7 @@ kubectl describe optimizationpolicy production-workloads
 - [Installation Guide](docs/INSTALLATION.md) - Detailed installation instructions
 - [CRD Reference](docs/CRD_REFERENCE.md) - Complete OptimizationPolicy field documentation
 - [Example Policies](docs/EXAMPLES.md) - Common use case examples
+- [ArgoCD Integration](docs/ARGOCD_INTEGRATION.md) - GitOps compatibility guide
 - [CI/CD Testing Guide](docs/ci-cd-testing.md) - How to test and validate workflows
 - [CI/CD Implementation](docs/ci-cd-implementation-summary.md) - CI/CD pipeline details
 

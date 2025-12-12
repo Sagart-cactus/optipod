@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: workload-invalid-resources-test
+  namespace: default
+  labels:
+    optimize: "true"
+    error-test: "invalid-resources"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: workload-invalid-resources-test
+  template:
+    metadata:
+      labels:
+        app: workload-invalid-resources-test
+        optimize: "true"
+        error-test: "invalid-resources"
+    spec:
+      containers:
+      - name: app
+        image: nginx:alpine
+        resources:
+          requests:
+            cpu: "2000m"    # Request higher than limit
+            memory: "4Gi"   # Request higher than limit
+          limits:
+            cpu: "1000m"
+            memory: "2Gi"
+        ports:
+        - containerPort: 80

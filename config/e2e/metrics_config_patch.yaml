@@ -1,0 +1,23 @@
+# Patch for e2e tests to use faster metrics sampling
+# This reduces the number of samples from 10 (production) to 3 (tests)
+# and keeps the sample interval at 15 seconds
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: controller-manager
+  namespace: system
+spec:
+  template:
+    spec:
+      containers:
+      - name: manager
+        args:
+          - --leader-elect=true
+          - --health-probe-bind-address=:8081
+          - --metrics-bind-address=:8080
+          - --metrics-provider=metrics-server
+          - --prometheus-url=http://prometheus-k8s.monitoring.svc:9090
+          - --dry-run=false
+          - --reconciliation-interval=1m
+          - --metrics-max-samples=3      # E2E: Use 3 samples for faster tests
+          - --metrics-sample-interval=15  # E2E: 15 second intervals

@@ -33,26 +33,52 @@ import (
 type MetricsServerProvider struct {
 	clientset        kubernetes.Interface
 	metricsClientset metricsclientset.Interface
+	maxSamples       int           // Maximum number of samples to collect
+	sampleInterval   time.Duration // Interval between samples
 }
 
-// NewMetricsServerProvider creates a new MetricsServerProvider.
+// NewMetricsServerProvider creates a new MetricsServerProvider with default settings.
+// Default: 10 samples with 15-second intervals (suitable for production).
 func NewMetricsServerProvider(clientset kubernetes.Interface, metricsClientset metricsclientset.Interface) *MetricsServerProvider {
 	return &MetricsServerProvider{
 		clientset:        clientset,
 		metricsClientset: metricsClientset,
+		maxSamples:       10,               // Default: 10 samples for production
+		sampleInterval:   15 * time.Second, // Match metrics-server scrape interval
+	}
+}
+
+// NewMetricsServerProviderWithConfig creates a new MetricsServerProvider with custom configuration.
+// This allows tests to use fewer samples for faster execution.
+func NewMetricsServerProviderWithConfig(clientset kubernetes.Interface, metricsClientset metricsclientset.Interface, maxSamples int, sampleInterval time.Duration) *MetricsServerProvider {
+	if maxSamples < 1 {
+		maxSamples = 1
+	}
+	if sampleInterval < 1*time.Second {
+		sampleInterval = 1 * time.Second
+	}
+	return &MetricsServerProvider{
+		clientset:        clientset,
+		metricsClientset: metricsClientset,
+		maxSamples:       maxSamples,
+		sampleInterval:   sampleInterval,
 	}
 }
 
 // GetContainerMetrics collects metrics from metrics-server and computes percentiles.
 // Since metrics-server provides point-in-time metrics, we collect multiple samples
-// over the rolling window to build a time series for percentile computation.
+// over a short period to build a time series for percentile computation.
+// Note: We collect a configurable number of samples rather than sampling over the
+// entire rolling window, as that would be impractical (e.g., 1 hour would take 1 hour).
 func (m *MetricsServerProvider) GetContainerMetrics(ctx context.Context, namespace, podName, containerName string, window time.Duration) (*ContainerMetrics, error) {
-	// Collect samples over the rolling window
-	// Sample every 30 seconds to build a reasonable time series
-	sampleInterval := 30 * time.Second
-	numSamples := int(window / sampleInterval)
+	// Calculate number of samples based on window, but cap at configured maxSamples
+	// This provides enough data for percentile computation without excessive wait time
+	numSamples := int(window / m.sampleInterval)
 	if numSamples < 1 {
 		numSamples = 1
+	}
+	if numSamples > m.maxSamples {
+		numSamples = m.maxSamples
 	}
 
 	cpuSamples := make([]int64, 0, numSamples)
@@ -90,7 +116,7 @@ func (m *MetricsServerProvider) GetContainerMetrics(ctx context.Context, namespa
 			select {
 			case <-ctx.Done():
 				return nil, ctx.Err()
-			case <-time.After(sampleInterval):
+			case <-time.After(m.sampleInterval):
 			}
 		}
 	}

@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: memory-safe-decrease-test
+  namespace: default
+  labels:
+    optimize: "true"
+    memory-safety-test: "safe-decrease"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: memory-safe-decrease-test
+  template:
+    metadata:
+      labels:
+        app: memory-safe-decrease-test
+        optimize: "true"
+        memory-safety-test: "safe-decrease"
+    spec:
+      containers:
+      - name: app
+        image: nginx:alpine
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"   # Current request
+          limits:
+            cpu: "200m"
+            memory: "256Mi"   # Current limit - recommendations above this should be safe
+        ports:
+        - containerPort: 80

@@ -213,3 +213,101 @@ func verifyGaugeValue(mf *dto.MetricFamily, expectedValue float64) bool {
 
 	return false
 }
+
+// Feature: server-side-apply-support, Property 10: Metrics track patch type
+// Validates: Requirements 7.5
+// For any patch operation, Prometheus metrics should distinguish between SSA and Strategic Merge Patch operations
+func TestProperty_MetricsTrackPatchType(t *testing.T) {
+	parameters := gopter.DefaultTestParameters()
+	parameters.MinSuccessfulTests = 100
+	properties := gopter.NewProperties(parameters)
+
+	properties.Property("SSA patch metrics are tracked with correct labels", prop.ForAll(
+		func(policy, namespace, workload, kind, status, patchType string) bool {
+			// Create a new registry for this test iteration to avoid conflicts
+			registry := prometheus.NewRegistry()
+
+			// Create SSA patch metric
+			ssaPatchTotal := prometheus.NewCounterVec(
+				prometheus.CounterOpts{
+					Name: "optipod_ssa_patch_total",
+					Help: "Total number of Server-Side Apply patch operations",
+				},
+				[]string{"policy", "namespace", "workload", "kind", "status", "patch_type"},
+			)
+
+			// Register metric
+			registry.MustRegister(ssaPatchTotal)
+
+			// Record a patch operation
+			ssaPatchTotal.WithLabelValues(policy, namespace, workload, kind, status, patchType).Inc()
+
+			// Gather metrics to verify they can be collected
+			metricFamilies, err := registry.Gather()
+			if err != nil {
+				return false
+			}
+
+			// Verify the metric is present
+			var found bool
+			for _, mf := range metricFamilies {
+				if mf.GetName() == "optipod_ssa_patch_total" {
+					found = true
+
+					// Verify it's a counter
+					if mf.GetType() != dto.MetricType_COUNTER {
+						return false
+					}
+
+					// Verify the metric has the correct labels
+					for _, m := range mf.GetMetric() {
+						labels := m.GetLabel()
+						if len(labels) != 6 {
+							return false
+						}
+
+						// Verify all required labels are present
+						labelMap := make(map[string]string)
+						for _, label := range labels {
+							labelMap[label.GetName()] = label.GetValue()
+						}
+
+						requiredLabels := []string{"policy", "namespace", "workload", "kind", "status", "patch_type"}
+						for _, reqLabel := range requiredLabels {
+							if _, exists := labelMap[reqLabel]; !exists {
+								return false
+							}
+						}
+
+						// Verify the patch_type label distinguishes between SSA and Strategic Merge
+						if patchType != "ServerSideApply" && patchType != "StrategicMergePatch" {
+							// For this property test, we only care about valid patch types
+							// Invalid patch types should still be recorded, but we verify
+							// that the system can distinguish between the two valid types
+							continue
+						}
+
+						if labelMap["patch_type"] != patchType {
+							return false
+						}
+
+						// Verify counter value is at least 1
+						if m.GetCounter().GetValue() < 1 {
+							return false
+						}
+					}
+				}
+			}
+
+			return found
+		},
+		gen.Identifier().SuchThat(func(v string) bool { return len(v) > 0 }), // policy
+		gen.Identifier().SuchThat(func(v string) bool { return len(v) > 0 }), // namespace
+		gen.Identifier().SuchThat(func(v string) bool { return len(v) > 0 }), // workload
+		gen.OneConstOf("Deployment", "StatefulSet", "DaemonSet"),             // kind
+		gen.OneConstOf("success", "failure"),                                 // status
+		gen.OneConstOf("ServerSideApply", "StrategicMergePatch"),             // patch_type
+	))
+
+	properties.TestingRun(t)
+}

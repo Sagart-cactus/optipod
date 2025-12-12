@@ -1,0 +1,37 @@
+apiVersion: optipod.optipod.io/v1alpha1
+kind: OptimizationPolicy
+metadata:
+  name: low-priority-policy
+  namespace: optipod-system
+spec:
+  mode: Auto
+  weight: 50   # Low priority
+  selector:
+    namespaceSelector:
+      matchLabels:
+        environment: development
+    workloadSelector:
+      matchLabels:
+        optimize: "true"
+        test-type: "weight-test"
+  metricsConfig:
+    provider: metrics-server
+    rollingWindow: 5m
+    percentile: P90
+    safetyFactor: 1.0
+  resourceBounds:
+    cpu:
+      min: "100m"
+      max: "2000m"
+    memory:
+      min: "64Mi"
+      max: "2Gi"
+  updateStrategy:
+    allowInPlaceResize: true
+    allowRecreate: false
+    updateRequestsOnly: false
+    useServerSideApply: true
+    limitConfig:
+      cpuLimitMultiplier: 1.1    # Conservative optimization
+      memoryLimitMultiplier: 1.2
+  reconciliationInterval: 5m

@@ -1,0 +1,341 @@
+//go:build e2e
+// +build e2e
+
+package e2e
+
+import (
+	"fmt"
+
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+
+	"github.com/optipod/optipod/test/e2e/fixtures"
+	"github.com/optipod/optipod/test/e2e/helpers"
+)
+
+var _ = Describe("ValidationHelper Property Tests", func() {
+	var (
+		validationHelper *helpers.ValidationHelper
+		boundsGenerator  *fixtures.BoundsTestCaseGenerator
+	)
+
+	BeforeEach(func() {
+		validationHelper = helpers.NewValidationHelper(k8sClient)
+		boundsGenerator = fixtures.NewBoundsTestCaseGenerator()
+	})
+
+	Context("Property 2: Resource bounds enforcement", func() {
+		// **Feature: e2e-test-enhancement, Property 2: Resource bounds enforcement**
+		// **Validates: Requirements 2.2, 2.3, 2.4**
+
+		DescribeTable("Resource bounds should be enforced correctly",
+			func(expectation fixtures.BoundsExpectation) {
+				By(fmt.Sprintf("Testing bounds expectation: %s", expectation))
+
+				var testCase fixtures.BoundsTestCase
+				switch expectation {
+				case fixtures.BoundsWithin:
+					testCase = boundsGenerator.GenerateWithinBoundsTestCase()
+				case fixtures.BoundsClampedMin:
+					testCase = boundsGenerator.GenerateBelowMinBoundsTestCase()
+				case fixtures.BoundsClampedMax:
+					testCase = boundsGenerator.GenerateAboveMaxBoundsTestCase()
+				}
+
+				// Simulate recommendations based on the test case
+				recommendations := map[string]string{
+					"optipod.io/recommendation.app.cpu":    testCase.PolicyBounds.CPU.Min, // Assume clamped to min for below-min case
+					"optipod.io/recommendation.app.memory": testCase.PolicyBounds.Memory.Min,
+				}
+
+				// For within bounds, use values within the range
+				if expectation == fixtures.BoundsWithin {
+					recommendations["optipod.io/recommendation.app.cpu"] = "500m"
+					recommendations["optipod.io/recommendation.app.memory"] = "512Mi"
+				}
+
+				// For above max, use max values
+				if expectation == fixtures.BoundsClampedMax {
+					recommendations["optipod.io/recommendation.app.cpu"] = testCase.PolicyBounds.CPU.Max
+					recommendations["optipod.io/recommendation.app.memory"] = testCase.PolicyBounds.Memory.Max
+				}
+
+				// Validate resource bounds
+				err := validationHelper.ValidateResourceBounds(recommendations, testCase.PolicyBounds)
+				Expect(err).NotTo(HaveOccurred(), "Resource bounds validation should pass")
+
+				// Test specific bounds enforcement
+				cpuRec := recommendations["optipod.io/recommendation.app.cpu"]
+				memRec := recommendations["optipod.io/recommendation.app.memory"]
+
+				switch expectation {
+				case fixtures.BoundsClampedMin:
+					err = validationHelper.ValidateBoundsEnforcement(cpuRec, testCase.PolicyBounds.CPU.Min, testCase.PolicyBounds.CPU.Max, true)
+					Expect(err).NotTo(HaveOccurred(), "CPU should be clamped to minimum")
+
+					err = validationHelper.ValidateBoundsEnforcement(memRec, testCase.PolicyBounds.Memory.Min, testCase.PolicyBounds.Memory.Max, true)
+					Expect(err).NotTo(HaveOccurred(), "Memory should be clamped to minimum")
+
+				case fixtures.BoundsClampedMax:
+					err = validationHelper.ValidateBoundsEnforcement(cpuRec, testCase.PolicyBounds.CPU.Min, testCase.PolicyBounds.CPU.Max, true)
+					Expect(err).NotTo(HaveOccurred(), "CPU should be clamped to maximum")
+
+					err = validationHelper.ValidateBoundsEnforcement(memRec, testCase.PolicyBounds.Memory.Min, testCase.PolicyBounds.Memory.Max, true)
+					Expect(err).NotTo(HaveOccurred(), "Memory should be clamped to maximum")
+
+				case fixtures.BoundsWithin:
+					err = validationHelper.ValidateBoundsEnforcement(cpuRec, testCase.PolicyBounds.CPU.Min, testCase.PolicyBounds.CPU.Max, false)
+					Expect(err).NotTo(HaveOccurred(), "CPU should be within bounds")
+
+					err = validationHelper.ValidateBoundsEnforcement(memRec, testCase.PolicyBounds.Memory.Min, testCase.PolicyBounds.Memory.Max, false)
+					Expect(err).NotTo(HaveOccurred(), "Memory should be within bounds")
+				}
+			},
+			Entry("Within bounds", fixtures.BoundsWithin),
+			Entry("Clamped to minimum", fixtures.BoundsClampedMin),
+			Entry("Clamped to maximum", fixtures.BoundsClampedMax),
+		)
+
+		It("should validate bounds enforcement across multiple random test cases", func() {
+			// Generate multiple random test cases
+			testCases := boundsGenerator.GenerateRandomBoundsTestCases(15)
+
+			for i, testCase := range testCases {
+				By(fmt.Sprintf("Testing random bounds case %d: %s", i, testCase.Name))
+
+				// Generate appropriate recommendations based on expected behavior
+				var cpuRec, memRec string
+
+				switch testCase.ExpectedBehavior {
+				case fixtures.BoundsWithin:
+					// Use values within bounds
+					cpuRec = "500m"
+					memRec = "512Mi"
+
+					// Ensure they're actually within the bounds for this test case
+					cpuCmp, err := validationHelper.CompareResourceQuantities(cpuRec, testCase.PolicyBounds.CPU.Min)
+					Expect(err).NotTo(HaveOccurred(), "Should compare CPU quantities")
+					if cpuCmp < 0 {
+						cpuRec = testCase.PolicyBounds.CPU.Min
+					}
+
+					cpuCmp, err = validationHelper.CompareResourceQuantities(cpuRec, testCase.PolicyBounds.CPU.Max)
+					Expect(err).NotTo(HaveOccurred(), "Should compare CPU quantities")
+					if cpuCmp > 0 {
+						cpuRec = testCase.PolicyBounds.CPU.Max
+					}
+
+				case fixtures.BoundsClampedMin:
+					cpuRec = testCase.PolicyBounds.CPU.Min
+					memRec = testCase.PolicyBounds.Memory.Min
+
+				case fixtures.BoundsClampedMax:
+					cpuRec = testCase.PolicyBounds.CPU.Max
+					memRec = testCase.PolicyBounds.Memory.Max
+				}
+
+				recommendations := map[string]string{
+					"optipod.io/recommendation.app.cpu":    cpuRec,
+					"optipod.io/recommendation.app.memory": memRec,
+				}
+
+				// Validate bounds
+				err := validationHelper.ValidateResourceBounds(recommendations, testCase.PolicyBounds)
+				Expect(err).NotTo(HaveOccurred(), fmt.Sprintf("Bounds validation should pass for case %s", testCase.Name))
+
+				// Validate specific enforcement behavior
+				expectClamping := testCase.ExpectedBehavior != fixtures.BoundsWithin
+
+				err = validationHelper.ValidateBoundsEnforcement(cpuRec, testCase.PolicyBounds.CPU.Min, testCase.PolicyBounds.CPU.Max, expectClamping)
+				Expect(err).NotTo(HaveOccurred(), fmt.Sprintf("CPU bounds enforcement should be correct for case %s", testCase.Name))
+
+				err = validationHelper.ValidateBoundsEnforcement(memRec, testCase.PolicyBounds.Memory.Min, testCase.PolicyBounds.Memory.Max, expectClamping)
+				Expect(err).NotTo(HaveOccurred(), fmt.Sprintf("Memory bounds enforcement should be correct for case %s", testCase.Name))
+			}
+		})
+
+		It("should handle edge cases in bounds validation", func() {
+			edgeCases := []struct {
+				name           string
+				bounds         helpers.ResourceBounds
+				recommendation map[string]string
+				shouldPass     bool
+			}{
+				{
+					name: "exact-min-values",
+					bounds: helpers.ResourceBounds{
+						CPU:    helpers.ResourceBound{Min: "100m", Max: "1000m"},
+						Memory: helpers.ResourceBound{Min: "128Mi", Max: "1Gi"},
+					},
+					recommendation: map[string]string{
+						"optipod.io/recommendation.app.cpu":    "100m",
+						"optipod.io/recommendation.app.memory": "128Mi",
+					},
+					shouldPass: true,
+				},
+				{
+					name: "exact-max-values",
+					bounds: helpers.ResourceBounds{
+						CPU:    helpers.ResourceBound{Min: "100m", Max: "1000m"},
+						Memory: helpers.ResourceBound{Min: "128Mi", Max: "1Gi"},
+					},
+					recommendation: map[string]string{
+						"optipod.io/recommendation.app.cpu":    "1000m",
+						"optipod.io/recommendation.app.memory": "1Gi",
+					},
+					shouldPass: true,
+				},
+				{
+					name: "below-min-values",
+					bounds: helpers.ResourceBounds{
+						CPU:    helpers.ResourceBound{Min: "200m", Max: "1000m"},
+						Memory: helpers.ResourceBound{Min: "256Mi", Max: "1Gi"},
+					},
+					recommendation: map[string]string{
+						"optipod.io/recommendation.app.cpu":    "100m",
+						"optipod.io/recommendation.app.memory": "128Mi",
+					},
+					shouldPass: false,
+				},
+				{
+					name: "above-max-values",
+					bounds: helpers.ResourceBounds{
+						CPU:    helpers.ResourceBound{Min: "100m", Max: "500m"},
+						Memory: helpers.ResourceBound{Min: "128Mi", Max: "512Mi"},
+					},
+					recommendation: map[string]string{
+						"optipod.io/recommendation.app.cpu":    "1000m",
+						"optipod.io/recommendation.app.memory": "1Gi",
+					},
+					shouldPass: false,
+				},
+			}
+
+			for _, testCase := range edgeCases {
+				By(fmt.Sprintf("Testing edge case: %s", testCase.name))
+
+				err := validationHelper.ValidateResourceBounds(testCase.recommendation, testCase.bounds)
+
+				if testCase.shouldPass {
+					Expect(err).NotTo(HaveOccurred(), fmt.Sprintf("Edge case %s should pass validation", testCase.name))
+				} else {
+					Expect(err).To(HaveOccurred(), fmt.Sprintf("Edge case %s should fail validation", testCase.name))
+				}
+			}
+		})
+	})
+
+	Context("Property 3: Resource quantity parsing consistency", func() {
+		// **Feature: e2e-test-enhancement, Property 3: Resource quantity parsing consistency**
+		// **Validates: Requirements 2.5**
+
+		It("should parse resource quantities consistently across different units", func() {
+			testQuantities := []string{
+				// CPU quantities
+				"100m", "500m", "1000m", "2000m",
+				"0.1", "0.5", "1", "2",
+				"100Mi", "500Mi", "1000Mi", "2000Mi",
+
+				// Memory quantities
+				"128Mi", "256Mi", "512Mi", "1Gi", "2Gi", "4Gi",
+				"134217728", "268435456", "536870912", "1073741824",
+				"128000000", "256000000", "512000000", "1000000000",
+			}
+
+			err := validationHelper.ValidateResourceQuantityParsing(testQuantities)
+			Expect(err).NotTo(HaveOccurred(), "Resource quantity parsing should be consistent")
+		})
+
+		It("should handle resource quantity comparisons correctly", func() {
+			comparisonTests := []struct {
+				a        string
+				b        string
+				expected int // -1, 0, 1
+			}{
+				{"100m", "200m", -1},
+				{"500m", "500m", 0},
+				{"1000m", "500m", 1},
+				{"1", "1000m", 0},
+				{"0.5", "500m", 0},
+				{"128Mi", "134217728", 0},
+				{"1Gi", "1024Mi", 0},
+				{"256Mi", "512Mi", -1},
+				{"2Gi", "1Gi", 1},
+			}
+
+			for _, test := range comparisonTests {
+				By(fmt.Sprintf("Comparing %s with %s", test.a, test.b))
+
+				result, err := validationHelper.CompareResourceQuantities(test.a, test.b)
+				Expect(err).NotTo(HaveOccurred(), "Should compare quantities without error")
+				Expect(result).To(Equal(test.expected), fmt.Sprintf("Comparison of %s and %s should return %d", test.a, test.b, test.expected))
+			}
+		})
+
+		It("should convert resource quantities to bytes consistently", func() {
+			conversionTests := []struct {
+				quantity string
+				expected int64
+			}{
+				{"128Mi", 134217728},
+				{"256Mi", 268435456},
+				{"512Mi", 536870912},
+				{"1Gi", 1073741824},
+				{"100m", 100},
+				{"500m", 500},
+				{"1000m", 1000},
+				{"1", 1000},
+			}
+
+			for _, test := range conversionTests {
+				By(fmt.Sprintf("Converting %s to bytes", test.quantity))
+
+				result, err := validationHelper.ConvertResourceToBytes(test.quantity)
+				Expect(err).NotTo(HaveOccurred(), "Should convert quantity without error")
+				Expect(result).To(Equal(test.expected), fmt.Sprintf("Conversion of %s should return %d", test.quantity, test.expected))
+			}
+		})
+	})
+
+	Context("Recommendation validation", func() {
+		It("should validate recommendation annotation formats", func() {
+			validAnnotations := map[string]string{
+				"optipod.io/recommendation.app.cpu":    "500m",
+				"optipod.io/recommendation.app.memory": "512Mi",
+				"optipod.io/recommendation.timestamp":  "2023-01-01T12:00:00Z",
+				"optipod.io/managed":                   "true",
+				"optipod.io/last-applied":              "2023-01-01T12:00:00Z",
+			}
+
+			err := validationHelper.ValidateAnnotationFormat(validAnnotations)
+			Expect(err).NotTo(HaveOccurred(), "Valid annotations should pass validation")
+
+			err = validationHelper.ValidateRecommendations(validAnnotations)
+			Expect(err).NotTo(HaveOccurred(), "Valid recommendations should pass validation")
+		})
+
+		It("should reject invalid recommendation formats", func() {
+			invalidAnnotations := []map[string]string{
+				{
+					"optipod.io/recommendation.app.cpu": "invalid-quantity",
+				},
+				{
+					"optipod.io/recommendation.app.memory": "not-a-number",
+				},
+				{
+					"optipod.io/recommendation.timestamp": "invalid-timestamp",
+				},
+				{
+					"optipod.io/managed": "not-boolean",
+				},
+			}
+
+			for i, annotations := range invalidAnnotations {
+				By(fmt.Sprintf("Testing invalid annotation set %d", i))
+
+				err := validationHelper.ValidateAnnotationFormat(annotations)
+				Expect(err).To(HaveOccurred(), "Invalid annotations should fail validation")
+			}
+		})
+	})
+})

@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: policy-mode-disabled-test
+  namespace: default
+  labels:
+    optimize: "true"
+    policy-mode-test: "disabled"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: policy-mode-disabled-test
+  template:
+    metadata:
+      labels:
+        app: policy-mode-disabled-test
+        optimize: "true"
+        policy-mode-test: "disabled"
+    spec:
+      containers:
+      - name: app
+        image: nginx:alpine
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "200m"
+            memory: "256Mi"
+        ports:
+        - containerPort: 80

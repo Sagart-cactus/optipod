@@ -1,0 +1,31 @@
+apiVersion: optipod.optipod.io/v1alpha1
+kind: OptimizationPolicy
+metadata:
+  name: dev-policy-recommend
+  namespace: optipod-system
+spec:
+  mode: Recommend
+  selector:
+    namespaceSelector:
+      matchLabels:
+        environment: development
+    workloadSelector:
+      matchLabels:
+        optimize: "true"
+  metricsConfig:
+    provider: metrics-server
+    rollingWindow: 5m
+    percentile: P90
+    safetyFactor: 1.2
+  resourceBounds:
+    cpu:
+      min: "50m"
+      max: "2000m"
+    memory:
+      min: "64Mi"
+      max: "2Gi"
+  updateStrategy:
+    allowInPlaceResize: true
+    allowRecreate: false
+    updateRequestsOnly: true
+  reconciliationInterval: 1m

@@ -1,0 +1,36 @@
+apiVersion: optipod.optipod.io/v1alpha1
+kind: OptimizationPolicy
+metadata:
+  name: policy-mode-disabled-test
+  namespace: optipod-system
+spec:
+  mode: Disabled  # Skip processing workloads
+  selector:
+    namespaceSelector:
+      matchLabels:
+        environment: development
+    workloadSelector:
+      matchLabels:
+        optimize: "true"
+        policy-mode-test: "disabled"
+  metricsConfig:
+    provider: metrics-server
+    rollingWindow: 5m
+    percentile: P90
+    safetyFactor: 1.0
+  resourceBounds:
+    cpu:
+      min: "50m"
+      max: "2000m"
+    memory:
+      min: "32Mi"
+      max: "4Gi"
+  updateStrategy:
+    allowInPlaceResize: true
+    allowRecreate: false
+    updateRequestsOnly: false
+    useServerSideApply: true
+    limitConfig:
+      cpuLimitMultiplier: 1.0
+      memoryLimitMultiplier: 1.0
+  reconciliationInterval: 1m

@@ -1,0 +1,32 @@
+apiVersion: optipod.optipod.io/v1alpha1
+kind: OptimizationPolicy
+metadata:
+  name: dev-policy-memory-increase
+  namespace: optipod-system
+spec:
+  mode: Auto
+  selector:
+    namespaceSelector:
+      matchLabels:
+        environment: development
+    workloadSelector:
+      matchLabels:
+        app: nginx-web  # Target only nginx-web
+  metricsConfig:
+    provider: metrics-server
+    rollingWindow: 5m
+    percentile: P90
+    safetyFactor: 3.0  # Increase safety factor to get higher recommendations
+  resourceBounds:
+    cpu:
+      min: "50m"
+      max: "2000m"
+    memory:
+      min: "300Mi"  # Set minimum higher than current to force increase
+      max: "2Gi"
+  updateStrategy:
+    allowInPlaceResize: true
+    allowRecreate: true
+    updateRequestsOnly: true  # Start with requests only
+    useServerSideApply: true
+  reconciliationInterval: 1m

@@ -253,6 +253,46 @@ updateStrategy:
   updateRequestsOnly: true
 ```
 
+#### updateStrategy.useServerSideApply
+
+**Type**: `boolean`  
+**Default**: `true`  
+**Optional**: Yes  
+**Description**: Enable Server-Side Apply (SSA) for field-level ownership tracking
+
+When enabled, OptiPod uses Kubernetes Server-Side Apply to manage only resource requests and limits, allowing other tools (like ArgoCD) to manage different fields without conflicts. SSA tracks field ownership in `managedFields` metadata.
+
+**Benefits of SSA**:
+- **GitOps Compatibility**: No sync conflicts with ArgoCD or Flux
+- **Field-Level Ownership**: OptiPod owns only resource fields, other tools own their fields
+- **Audit Trail**: `managedFields` shows which tool manages which fields
+- **Conflict Resolution**: Built-in conflict detection and resolution
+
+**When to use SSA** (recommended):
+- Using GitOps tools (ArgoCD, Flux)
+- Multiple tools managing the same workloads
+- Need clear field ownership tracking
+- Kubernetes 1.22+ clusters
+
+**When to disable SSA** (not recommended):
+- Kubernetes < 1.22 (SSA not available)
+- Legacy environments requiring Strategic Merge Patch
+- Specific compatibility requirements
+
+**Example**:
+```yaml
+updateStrategy:
+  useServerSideApply: true  # Default, recommended
+```
+
+**Disabling SSA** (may cause GitOps conflicts):
+```yaml
+updateStrategy:
+  useServerSideApply: false  # Use Strategic Merge Patch
+```
+
+**See Also**: [ArgoCD Integration Guide](ARGOCD_INTEGRATION.md) for GitOps setup
+
 ### reconciliationInterval
 
 **Type**: `Duration`  
@@ -301,6 +341,8 @@ status:
 - `kind` (string): Workload kind (Deployment, StatefulSet, DaemonSet)
 - `lastRecommendation` (Time): Timestamp of last recommendation
 - `lastApplied` (Time): Timestamp of last applied change
+- `lastApplyMethod` (string): Patch method used ("ServerSideApply" or "StrategicMergePatch")
+- `fieldOwnership` (boolean): Whether OptiPod owns resource fields via SSA
 - `recommendations` ([]ContainerRecommendation): Per-container recommendations
 - `status` (string): Current state (Applied, Skipped, Error, Pending)
 - `reason` (string): Additional context
@@ -314,6 +356,8 @@ status:
     kind: Deployment
     lastRecommendation: "2024-01-15T10:05:00Z"
     lastApplied: "2024-01-15T10:05:00Z"
+    lastApplyMethod: "ServerSideApply"
+    fieldOwnership: true
     recommendations:
     - container: nginx
       cpu: "500m"
@@ -382,6 +426,7 @@ spec:
     allowInPlaceResize: true
     allowRecreate: false
     updateRequestsOnly: true
+    useServerSideApply: true  # Enable SSA for GitOps compatibility
   
   # Reconciliation frequency
   reconciliationInterval: 5m
@@ -435,6 +480,180 @@ kubectl get optimizationpolicy -w
 kubectl delete optimizationpolicy production-workloads
 ```
 
+## Troubleshooting
+
+### Field Ownership Conflicts
+
+When using Server-Side Apply (SSA), field ownership conflicts can occur if multiple tools try to manage the same fields.
+
+#### Symptoms
+
+- OptiPod logs show SSA conflict errors
+- Kubernetes events show `SSAConflict` reason
+- Resource updates fail with conflict messages
+
+#### Diagnosis
+
+Check which tool currently owns the resource fields:
+
+```bash
+# View managedFields
+kubectl get deployment <name> -n <namespace> -o yaml | grep -A 50 managedFields
+
+# Check OptiPod logs
+kubectl logs -n optipod-system deployment/optipod-manager
+
+# Check for SSA conflict events
+kubectl get events -n <namespace> --field-selector reason=SSAConflict
+```
+
+#### Common Causes
+
+1. **Another tool owns resource fields**: kubectl, Helm, or another controller previously set resource requests/limits
+2. **Multiple OptiPod policies**: Multiple policies targeting the same workload (should use same fieldManager)
+3. **Manual kubectl edits**: Direct edits with kubectl can create ownership conflicts
+
+#### Solutions
+
+**Solution 1: OptiPod takes ownership (recommended)**
+
+OptiPod uses `Force: true` by default, which automatically takes ownership of resource fields. If conflicts persist:
+
+1. Verify SSA is enabled:
+```yaml
+updateStrategy:
+  useServerSideApply: true
+```
+
+2. Check OptiPod has proper RBAC permissions:
+```bash
+kubectl auth can-i patch deployments --as=system:serviceaccount:optipod-system:optipod-controller-manager
+```
+
+3. Review OptiPod logs for specific error messages
+
+**Solution 2: Clear conflicting ownership**
+
+Manually remove the conflicting manager's ownership:
+
+```bash
+# Get current managedFields
+kubectl get deployment <name> -n <namespace> -o json > deployment.json
+
+# Edit deployment.json to remove conflicting manager from managedFields
+# Then apply:
+kubectl apply -f deployment.json
+```
+
+**Solution 3: Use Strategic Merge Patch**
+
+Disable SSA if conflicts cannot be resolved (not recommended for GitOps):
+
+```yaml
+updateStrategy:
+  useServerSideApply: false
+```
+
+**Note**: Disabling SSA will cause sync conflicts with ArgoCD and other GitOps tools.
+
+#### Prevention
+
+1. **Use SSA consistently**: Enable SSA for all tools managing the cluster (ArgoCD 2.5+, Flux, etc.)
+2. **Avoid manual edits**: Use GitOps or OptiPod policies instead of direct kubectl edits
+3. **Single policy per workload**: Ensure only one OptimizationPolicy targets each workload
+4. **Label-based selection**: Use specific labels to control which workloads are optimized
+
+### Policy Not Processing Workloads
+
+#### Symptoms
+
+- Policy status shows no workloads
+- Workloads not being optimized despite matching selectors
+
+#### Diagnosis
+
+```bash
+# Check policy status
+kubectl describe optimizationpolicy <name>
+
+# Check policy conditions
+kubectl get optimizationpolicy <name> -o jsonpath='{.status.conditions}'
+
+# Verify workload labels
+kubectl get deployment <name> --show-labels
+```
+
+#### Common Causes
+
+1. **Selector mismatch**: Workload labels don't match policy selectors
+2. **Namespace filtering**: Workload namespace is in deny list or not in allow list
+3. **Policy mode**: Policy is in Disabled mode
+4. **RBAC issues**: OptiPod lacks permissions to access workloads
+
+#### Solutions
+
+1. Verify workload has matching labels:
+```bash
+kubectl label deployment <name> optimize=true
+```
+
+2. Check namespace is allowed:
+```yaml
+selector:
+  namespaces:
+    allow:
+    - <namespace>
+```
+
+3. Ensure policy is in Auto or Recommend mode:
+```bash
+kubectl patch optimizationpolicy <name> --type=merge -p '{"spec":{"mode":"Auto"}}'
+```
+
+### Recommendations Not Applied
+
+#### Symptoms
+
+- Policy shows recommendations in status
+- Workload resources not updated
+
+#### Diagnosis
+
+```bash
+# Check policy mode
+kubectl get optimizationpolicy <name> -o jsonpath='{.spec.mode}'
+
+# Check workload status
+kubectl get optimizationpolicy <name> -o jsonpath='{.status.workloads[*].status}'
+```
+
+#### Common Causes
+
+1. **Recommend mode**: Policy is in Recommend mode (recommendations not auto-applied)
+2. **Update strategy**: Changes require pod recreation but `allowRecreate: false`
+3. **In-place resize unavailable**: Kubernetes < 1.29 and `allowRecreate: false`
+4. **Bounds violation**: Recommendation exceeds min/max bounds
+
+#### Solutions
+
+1. Switch to Auto mode:
+```bash
+kubectl patch optimizationpolicy <name> --type=merge -p '{"spec":{"mode":"Auto"}}'
+```
+
+2. Allow pod recreation if needed:
+```yaml
+updateStrategy:
+  allowRecreate: true
+```
+
+3. Adjust resource bounds:
+```yaml
+resourceBounds:
+  cpu:
+    max: "8000m"  # Increase if recommendations exceed current max
+```
+
 ## Best Practices
 
 1. **Start with Recommend Mode**: Test policies in Recommend mode before switching to Auto
@@ -444,9 +663,12 @@ kubectl delete optimizationpolicy production-workloads
 5. **Use Specific Selectors**: Target specific workloads rather than broad selectors
 6. **Test Safety Factors**: Adjust safety factors based on workload variability
 7. **Review Recommendations**: In Recommend mode, review suggestions before enabling Auto mode
+8. **Enable SSA**: Use Server-Side Apply for GitOps compatibility (default)
+9. **Monitor Field Ownership**: Regularly check managedFields to ensure proper ownership
+10. **Use Labels Consistently**: Apply clear, consistent labels for workload selection
 
 ## See Also
 
 - [Example Policies](EXAMPLES.md)
-- [Metrics Configuration](METRICS.md)
-- [Troubleshooting](TROUBLESHOOTING.md)
+- [ArgoCD Integration](ARGOCD_INTEGRATION.md)
+- [Installation Guide](INSTALLATION.md)

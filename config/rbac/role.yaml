@@ -4,28 +4,42 @@ kind: ClusterRole
 metadata:
   name: manager-role
 rules:
-# Workload read permissions
 - apiGroups:
-  - apps
+  - ""
   resources:
-  - deployments
-  - statefulsets
-  - daemonsets
+  - events
+  verbs:
+  - create
+  - patch
+- apiGroups:
+  - ""
+  resources:
+  - namespaces
+  - pods
   verbs:
   - get
   - list
   - watch
-# Workload update permissions
 - apiGroups:
   - apps
   resources:
+  - daemonsets
   - deployments
   - statefulsets
-  - daemonsets
   verbs:
+  - get
+  - list
   - patch
   - update
-# CRD permissions
+  - watch
+- apiGroups:
+  - metrics.k8s.io
+  resources:
+  - nodes
+  - pods
+  verbs:
+  - get
+  - list
 - apiGroups:
   - optipod.optipod.io
   resources:
@@ -52,28 +66,3 @@ rules:
   - get
   - patch
   - update
-# Event permissions
-- apiGroups:
-  - ""
-  resources:
-  - events
-  verbs:
-  - create
-  - patch
-# Metrics permissions
-- apiGroups:
-  - metrics.k8s.io
-  resources:
-  - pods
-  verbs:
-  - get
-  - list
-# Namespace read permissions for multi-tenant scoping
-- apiGroups:
-  - ""
-  resources:
-  - namespaces
-  verbs:
-  - get
-  - list
-  - watch

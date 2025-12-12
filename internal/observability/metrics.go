@@ -95,6 +95,15 @@ var (
 		},
 		[]string{"policy", "method"},
 	)
+
+	// SSAPatchTotal tracks the total number of Server-Side Apply patch operations
+	SSAPatchTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "optipod_ssa_patch_total",
+			Help: "Total number of Server-Side Apply patch operations",
+		},
+		[]string{"policy", "namespace", "workload", "kind", "status", "patch_type"},
+	)
 )
 
 func init() {
@@ -114,4 +123,10 @@ func RegisterMetrics() {
 	_ = metrics.Registry.Register(ReconciliationErrors)
 	_ = metrics.Registry.Register(RecommendationsTotal)
 	_ = metrics.Registry.Register(ApplicationsTotal)
+	_ = metrics.Registry.Register(SSAPatchTotal)
+}
+
+// RecordSSAPatch records an SSA patch operation
+func RecordSSAPatch(policy, namespace, workload, kind, status, patchType string) {
+	SSAPatchTotal.WithLabelValues(policy, namespace, workload, kind, status, patchType).Inc()
 }

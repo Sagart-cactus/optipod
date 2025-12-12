@@ -24,6 +24,15 @@ import (
 	"k8s.io/client-go/tools/record"
 )
 
+// Event reason constants
+const (
+	// EventReasonSSAOwnershipTaken indicates OptipPod took ownership of resource fields
+	EventReasonSSAOwnershipTaken = "SSAOwnershipTaken"
+
+	// EventReasonSSAConflict indicates a field ownership conflict
+	EventReasonSSAConflict = "SSAConflict"
+)
+
 // EventRecorder wraps the Kubernetes event recorder with OptiPod-specific event creation methods
 type EventRecorder struct {
 	recorder record.EventRecorder
@@ -82,4 +91,21 @@ func (er *EventRecorder) RecordRecommendationGenerated(object runtime.Object, wo
 func (er *EventRecorder) RecordWorkloadSkipped(object runtime.Object, workloadName, namespace, reason string) {
 	message := fmt.Sprintf("Skipped workload %s/%s: %s", namespace, workloadName, reason)
 	er.recorder.Event(object, corev1.EventTypeNormal, "WorkloadSkipped", message)
+}
+
+// RecordSSAOwnershipTaken records an event when OptipPod takes field ownership via Server-Side Apply
+func (er *EventRecorder) RecordSSAOwnershipTaken(object runtime.Object, workloadName, namespace, previousOwner string) {
+	var message string
+	if previousOwner != "" {
+		message = fmt.Sprintf("Took ownership of resource fields for workload %s/%s via Server-Side Apply (previous owner: %s)", namespace, workloadName, previousOwner)
+	} else {
+		message = fmt.Sprintf("Took ownership of resource fields for workload %s/%s via Server-Side Apply", namespace, workloadName)
+	}
+	er.recorder.Event(object, corev1.EventTypeNormal, EventReasonSSAOwnershipTaken, message)
+}
+
+// RecordSSAConflict records an event when a field ownership conflict occurs during Server-Side Apply
+func (er *EventRecorder) RecordSSAConflict(object runtime.Object, workloadName, namespace, conflictingManager string, err error) {
+	message := fmt.Sprintf("Server-Side Apply conflict for workload %s/%s: field manager '%s' owns conflicting fields. Error: %v. Suggestion: Review field ownership or enable Force flag to take ownership", namespace, workloadName, conflictingManager, err)
+	er.recorder.Event(object, corev1.EventTypeWarning, EventReasonSSAConflict, message)
 }

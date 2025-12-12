@@ -43,6 +43,12 @@ type OperatorConfig struct {
 
 	// ReconciliationInterval is the default interval for policy reconciliation
 	ReconciliationInterval time.Duration
+
+	// MetricsMaxSamples is the maximum number of samples to collect for metrics (0 = use default)
+	MetricsMaxSamples int
+
+	// MetricsSampleInterval is the interval between samples in seconds (0 = use default)
+	MetricsSampleInterval int
 }
 
 // NewOperatorConfig creates a new OperatorConfig with default values
@@ -55,6 +61,8 @@ func NewOperatorConfig() *OperatorConfig {
 		MetricsAddr:            ":8080",
 		ProbeAddr:              ":8081",
 		ReconciliationInterval: 5 * time.Minute,
+		MetricsMaxSamples:      0, // 0 = use default (10 for production)
+		MetricsSampleInterval:  0, // 0 = use default (15 seconds)
 	}
 }
 
@@ -70,6 +78,10 @@ func (c *OperatorConfig) BindFlags() {
 		"Enable leader election for controller manager")
 	flag.DurationVar(&c.ReconciliationInterval, "reconciliation-interval", c.ReconciliationInterval,
 		"Default interval for policy reconciliation")
+	flag.IntVar(&c.MetricsMaxSamples, "metrics-max-samples", c.MetricsMaxSamples,
+		"Maximum number of samples to collect for metrics (0 = use default: 10 for production, 3 for tests)")
+	flag.IntVar(&c.MetricsSampleInterval, "metrics-sample-interval", c.MetricsSampleInterval,
+		"Interval between samples in seconds (0 = use default: 15 seconds)")
 }
 
 // IsDryRun returns true if global dry-run mode is enabled
@@ -95,4 +107,14 @@ func (c *OperatorConfig) IsLeaderElectionEnabled() bool {
 // GetReconciliationInterval returns the default reconciliation interval
 func (c *OperatorConfig) GetReconciliationInterval() time.Duration {
 	return c.ReconciliationInterval
+}
+
+// GetMetricsMaxSamples returns the maximum number of samples to collect
+func (c *OperatorConfig) GetMetricsMaxSamples() int {
+	return c.MetricsMaxSamples
+}
+
+// GetMetricsSampleInterval returns the interval between samples in seconds
+func (c *OperatorConfig) GetMetricsSampleInterval() int {
+	return c.MetricsSampleInterval
 }

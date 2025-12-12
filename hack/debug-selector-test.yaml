@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: selector-debug-test
+  namespace: default
+  labels:
+    optimize: "true"
+    test-type: "selector-debug"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: selector-debug-test
+  template:
+    metadata:
+      labels:
+        app: selector-debug-test
+        optimize: "true"
+        test-type: "selector-debug"
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:alpine
+        resources:
+          requests:
+            cpu: "50m"
+            memory: "64Mi"
+          limits:
+            cpu: "100m"
+            memory: "128Mi"
+        ports:
+        - containerPort: 80

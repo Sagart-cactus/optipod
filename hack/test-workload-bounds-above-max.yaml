@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bounds-above-max-test
+  namespace: default
+  labels:
+    optimize: "true"
+    bounds-test: "above-max"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bounds-above-max-test
+  template:
+    metadata:
+      labels:
+        app: bounds-above-max-test
+        optimize: "true"
+        bounds-test: "above-max"
+    spec:
+      containers:
+      - name: app
+        image: nginx:alpine
+        resources:
+          requests:
+            cpu: "1000m"    # High - should be clamped to max (200m)
+            memory: "1Gi"   # High - should be clamped to max (128Mi)
+          limits:
+            cpu: "2000m"
+            memory: "2Gi"
+        ports:
+        - containerPort: 80

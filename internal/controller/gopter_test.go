@@ -77,6 +77,7 @@ type mockApplicationEngine struct {
 	applyCalled    bool
 	decision       *application.ApplyDecision
 	applyError     error
+	applyResult    *application.ApplyResult
 }
 
 func (m *mockApplicationEngine) CanApply(ctx context.Context, workload *application.Workload, rec *recommendation.Recommendation, policy *optipodv1alpha1.OptimizationPolicy) (*application.ApplyDecision, error) {
@@ -91,9 +92,20 @@ func (m *mockApplicationEngine) CanApply(ctx context.Context, workload *applicat
 	}, nil
 }
 
-func (m *mockApplicationEngine) Apply(ctx context.Context, workload *application.Workload, containerName string, rec *recommendation.Recommendation, policy *optipodv1alpha1.OptimizationPolicy) error {
+func (m *mockApplicationEngine) Apply(ctx context.Context, workload *application.Workload, containerName string, rec *recommendation.Recommendation, policy *optipodv1alpha1.OptimizationPolicy) (*application.ApplyResult, error) {
 	m.applyCalled = true
-	return m.applyError
+	if m.applyError != nil {
+		return nil, m.applyError
+	}
+	// Return a default result if not specified
+	if m.applyResult != nil {
+		return m.applyResult, nil
+	}
+	// Default to SSA
+	return &application.ApplyResult{
+		Method:         "ServerSideApply",
+		FieldOwnership: true,
+	}, nil
 }
 
 // Feature: k8s-workload-rightsizing, Property 1: Monitoring initiates metrics collection
@@ -142,7 +154,7 @@ func TestProperty_MonitoringInitiatesMetricsCollection(t *testing.T) {
 
 			// Create workload processor
 			recEngine := recommendation.NewEngine()
-			processor := NewWorkloadProcessor(mockProvider, recEngine, mockAppEngine)
+			processor := NewWorkloadProcessor(mockProvider, recEngine, mockAppEngine, nil)
 
 			// Create a test workload
 			workload := &discovery.Workload{
@@ -249,7 +261,7 @@ func TestProperty_MissingMetricsPreventChanges(t *testing.T) {
 
 			// Create workload processor
 			recEngine := recommendation.NewEngine()
-			processor := NewWorkloadProcessor(mockProvider, recEngine, mockAppEngine)
+			processor := NewWorkloadProcessor(mockProvider, recEngine, mockAppEngine, nil)
 
 			// Create a test workload
 			workload := &discovery.Workload{
@@ -314,6 +326,7 @@ func TestProperty_MissingMetricsPreventChanges(t *testing.T) {
 			// 1. No error is returned (graceful handling)
 			// 2. Apply was NOT called on the application engine
 			// 3. Status indicates the change was skipped due to missing metrics
+			// Missing metrics should not cause annotation errors since no recommendations are generated
 			return err == nil &&
 				!mockAppEngine.applyCalled &&
 				status.Status == StatusSkipped &&
@@ -374,7 +387,7 @@ func TestProperty_RecommendModePreventsMod(t *testing.T) {
 
 			// Create workload processor
 			recEngine := recommendation.NewEngine()
-			processor := NewWorkloadProcessor(mockProvider, recEngine, mockAppEngine)
+			processor := NewWorkloadProcessor(mockProvider, recEngine, mockAppEngine, nil)
 
 			// Create a test workload
 			workload := &discovery.Workload{
@@ -440,6 +453,7 @@ func TestProperty_RecommendModePreventsMod(t *testing.T) {
 			// 2. Apply was NOT called on the application engine
 			// 3. Recommendations were generated and stored in status
 			// 4. Status indicates Recommend mode
+
 			return err == nil &&
 				!mockAppEngine.applyCalled &&
 				len(status.Recommendations) > 0 &&
@@ -500,7 +514,7 @@ func TestProperty_AutoModeAppliesChanges(t *testing.T) {
 
 			// Create workload processor
 			recEngine := recommendation.NewEngine()
-			processor := NewWorkloadProcessor(mockProvider, recEngine, mockAppEngine)
+			processor := NewWorkloadProcessor(mockProvider, recEngine, mockAppEngine, nil)
 
 			// Create a test workload
 			workload := &discovery.Workload{
@@ -626,7 +640,7 @@ func TestProperty_DisabledModeStopsProcessing(t *testing.T) {
 
 			// Create workload processor
 			recEngine := recommendation.NewEngine()
-			processor := NewWorkloadProcessor(mockProvider, recEngine, mockAppEngine)
+			processor := NewWorkloadProcessor(mockProvider, recEngine, mockAppEngine, nil)
 
 			// Create a test workload
 			workload := &discovery.Workload{
@@ -693,6 +707,7 @@ func TestProperty_DisabledModeStopsProcessing(t *testing.T) {
 			// 3. Apply was NOT called
 			// 4. Status indicates the policy is disabled
 			// 5. No recommendations were generated
+			// Disabled mode should not have annotation errors since it exits early
 			return err == nil &&
 				!mockProvider.getMetricsCalled &&
 				!mockAppEngine.applyCalled &&
@@ -754,7 +769,7 @@ func TestProperty_StatusTimestampTracking(t *testing.T) {
 
 			// Create workload processor
 			recEngine := recommendation.NewEngine()
-			processor := NewWorkloadProcessor(mockProvider, recEngine, mockAppEngine)
+			processor := NewWorkloadProcessor(mockProvider, recEngine, mockAppEngine, nil)
 
 			// Create a test workload
 			workload := &discovery.Workload{
@@ -928,7 +943,7 @@ func TestProperty_RecommendationFormatCompleteness(t *testing.T) {
 
 			// Create workload processor
 			recEngine := recommendation.NewEngine()
-			processor := NewWorkloadProcessor(mockProvider, recEngine, mockAppEngine)
+			processor := NewWorkloadProcessor(mockProvider, recEngine, mockAppEngine, nil)
 
 			// Create containers for the workload
 			containers := make([]corev1.Container, numContainers)

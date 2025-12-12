@@ -1,0 +1,32 @@
+apiVersion: optipod.optipod.io/v1alpha1
+kind: OptimizationPolicy
+metadata:
+  name: bounds-below-min-test
+  namespace: optipod-system
+spec:
+  mode: Recommend
+  selector:
+    namespaceSelector:
+      matchLabels:
+        environment: development
+    workloadSelector:
+      matchLabels:
+        optimize: "true"
+        bounds-test: "below-min"
+  metricsConfig:
+    provider: metrics-server
+    rollingWindow: 5m
+    percentile: P90
+    safetyFactor: 1.0  # No safety factor to get predictable values
+  resourceBounds:
+    cpu:
+      min: "500m"      # 500 millicores - high minimum to force clamping
+      max: "2000m"     # 2 cores
+    memory:
+      min: "512Mi"     # 512 MiB - high minimum to force clamping
+      max: "4Gi"       # 4 GiB
+  updateStrategy:
+    allowInPlaceResize: true
+    allowRecreate: false
+    updateRequestsOnly: true
+  reconciliationInterval: 1m

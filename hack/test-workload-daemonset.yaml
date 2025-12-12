@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: workload-daemonset-test
+  namespace: default
+  labels:
+    optimize: "true"
+    workload-type-test: "true"
+    workload-type: "daemonset"
+spec:
+  selector:
+    matchLabels:
+      app: workload-daemonset-test
+  template:
+    metadata:
+      labels:
+        app: workload-daemonset-test
+        optimize: "true"
+        workload-type-test: "true"
+        workload-type: "daemonset"
+    spec:
+      containers:
+      - name: monitoring
+        image: prom/node-exporter:latest
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "200m"
+            memory: "256Mi"
+        ports:
+        - containerPort: 9100
+        volumeMounts:
+        - name: proc
+          mountPath: /host/proc
+          readOnly: true
+        - name: sys
+          mountPath: /host/sys
+          readOnly: true
+      volumes:
+      - name: proc
+        hostPath:
+          path: /proc
+      - name: sys
+        hostPath:
+          path: /sys
+      hostNetwork: true
+      hostPID: true

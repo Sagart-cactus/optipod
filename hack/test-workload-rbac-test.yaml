@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rbac-test-workload
+  namespace: default
+  labels:
+    optimize: "true"
+    rbac-test: "true"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rbac-test-workload
+  template:
+    metadata:
+      labels:
+        app: rbac-test-workload
+        optimize: "true"
+        rbac-test: "true"
+    spec:
+      containers:
+      - name: app
+        image: nginx:alpine
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "200m"
+            memory: "256Mi"
+        ports:
+        - containerPort: 80

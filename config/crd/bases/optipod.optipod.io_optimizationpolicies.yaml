@@ -81,6 +81,7 @@ spec:
                     description: |-
                       SafetyFactor is a multiplier applied to the selected percentile
                       Must be >= 1.0. Defaults to 1.2 if not specified.
+                    type: number
                 required:
                 - provider
                 type: object
@@ -277,12 +278,49 @@ spec:
                     description: AllowRecreate enables pod recreation when in-place
                       resize is not available
                     type: boolean
+                  limitConfig:
+                    description: LimitConfig defines how resource limits are calculated
+                      from recommendations
+                    properties:
+                      cpuLimitMultiplier:
+                        default: 1
+                        description: |-
+                          CPULimitMultiplier is the multiplier applied to CPU recommendation to calculate limit
+                          Default: 1.0 (limit equals recommendation)
+                          Example: 1.5 means limit = recommendation * 1.5
+                        maximum: 10
+                        minimum: 1
+                        type: number
+                      memoryLimitMultiplier:
+                        default: 1.1
+                        description: |-
+                          MemoryLimitMultiplier is the multiplier applied to memory recommendation to calculate limit
+                          Default: 1.1 (limit is 10% higher than recommendation)
+                          Example: 1.2 means limit = recommendation * 1.2
+                        maximum: 10
+                        minimum: 1
+                        type: number
+                    type: object
                   updateRequestsOnly:
                     default: true
                     description: UpdateRequestsOnly controls whether to update only
                       requests or both requests and limits
                     type: boolean
+                  useServerSideApply:
+                    default: true
+                    description: UseServerSideApply enables Server-Side Apply for
+                      field-level ownership
+                    type: boolean
                 type: object
+              weight:
+                default: 100
+                description: |-
+                  Weight defines the priority of this policy when multiple policies match the same workload
+                  Higher weight policies take precedence. Default weight is 100.
+                format: int32
+                maximum: 1000
+                minimum: 1
+                type: integer
             required:
             - metricsConfig
             - mode
@@ -354,77 +392,18 @@ spec:
                 x-kubernetes-list-map-keys:
                 - type
                 x-kubernetes-list-type: map
-              workloads:
-                description: Workloads contains per-workload optimization status
-                items:
-                  description: WorkloadStatus represents the optimization status for
-                    a single workload
-                  properties:
-                    kind:
-                      description: Kind is the workload kind (Deployment, StatefulSet,
-                        DaemonSet)
-                      type: string
-                    lastApplied:
-                      description: LastApplied is the timestamp of the last applied
-                        change
-                      format: date-time
-                      type: string
-                    lastRecommendation:
-                      description: LastRecommendation is the timestamp of the last
-                        recommendation
-                      format: date-time
-                      type: string
-                    name:
-                      description: Name is the workload name
-                      type: string
-                    namespace:
-                      description: Namespace is the workload namespace
-                      type: string
-                    reason:
-                      description: Reason provides additional context for the status
-                      type: string
-                    recommendations:
-                      description: Recommendations contains per-container resource
-                        recommendations
-                      items:
-                        description: ContainerRecommendation represents resource recommendations
-                          for a single container
-                        properties:
-                          container:
-                            description: Container is the container name
-                            type: string
-                          cpu:
-                            anyOf:
-                            - type: integer
-                            - type: string
-                            description: CPU is the recommended CPU request
-                            pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
-                            x-kubernetes-int-or-string: true
-                          explanation:
-                            description: Explanation describes how the recommendation
-                              was computed
-                            type: string
-                          memory:
-                            anyOf:
-                            - type: integer
-                            - type: string
-                            description: Memory is the recommended memory request
-                            pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
-                            x-kubernetes-int-or-string: true
-                        required:
-                        - container
-                        type: object
-                      type: array
-                    status:
-                      description: Status describes the current state (e.g., "Applied",
-                        "Skipped", "Error")
-                      type: string
-                  required:
-                  - kind
-                  - name
-                  - namespace
-                  type: object
-                type: array
+              lastReconciliation:
+                description: LastReconciliation is the timestamp of the last reconciliation
+                format: date-time
+                type: string
+              workloadsDiscovered:
+                description: WorkloadsDiscovered is the count of workloads matching
+                  this policy
+                type: integer
+              workloadsProcessed:
+                description: WorkloadsProcessed is the count of workloads successfully
+                  processed
+                type: integer
             type: object
         required:
         - spec

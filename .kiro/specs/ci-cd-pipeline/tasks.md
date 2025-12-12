@@ -172,7 +172,7 @@
   - **Property 10: Provenance traceability**
   - **Validates: Requirements 10.1, 10.3**
 
-- [ ] 17. Checkpoint - Verify workflows and create test release
+- [x] 17. Checkpoint - Verify workflows and create test release
   - Ensure all tests pass, ask the user if questions arise.
   - Create a test release tag (v0.0.0-test) to validate complete workflow
   - Verify all images are built and published

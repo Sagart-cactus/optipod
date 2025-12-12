@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: policy-mode-recommend-test
+  namespace: default
+  labels:
+    optimize: "true"
+    policy-mode-test: "recommend"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: policy-mode-recommend-test
+  template:
+    metadata:
+      labels:
+        app: policy-mode-recommend-test
+        optimize: "true"
+        policy-mode-test: "recommend"
+    spec:
+      containers:
+      - name: app
+        image: nginx:alpine
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "200m"
+            memory: "256Mi"
+        ports:
+        - containerPort: 80

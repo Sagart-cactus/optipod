@@ -1,0 +1,32 @@
+apiVersion: optipod.optipod.io/v1alpha1
+kind: OptimizationPolicy
+metadata:
+  name: bounds-above-max-test
+  namespace: optipod-system
+spec:
+  mode: Recommend
+  selector:
+    namespaceSelector:
+      matchLabels:
+        environment: development
+    workloadSelector:
+      matchLabels:
+        optimize: "true"
+        bounds-test: "above-max"
+  metricsConfig:
+    provider: metrics-server
+    rollingWindow: 5m
+    percentile: P90
+    safetyFactor: 1.0  # No safety factor to get predictable values
+  resourceBounds:
+    cpu:
+      min: "50m"       # 50 millicores
+      max: "200m"      # 200 millicores - low maximum to force clamping
+    memory:
+      min: "32Mi"      # 32 MiB
+      max: "128Mi"     # 128 MiB - low maximum to force clamping
+  updateStrategy:
+    allowInPlaceResize: true
+    allowRecreate: false
+    updateRequestsOnly: true
+  reconciliationInterval: 1m

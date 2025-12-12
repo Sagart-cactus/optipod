@@ -69,6 +69,12 @@ func (e *Engine) ComputeRecommendation(
 	cpuRecommendation := clampToBounds(cpuWithSafety, policy.Spec.ResourceBounds.CPU)
 	memoryRecommendation := clampToBounds(memoryWithSafety, policy.Spec.ResourceBounds.Memory)
 
+	// Debug: Log the final values
+	fmt.Printf("DEBUG ENGINE: CPU recommendation: %s (millivalue=%d, value=%d, format=%v)\n",
+		cpuRecommendation.String(), cpuRecommendation.MilliValue(), cpuRecommendation.Value(), cpuRecommendation.Format)
+	fmt.Printf("DEBUG ENGINE: Memory recommendation: %s (millivalue=%d, value=%d, format=%v)\n",
+		memoryRecommendation.String(), memoryRecommendation.MilliValue(), memoryRecommendation.Value(), memoryRecommendation.Format)
+
 	// Generate explanation
 	percentileStr := policy.Spec.MetricsConfig.Percentile
 	if percentileStr == "" {
@@ -109,10 +115,21 @@ func selectPercentile(resourceMetrics metrics.ResourceMetrics, percentile string
 
 // multiplyQuantity multiplies a resource quantity by a factor
 func multiplyQuantity(q resource.Quantity, factor float64) resource.Quantity {
-	// Convert to milli-units for precision
-	milliValue := q.MilliValue()
-	result := int64(float64(milliValue) * factor)
-	return *resource.NewMilliQuantity(result, q.Format)
+	// For CPU quantities (DecimalSI format), work with millivalue to preserve millicores
+	// For Memory quantities (BinarySI format), work with value (bytes)
+	if q.Format == resource.DecimalSI {
+		// CPU quantity - use millivalue to preserve millicores
+		milliValue := q.MilliValue()
+		result := int64(float64(milliValue) * factor)
+		newQuantity := resource.NewMilliQuantity(result, q.Format)
+		return *newQuantity
+	} else {
+		// Memory quantity - use value (bytes)
+		value := q.Value()
+		result := int64(float64(value) * factor)
+		newQuantity := resource.NewQuantity(result, q.Format)
+		return *newQuantity
+	}
 }
 
 // clampToBounds ensures a value is within the specified min/max bounds

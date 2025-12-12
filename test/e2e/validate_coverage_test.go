@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -20,9 +21,19 @@ var _ = Describe("Test Coverage Validation", func() {
 	var validator *CoverageValidator
 
 	BeforeEach(func() {
+		// Get the current working directory and construct paths relative to project root
+		wd, err := os.Getwd()
+		Expect(err).NotTo(HaveOccurred())
+
+		// If we're in test/e2e, go up two levels to project root
+		projectRoot := wd
+		if strings.HasSuffix(wd, "test/e2e") {
+			projectRoot = filepath.Join(wd, "../..")
+		}
+
 		validator = &CoverageValidator{
-			RequirementsFile: "../../.kiro/specs/e2e-test-enhancement/requirements.md",
-			DesignFile:       "../../.kiro/specs/e2e-test-enhancement/design.md",
+			RequirementsFile: filepath.Join(projectRoot, ".kiro/specs/e2e-test-enhancement/requirements.md"),
+			DesignFile:       filepath.Join(projectRoot, ".kiro/specs/e2e-test-enhancement/design.md"),
 			TestDirectory:    ".",
 		}
 	})

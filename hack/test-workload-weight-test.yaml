@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: weight-test-workload
+  namespace: default
+  labels:
+    optimize: "true"
+    test-type: "weight-test"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: weight-test-workload
+  template:
+    metadata:
+      labels:
+        app: weight-test-workload
+        optimize: "true"
+        test-type: "weight-test"
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:alpine
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "200m"
+            memory: "256Mi"
+        ports:
+        - containerPort: 80

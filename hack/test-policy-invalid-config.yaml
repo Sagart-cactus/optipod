@@ -1,0 +1,36 @@
+apiVersion: optipod.optipod.io/v1alpha1
+kind: OptimizationPolicy
+metadata:
+  name: invalid-config-test
+  namespace: optipod-system
+spec:
+  mode: Auto
+  selector:
+    namespaceSelector:
+      matchLabels:
+        environment: development
+    workloadSelector:
+      matchLabels:
+        optimize: "true"
+        error-test: "invalid-config"
+  metricsConfig:
+    provider: metrics-server
+    rollingWindow: 5m
+    percentile: P90
+    safetyFactor: 0.5  # Invalid: must be >= 1.0
+  resourceBounds:
+    cpu:
+      min: "2000m"     # Invalid: min > max
+      max: "1000m"
+    memory:
+      min: "4Gi"       # Invalid: min > max
+      max: "2Gi"
+  updateStrategy:
+    allowInPlaceResize: true
+    allowRecreate: false
+    updateRequestsOnly: false
+    useServerSideApply: true
+    limitConfig:
+      cpuLimitMultiplier: 0.5    # Invalid: must be >= 1.0
+      memoryLimitMultiplier: 15.0 # Invalid: must be <= 10.0
+  reconciliationInterval: 1m

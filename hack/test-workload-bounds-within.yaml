@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bounds-within-test
+  namespace: default
+  labels:
+    optimize: "true"
+    bounds-test: "within"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bounds-within-test
+  template:
+    metadata:
+      labels:
+        app: bounds-within-test
+        optimize: "true"
+        bounds-test: "within"
+    spec:
+      containers:
+      - name: app
+        image: nginx:alpine
+        resources:
+          requests:
+            cpu: "300m"     # Should result in recommendation within bounds (100m-1000m)
+            memory: "256Mi" # Should result in recommendation within bounds (128Mi-1Gi)
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
+        ports:
+        - containerPort: 80

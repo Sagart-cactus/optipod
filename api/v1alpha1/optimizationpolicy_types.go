@@ -23,6 +23,26 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+// Annotation keys for workload recommendations
+const (
+	// AnnotationManaged indicates the workload is managed by OptiPod
+	AnnotationManaged = "optipod.io/managed"
+
+	// AnnotationPolicy indicates which policy manages this workload
+	AnnotationPolicy = "optipod.io/policy"
+
+	// AnnotationLastRecommendation is the timestamp of the last recommendation
+	AnnotationLastRecommendation = "optipod.io/last-recommendation"
+
+	// AnnotationLastApplied is the timestamp of the last applied change
+	AnnotationLastApplied = "optipod.io/last-applied"
+
+	// AnnotationRecommendationPrefix is the prefix for per-container recommendations
+	// Format: optipod.io/recommendation.<container-name>.cpu
+	//         optipod.io/recommendation.<container-name>.memory
+	AnnotationRecommendationPrefix = "optipod.io/recommendation"
+)
+
 // PolicyMode defines the operational mode of the optimization policy
 // +kubebuilder:validation:Enum=Auto;Recommend;Disabled
 type PolicyMode string
@@ -42,6 +62,14 @@ type OptimizationPolicySpec struct {
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:Enum=Auto;Recommend;Disabled
 	Mode PolicyMode `json:"mode"`
+
+	// Weight defines the priority of this policy when multiple policies match the same workload
+	// Higher weight policies take precedence. Default weight is 100.
+	// +kubebuilder:default=100
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=1000
+	// +optional
+	Weight *int32 `json:"weight,omitempty"`
 
 	// Selector defines which workloads this policy applies to
 	// +kubebuilder:validation:Required
@@ -154,6 +182,36 @@ type UpdateStrategy struct {
 	// +kubebuilder:default=true
 	// +optional
 	UpdateRequestsOnly bool `json:"updateRequestsOnly,omitempty"`
+
+	// UseServerSideApply enables Server-Side Apply for field-level ownership
+	// +kubebuilder:default=true
+	// +optional
+	UseServerSideApply *bool `json:"useServerSideApply,omitempty"`
+
+	// LimitConfig defines how resource limits are calculated from recommendations
+	// +optional
+	LimitConfig *LimitConfig `json:"limitConfig,omitempty"`
+}
+
+// LimitConfig defines how resource limits are calculated from recommendations
+type LimitConfig struct {
+	// CPULimitMultiplier is the multiplier applied to CPU recommendation to calculate limit
+	// Default: 1.0 (limit equals recommendation)
+	// Example: 1.5 means limit = recommendation * 1.5
+	// +kubebuilder:default=1.0
+	// +kubebuilder:validation:Minimum=1.0
+	// +kubebuilder:validation:Maximum=10.0
+	// +optional
+	CPULimitMultiplier *float64 `json:"cpuLimitMultiplier,omitempty"`
+
+	// MemoryLimitMultiplier is the multiplier applied to memory recommendation to calculate limit
+	// Default: 1.1 (limit is 10% higher than recommendation)
+	// Example: 1.2 means limit = recommendation * 1.2
+	// +kubebuilder:default=1.1
+	// +kubebuilder:validation:Minimum=1.0
+	// +kubebuilder:validation:Maximum=10.0
+	// +optional
+	MemoryLimitMultiplier *float64 `json:"memoryLimitMultiplier,omitempty"`
 }
 
 // OptimizationPolicyStatus defines the observed state of OptimizationPolicy.
@@ -164,9 +222,17 @@ type OptimizationPolicyStatus struct {
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 
-	// Workloads contains per-workload optimization status
+	// WorkloadsDiscovered is the count of workloads matching this policy
 	// +optional
-	Workloads []WorkloadStatus `json:"workloads,omitempty"`
+	WorkloadsDiscovered int `json:"workloadsDiscovered,omitempty"`
+
+	// WorkloadsProcessed is the count of workloads successfully processed
+	// +optional
+	WorkloadsProcessed int `json:"workloadsProcessed,omitempty"`
+
+	// LastReconciliation is the timestamp of the last reconciliation
+	// +optional
+	LastReconciliation *metav1.Time `json:"lastReconciliation,omitempty"`
 }
 
 // WorkloadStatus represents the optimization status for a single workload
@@ -202,6 +268,14 @@ type WorkloadStatus struct {
 	// Reason provides additional context for the status
 	// +optional
 	Reason string `json:"reason,omitempty"`
+
+	// LastApplyMethod indicates the patch method used for the last update
+	// +optional
+	LastApplyMethod string `json:"lastApplyMethod,omitempty"`
+
+	// FieldOwnership indicates if OptipPod owns resource fields via SSA
+	// +optional
+	FieldOwnership bool `json:"fieldOwnership,omitempty"`
 }
 
 // ContainerRecommendation represents resource recommendations for a single container
@@ -254,6 +328,14 @@ type OptimizationPolicyList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitzero"`
 	Items           []OptimizationPolicy `json:"items"`
+}
+
+// GetWeight returns the policy weight, defaulting to 100 if not specified
+func (r *OptimizationPolicy) GetWeight() int32 {
+	if r.Spec.Weight != nil {
+		return *r.Spec.Weight
+	}
+	return 100 // Default weight
 }
 
 func init() {
@@ -346,6 +428,11 @@ func (r *OptimizationPolicy) validateOptimizationPolicy() error {
 	// Validate safety factor
 	if r.Spec.MetricsConfig.SafetyFactor != nil && *r.Spec.MetricsConfig.SafetyFactor < 1.0 {
 		return fmt.Errorf("safety factor must be at least 1.0, got %f", *r.Spec.MetricsConfig.SafetyFactor)
+	}
+
+	// Validate weight
+	if r.Spec.Weight != nil && (*r.Spec.Weight < 1 || *r.Spec.Weight > 1000) {
+		return fmt.Errorf("weight must be between 1 and 1000, got %d", *r.Spec.Weight)
 	}
 
 	return nil

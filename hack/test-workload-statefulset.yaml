@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: workload-statefulset-test
+  namespace: default
+  labels:
+    optimize: "true"
+    workload-type-test: "true"
+    workload-type: "statefulset"
+spec:
+  serviceName: workload-statefulset-test
+  replicas: 2
+  selector:
+    matchLabels:
+      app: workload-statefulset-test
+  template:
+    metadata:
+      labels:
+        app: workload-statefulset-test
+        optimize: "true"
+        workload-type-test: "true"
+        workload-type: "statefulset"
+    spec:
+      containers:
+      - name: database
+        image: postgres:alpine
+        env:
+        - name: POSTGRES_PASSWORD
+          value: "testpass"
+        resources:
+          requests:
+            cpu: "200m"
+            memory: "256Mi"
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
+        ports:
+        - containerPort: 5432
+        volumeMounts:
+        - name: data
+          mountPath: /var/lib/postgresql/data
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      resources:
+        requests:
+          storage: 1Gi

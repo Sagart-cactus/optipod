@@ -18,6 +18,7 @@ package metrics
 
 import (
 	"fmt"
+	"time"
 
 	"k8s.io/client-go/kubernetes"
 	metricsclientset "k8s.io/metrics/pkg/client/clientset/versioned"
@@ -47,6 +48,13 @@ type ProviderConfig struct {
 
 	// MetricsClientset is the metrics clientset (required if Type is metrics-server)
 	MetricsClientset metricsclientset.Interface
+
+	// MaxSamples is the maximum number of samples to collect (optional, defaults to 10 for production)
+	// For e2e tests, use 3 for faster execution
+	MaxSamples int
+
+	// SampleInterval is the interval between samples (optional, defaults to 15 seconds)
+	SampleInterval int // in seconds
 }
 
 // NewProvider creates a new MetricsProvider based on the configuration.
@@ -61,6 +69,25 @@ func NewProvider(config ProviderConfig) (MetricsProvider, error) {
 		if config.MetricsClientset == nil {
 			return nil, fmt.Errorf("metrics clientset is required for metrics-server provider")
 		}
+
+		// Use custom configuration if provided, otherwise use defaults
+		if config.MaxSamples > 0 || config.SampleInterval > 0 {
+			maxSamples := config.MaxSamples
+			if maxSamples == 0 {
+				maxSamples = 10 // default
+			}
+			sampleInterval := config.SampleInterval
+			if sampleInterval == 0 {
+				sampleInterval = 15 // default 15 seconds
+			}
+			return NewMetricsServerProviderWithConfig(
+				config.Clientset,
+				config.MetricsClientset,
+				maxSamples,
+				time.Duration(sampleInterval)*time.Second,
+			), nil
+		}
+
 		return NewMetricsServerProvider(config.Clientset, config.MetricsClientset), nil
 
 	case ProviderTypePrometheus:

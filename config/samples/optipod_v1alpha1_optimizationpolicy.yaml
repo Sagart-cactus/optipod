@@ -1,7 +1,20 @@
+# Example 1: Production workloads with Server-Side Apply (Recommended)
+# 
+# This is the recommended configuration for production environments, especially
+# when using GitOps tools like ArgoCD. Server-Side Apply (SSA) enables field-level
+# ownership, allowing OptipPod to manage resource requests/limits while other tools
+# (like ArgoCD) manage other fields without conflicts.
+#
+# Use SSA when:
+# - Using GitOps tools (ArgoCD, Flux, etc.)
+# - Multiple tools manage the same workloads
+# - You need clear field ownership tracking
+# - Running Kubernetes 1.22+ (SSA is GA)
+#
 apiVersion: optipod.optipod.io/v1alpha1
 kind: OptimizationPolicy
 metadata:
-  name: production-workloads
+  name: production-workloads-ssa
   namespace: default
 spec:
   mode: Auto
@@ -38,5 +51,152 @@ spec:
     allowInPlaceResize: true
     allowRecreate: false
     updateRequestsOnly: true
+    # Enable Server-Side Apply for field-level ownership (default: true)
+    # This allows OptipPod to own only resource fields while other tools
+    # manage different fields without conflicts
+    useServerSideApply: true
+  
+  reconciliationInterval: 5m
+
+---
+# Example 2: Development workloads with Strategic Merge Patch
+#
+# This configuration uses the traditional Strategic Merge Patch method instead
+# of Server-Side Apply. This may be useful in development environments or when
+# SSA is not desired.
+#
+# Use Strategic Merge Patch when:
+# - Only OptipPod manages the workloads (no other tools)
+# - Running older Kubernetes versions (< 1.22)
+# - Troubleshooting SSA-related issues
+# - Simple single-tool management scenarios
+#
+apiVersion: optipod.optipod.io/v1alpha1
+kind: OptimizationPolicy
+metadata:
+  name: dev-workloads-strategic-merge
+  namespace: default
+spec:
+  mode: Auto
+  
+  selector:
+    namespaceSelector:
+      matchLabels:
+        environment: development
+    workloadSelector:
+      matchLabels:
+        optimize: "true"
+  
+  metricsConfig:
+    provider: prometheus
+    rollingWindow: 12h
+    percentile: P95
+    safetyFactor: 1.1
+  
+  resourceBounds:
+    cpu:
+      min: "50m"
+      max: "2000m"
+    memory:
+      min: "64Mi"
+      max: "4Gi"
+  
+  updateStrategy:
+    allowInPlaceResize: true
+    allowRecreate: true
+    updateRequestsOnly: false
+    # Disable Server-Side Apply to use Strategic Merge Patch
+    useServerSideApply: false
+  
+  reconciliationInterval: 10m
+
+---
+# Example 3: ArgoCD-managed workloads with SSA (Best Practice)
+#
+# This configuration is optimized for workloads managed by ArgoCD. With SSA enabled,
+# OptipPod and ArgoCD can coexist without sync conflicts. OptipPod owns resource
+# requests/limits, while ArgoCD owns all other fields (image, replicas, env, etc.).
+#
+# Benefits:
+# - No ArgoCD OutOfSync status for resource changes
+# - ArgoCD syncs don't revert OptipPod's optimizations
+# - Clear field ownership visible in managedFields
+# - Full audit trail of who changed what
+#
+apiVersion: optipod.optipod.io/v1alpha1
+kind: OptimizationPolicy
+metadata:
+  name: argocd-managed-apps
+  namespace: default
+spec:
+  mode: Auto
+  
+  selector:
+    workloadSelector:
+      matchLabels:
+        # Target workloads managed by ArgoCD
+        argocd.argoproj.io/instance: my-app
+  
+  metricsConfig:
+    provider: prometheus
+    rollingWindow: 24h
+    percentile: P90
+    safetyFactor: 1.2
+  
+  resourceBounds:
+    cpu:
+      min: "100m"
+      max: "4000m"
+    memory:
+      min: "128Mi"
+      max: "8Gi"
+  
+  updateStrategy:
+    allowInPlaceResize: true
+    allowRecreate: false
+    updateRequestsOnly: true
+    # SSA is essential for ArgoCD compatibility
+    useServerSideApply: true
+  
+  reconciliationInterval: 5m
+
+---
+# Example 4: Default behavior (SSA enabled implicitly)
+#
+# When useServerSideApply is not specified, it defaults to true.
+# This is the recommended approach for most use cases.
+#
+apiVersion: optipod.optipod.io/v1alpha1
+kind: OptimizationPolicy
+metadata:
+  name: default-behavior
+  namespace: default
+spec:
+  mode: Auto
+  
+  selector:
+    namespaceSelector:
+      matchLabels:
+        optimize: "true"
+  
+  metricsConfig:
+    provider: prometheus
+    rollingWindow: 24h
+    percentile: P90
+    safetyFactor: 1.2
+  
+  resourceBounds:
+    cpu:
+      min: "100m"
+      max: "4000m"
+    memory:
+      min: "128Mi"
+      max: "8Gi"
+  
+  updateStrategy:
+    allowInPlaceResize: true
+    allowRecreate: false
+    updateRequestsOnly: true
+    # useServerSideApply not specified - defaults to true
   
   reconciliationInterval: 5m

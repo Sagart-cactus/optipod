@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: concurrent-fix-test
+  namespace: default
+  labels:
+    optimize: "true"
+    test-type: "concurrent-fix"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: concurrent-fix-test
+  template:
+    metadata:
+      labels:
+        app: concurrent-fix-test
+        optimize: "true"
+        test-type: "concurrent-fix"
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:alpine
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "200m"
+            memory: "256Mi"
+        ports:
+        - containerPort: 80

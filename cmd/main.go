@@ -245,6 +245,8 @@ func main() {
 			Type:             metrics.ProviderTypeMetricsServer,
 			Clientset:        clientset,
 			MetricsClientset: metricsClientset,
+			MaxSamples:       operatorConfig.GetMetricsMaxSamples(),
+			SampleInterval:   operatorConfig.GetMetricsSampleInterval(),
 		})
 	default:
 		// Default to metrics-server with fallback
@@ -254,6 +256,8 @@ func main() {
 			Type:             metrics.ProviderTypeMetricsServer,
 			Clientset:        clientset,
 			MetricsClientset: metricsClientset,
+			MaxSamples:       operatorConfig.GetMetricsMaxSamples(),
+			SampleInterval:   operatorConfig.GetMetricsSampleInterval(),
 		})
 	}
 
@@ -273,6 +277,7 @@ func main() {
 		metricsProvider,
 		recommendationEngine,
 		applicationEngine,
+		mgr.GetClient(),
 	)
 
 	// Create event recorder

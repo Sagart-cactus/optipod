@@ -32,7 +32,7 @@ var _ = Describe("Artifact Generation Property Tests", func() {
 
 	BeforeEach(func() {
 		ctx = context.Background()
-		testNamespace = fmt.Sprintf("artifact-test-%d", time.Now().Unix())
+		testNamespace = fmt.Sprintf("artifact-test-%d-%d", time.Now().Unix(), time.Now().UnixNano()%1000000)
 
 		// Create test namespace
 		err := createTestNamespace(ctx, k8sClient, testNamespace)
@@ -82,6 +82,11 @@ var _ = Describe("Artifact Generation Property Tests", func() {
 				})
 
 				By("Creating test resources to generate artifacts")
+
+				// Skip if CRDs are not available
+				if !isCRDAvailable(ctx, k8sClient) {
+					Skip("OptimizationPolicy CRD not available - skipping integration test")
+				}
 
 				// Create a policy to generate some activity
 				policyConfig := helpers.PolicyConfig{

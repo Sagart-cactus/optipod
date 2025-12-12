@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: memory-unsafe-decrease-test
+  namespace: default
+  labels:
+    optimize: "true"
+    memory-safety-test: "unsafe-decrease"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: memory-unsafe-decrease-test
+  template:
+    metadata:
+      labels:
+        app: memory-unsafe-decrease-test
+        optimize: "true"
+        memory-safety-test: "unsafe-decrease"
+    spec:
+      containers:
+      - name: app
+        image: nginx:alpine
+        resources:
+          requests:
+            cpu: "500m"
+            memory: "1Gi"     # High current request
+          limits:
+            cpu: "1000m"
+            memory: "2Gi"     # High current limit - recommendations below this should be blocked
+        ports:
+        - containerPort: 80

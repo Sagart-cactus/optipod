@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bounds-below-min-test
+  namespace: default
+  labels:
+    optimize: "true"
+    bounds-test: "below-min"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bounds-below-min-test
+  template:
+    metadata:
+      labels:
+        app: bounds-below-min-test
+        optimize: "true"
+        bounds-test: "below-min"
+    spec:
+      containers:
+      - name: app
+        image: nginx:alpine
+        resources:
+          requests:
+            cpu: "50m"      # Very low - should be clamped to min (500m)
+            memory: "32Mi"  # Very low - should be clamped to min (512Mi)
+          limits:
+            cpu: "100m"
+            memory: "64Mi"
+        ports:
+        - containerPort: 80

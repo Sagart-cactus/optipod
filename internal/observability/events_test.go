@@ -296,5 +296,138 @@ func TestProperty_FailureEventCreation(t *testing.T) {
 	properties.TestingRun(t)
 }
 
+// TestSSAOwnershipTakenEvent tests the RecordSSAOwnershipTaken event creation
+func TestSSAOwnershipTakenEvent(t *testing.T) {
+	mockRecorder := &mockEventRecorder{}
+	eventRecorder := NewEventRecorder(mockRecorder)
+
+	testObj := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-pod",
+			Namespace: "test-namespace",
+		},
+	}
+
+	t.Run("with previous owner", func(t *testing.T) {
+		mockRecorder.events = nil // Reset events
+		eventRecorder.RecordSSAOwnershipTaken(testObj, "test-workload", "test-ns", "argocd")
+
+		if len(mockRecorder.events) != 1 {
+			t.Fatalf("expected 1 event, got %d", len(mockRecorder.events))
+		}
+
+		event := mockRecorder.events[0]
+
+		if event.eventType != corev1.EventTypeNormal {
+			t.Errorf("expected event type Normal, got %s", event.eventType)
+		}
+
+		if event.reason != EventReasonSSAOwnershipTaken {
+			t.Errorf("expected reason %s, got %s", EventReasonSSAOwnershipTaken, event.reason)
+		}
+
+		if !strings.Contains(event.message, "test-workload") {
+			t.Errorf("message should contain workload name")
+		}
+
+		if !strings.Contains(event.message, "test-ns") {
+			t.Errorf("message should contain namespace")
+		}
+
+		if !strings.Contains(event.message, "argocd") {
+			t.Errorf("message should contain previous owner")
+		}
+
+		if !strings.Contains(event.message, "Server-Side Apply") {
+			t.Errorf("message should mention Server-Side Apply")
+		}
+	})
+
+	t.Run("without previous owner", func(t *testing.T) {
+		mockRecorder.events = nil // Reset events
+		eventRecorder.RecordSSAOwnershipTaken(testObj, "test-workload", "test-ns", "")
+
+		if len(mockRecorder.events) != 1 {
+			t.Fatalf("expected 1 event, got %d", len(mockRecorder.events))
+		}
+
+		event := mockRecorder.events[0]
+
+		if event.eventType != corev1.EventTypeNormal {
+			t.Errorf("expected event type Normal, got %s", event.eventType)
+		}
+
+		if event.reason != EventReasonSSAOwnershipTaken {
+			t.Errorf("expected reason %s, got %s", EventReasonSSAOwnershipTaken, event.reason)
+		}
+
+		if !strings.Contains(event.message, "test-workload") {
+			t.Errorf("message should contain workload name")
+		}
+
+		if !strings.Contains(event.message, "test-ns") {
+			t.Errorf("message should contain namespace")
+		}
+
+		if strings.Contains(event.message, "previous owner") {
+			t.Errorf("message should not mention previous owner when empty")
+		}
+	})
+}
+
+// TestSSAConflictEvent tests the RecordSSAConflict event creation
+func TestSSAConflictEvent(t *testing.T) {
+	mockRecorder := &mockEventRecorder{}
+	eventRecorder := NewEventRecorder(mockRecorder)
+
+	testObj := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-pod",
+			Namespace: "test-namespace",
+		},
+	}
+
+	err := errors.New("field ownership conflict")
+	eventRecorder.RecordSSAConflict(testObj, "test-workload", "test-ns", "kubectl", err)
+
+	if len(mockRecorder.events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(mockRecorder.events))
+	}
+
+	event := mockRecorder.events[0]
+
+	if event.eventType != corev1.EventTypeWarning {
+		t.Errorf("expected event type Warning, got %s", event.eventType)
+	}
+
+	if event.reason != EventReasonSSAConflict {
+		t.Errorf("expected reason %s, got %s", EventReasonSSAConflict, event.reason)
+	}
+
+	if !strings.Contains(event.message, "test-workload") {
+		t.Errorf("message should contain workload name")
+	}
+
+	if !strings.Contains(event.message, "test-ns") {
+		t.Errorf("message should contain namespace")
+	}
+
+	if !strings.Contains(event.message, "kubectl") {
+		t.Errorf("message should contain conflicting manager")
+	}
+
+	if !strings.Contains(event.message, "field ownership conflict") {
+		t.Errorf("message should contain error message")
+	}
+
+	if !strings.Contains(event.message, "Suggestion:") {
+		t.Errorf("message should contain actionable suggestion")
+	}
+
+	if !strings.Contains(event.message, "Server-Side Apply") {
+		t.Errorf("message should mention Server-Side Apply")
+	}
+}
+
 // Ensure mockEventRecorder implements record.EventRecorder interface
 var _ record.EventRecorder = (*mockEventRecorder)(nil)

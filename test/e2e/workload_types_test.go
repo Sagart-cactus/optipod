@@ -104,6 +104,13 @@ var _ = Describe("Workload Types and Update Strategies", Ordered, func() {
 
 	Context("Deployment Workload Scenarios", func() {
 		It("should optimize Deployment resources correctly", func() {
+			ctx := context.Background()
+
+			// Skip if CRDs are not available
+			if !isCRDAvailable(ctx, k8sClient) {
+				Skip("OptimizationPolicy CRD not available - skipping integration test")
+			}
+
 			By("Creating a policy for Deployment optimization")
 			policyConfig := helpers.PolicyConfig{
 				Name: "deployment-optimization-policy",

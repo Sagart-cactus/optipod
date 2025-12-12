@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: limit-config-test
+  namespace: default
+  labels:
+    optimize: "true"
+    limit-config-test: "default"  # Will be modified for different tests
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: limit-config-test
+  template:
+    metadata:
+      labels:
+        app: limit-config-test
+        optimize: "true"
+        limit-config-test: "default"
+    spec:
+      containers:
+      - name: app
+        image: nginx:alpine
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "200m"
+            memory: "256Mi"
+        ports:
+        - containerPort: 80

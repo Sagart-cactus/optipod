@@ -1,0 +1,36 @@
+apiVersion: optipod.optipod.io/v1alpha1
+kind: OptimizationPolicy
+metadata:
+  name: dry-run-test-policy
+  namespace: optipod-system
+spec:
+  mode: Auto  # Use Auto mode to test dry-run override
+  selector:
+    namespaceSelector:
+      matchLabels:
+        environment: development
+    workloadSelector:
+      matchLabels:
+        optimize: "true"
+        dry-run-test: "true"
+  metricsConfig:
+    provider: metrics-server
+    rollingWindow: 5m
+    percentile: P90
+    safetyFactor: 1.0
+  resourceBounds:
+    cpu:
+      min: "50m"
+      max: "2000m"
+    memory:
+      min: "32Mi"
+      max: "4Gi"
+  updateStrategy:
+    allowInPlaceResize: true
+    allowRecreate: false
+    updateRequestsOnly: false  # Update both requests and limits
+    useServerSideApply: true
+    limitConfig:
+      cpuLimitMultiplier: 1.0
+      memoryLimitMultiplier: 1.0
+  reconciliationInterval: 1m

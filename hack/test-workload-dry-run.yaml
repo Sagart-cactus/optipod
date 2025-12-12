@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dry-run-test-workload
+  namespace: default
+  labels:
+    optimize: "true"
+    dry-run-test: "true"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dry-run-test-workload
+  template:
+    metadata:
+      labels:
+        app: dry-run-test-workload
+        optimize: "true"
+        dry-run-test: "true"
+    spec:
+      containers:
+      - name: app
+        image: nginx:alpine
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "200m"
+            memory: "256Mi"
+        ports:
+        - containerPort: 80

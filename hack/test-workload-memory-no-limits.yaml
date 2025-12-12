@@ -1,0 +1,30 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: memory-no-limits-test
+  namespace: default
+  labels:
+    optimize: "true"
+    memory-safety-test: "no-limits"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: memory-no-limits-test
+  template:
+    metadata:
+      labels:
+        app: memory-no-limits-test
+        optimize: "true"
+        memory-safety-test: "no-limits"
+    spec:
+      containers:
+      - name: app
+        image: nginx:alpine
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"   # Only requests, no limits
+          # No limits defined - should always be safe to decrease
+        ports:
+        - containerPort: 80

@@ -67,10 +67,10 @@ spec:
           - --health-probe-bind-address=:8081
           - --metrics-bind-address=:8080
           # OptiPod-specific configuration
-          - --metrics-provider=prometheus
+          - --metrics-provider=metrics-server
           - --prometheus-url=http://prometheus-k8s.monitoring.svc:9090
           - --dry-run=false
-          - --reconciliation-interval=5m
+          - --reconciliation-interval=1m
         image: controller:latest
         name: manager
         ports:

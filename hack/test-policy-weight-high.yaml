@@ -1,0 +1,37 @@
+apiVersion: optipod.optipod.io/v1alpha1
+kind: OptimizationPolicy
+metadata:
+  name: high-priority-policy
+  namespace: optipod-system
+spec:
+  mode: Auto
+  weight: 200  # High priority
+  selector:
+    namespaceSelector:
+      matchLabels:
+        environment: development
+    workloadSelector:
+      matchLabels:
+        optimize: "true"
+        test-type: "weight-test"
+  metricsConfig:
+    provider: metrics-server
+    rollingWindow: 5m
+    percentile: P90
+    safetyFactor: 1.0
+  resourceBounds:
+    cpu:
+      min: "50m"
+      max: "1000m"
+    memory:
+      min: "32Mi"
+      max: "1Gi"
+  updateStrategy:
+    allowInPlaceResize: true
+    allowRecreate: false
+    updateRequestsOnly: false
+    useServerSideApply: true
+    limitConfig:
+      cpuLimitMultiplier: 1.5    # Aggressive optimization
+      memoryLimitMultiplier: 1.8
+  reconciliationInterval: 3m

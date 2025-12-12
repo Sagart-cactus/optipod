@@ -1,0 +1,26 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: workload-no-resources-test
+  namespace: default
+  labels:
+    optimize: "true"
+    error-test: "no-resources"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: workload-no-resources-test
+  template:
+    metadata:
+      labels:
+        app: workload-no-resources-test
+        optimize: "true"
+        error-test: "no-resources"
+    spec:
+      containers:
+      - name: app
+        image: nginx:alpine
+        # No resources specified - should trigger error handling
+        ports:
+        - containerPort: 80

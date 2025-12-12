@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: update-strategy-test
+  namespace: default
+  labels:
+    optimize: "true"
+    update-strategy-test: "ssa"  # Will be modified for different tests
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: update-strategy-test
+  template:
+    metadata:
+      labels:
+        app: update-strategy-test
+        optimize: "true"
+        update-strategy-test: "ssa"
+    spec:
+      containers:
+      - name: app
+        image: nginx:alpine
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "200m"
+            memory: "256Mi"
+        ports:
+        - containerPort: 80

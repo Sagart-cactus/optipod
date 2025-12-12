@@ -1,0 +1,35 @@
+apiVersion: optipod.optipod.io/v1alpha1
+kind: OptimizationPolicy
+metadata:
+  name: memory-safe-decrease-test
+  namespace: optipod-system
+spec:
+  mode: Auto  # Use Auto mode to test actual apply decisions
+  selector:
+    namespaceSelector:
+      matchLabels:
+        environment: development
+    workloadSelector:
+      matchLabels:
+        optimize: "true"
+        memory-safety-test: "safe-decrease"
+  metricsConfig:
+    provider: metrics-server
+    rollingWindow: 5m
+    percentile: P90
+    safetyFactor: 1.0  # No safety factor for predictable results
+  resourceBounds:
+    cpu:
+      min: "50m"
+      max: "2000m"
+    memory:
+      min: "32Mi"      # Low minimum to allow decrease recommendations
+      max: "4Gi"
+  updateStrategy:
+    allowInPlaceResize: true
+    allowRecreate: false
+    updateRequestsOnly: false  # Update both requests and limits
+    limitConfig:
+      cpuLimitMultiplier: 1.0
+      memoryLimitMultiplier: 1.0  # Keep limits equal to requests for testing
+  reconciliationInterval: 1m

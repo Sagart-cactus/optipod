@@ -1,0 +1,32 @@
+apiVersion: optipod.optipod.io/v1alpha1
+kind: OptimizationPolicy
+metadata:
+  name: bounds-within-test
+  namespace: optipod-system
+spec:
+  mode: Recommend
+  selector:
+    namespaceSelector:
+      matchLabels:
+        environment: development
+    workloadSelector:
+      matchLabels:
+        optimize: "true"
+        bounds-test: "within"
+  metricsConfig:
+    provider: metrics-server
+    rollingWindow: 5m
+    percentile: P90
+    safetyFactor: 1.0  # No safety factor to get predictable values
+  resourceBounds:
+    cpu:
+      min: "100m"      # 100 millicores
+      max: "1000m"     # 1 core
+    memory:
+      min: "128Mi"     # 128 MiB
+      max: "1Gi"       # 1 GiB
+  updateStrategy:
+    allowInPlaceResize: true
+    allowRecreate: false
+    updateRequestsOnly: true
+  reconciliationInterval: 1m
