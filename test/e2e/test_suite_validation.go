@@ -562,7 +562,7 @@ func (result *ValidationResult) PrintValidationReport() {
 
 	const (
 		statusHealthy   = "✅"
-		statusDegraded = "⚠️"
+		statusDegraded  = "⚠️"
 		statusUnhealthy = "❌"
 	)
 

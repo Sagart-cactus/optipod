@@ -145,7 +145,7 @@ var _ = Describe("Test Coverage Validation", func() {
 			// Get the current working directory to determine correct paths
 			wd, err := os.Getwd()
 			Expect(err).NotTo(HaveOccurred())
-			
+
 			var helperFiles []string
 			if strings.HasSuffix(wd, "test/e2e") {
 				// Running from test/e2e directory

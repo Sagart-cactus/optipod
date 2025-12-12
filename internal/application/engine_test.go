@@ -1661,9 +1661,9 @@ func TestProperty_LimitMultipliersAppliedCorrectly(t *testing.T) {
 			// Calculate expected limits
 			cpuLimit, memoryLimit := engine.calculateLimits(rec, policy)
 
-			// Verify CPU limit matches the calculation (using Value() like multiplyQuantity does)
-			expectedCPUValue := int64(float64(rec.CPU.Value()) * cpuMult)
-			if cpuLimit.Value() != expectedCPUValue {
+			// Verify CPU limit matches the calculation (CPU uses MilliValue for DecimalSI format)
+			expectedCPUMilliValue := int64(float64(rec.CPU.MilliValue()) * cpuMult)
+			if cpuLimit.MilliValue() != expectedCPUMilliValue {
 				return false
 			}
 
@@ -1860,11 +1860,12 @@ func TestProperty_MultiplierBoundsHandled(t *testing.T) {
 			// Calculate limits - should not panic or error
 			cpuLimit, memoryLimit := engine.calculateLimits(rec, policy)
 
-			// Verify limits are calculated correctly (using Value() like multiplyQuantity does)
-			expectedCPUValue := int64(float64(rec.CPU.Value()) * cpuMult)
+			// Verify limits are calculated correctly
+			// CPU uses MilliValue() for DecimalSI format, Memory uses Value() for BinarySI format
+			expectedCPUMilliValue := int64(float64(rec.CPU.MilliValue()) * cpuMult)
 			expectedMemValue := int64(float64(rec.Memory.Value()) * memMult)
 
-			return cpuLimit.Value() == expectedCPUValue && memoryLimit.Value() == expectedMemValue
+			return cpuLimit.MilliValue() == expectedCPUMilliValue && memoryLimit.Value() == expectedMemValue
 		},
 		gen.Int64Range(100, 4000),
 		gen.Int64Range(128, 8192),
