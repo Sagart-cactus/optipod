@@ -26,6 +26,13 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+const (
+	// TestWorkloadName is the default workload name used in tests
+	TestWorkloadName = "test-workload"
+	// DefaultNamespace is the default namespace used in tests
+	DefaultNamespace = "default"
+)
+
 // Feature: server-side-apply-support, Property 1: Configuration determines patch method
 // Validates: Requirements 2.2, 2.3
 func TestProperty_ConfigurationDeterminesPatchMethod(t *testing.T) {
@@ -37,13 +44,13 @@ func TestProperty_ConfigurationDeterminesPatchMethod(t *testing.T) {
 			policy := &OptimizationPolicy{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "test-policy",
-					Namespace: "default",
+					Namespace: DefaultNamespace,
 				},
 				Spec: OptimizationPolicySpec{
 					Mode: ModeAuto,
 					Selector: WorkloadSelector{
 						Namespaces: &NamespaceFilter{
-							Allow: []string{"default"},
+							Allow: []string{DefaultNamespace},
 						},
 					},
 					MetricsConfig: MetricsConfig{
@@ -97,7 +104,7 @@ func TestProperty_DefaultToSSAWhenUnspecified(t *testing.T) {
 				policyName = "test-policy"
 			}
 			if namespace == "" {
-				namespace = "default"
+				namespace = DefaultNamespace
 			}
 
 			// Create a policy without setting useServerSideApply (nil)
@@ -161,10 +168,10 @@ func TestProperty_StatusTracksApplyMethod(t *testing.T) {
 		func(workloadName string, namespace string, kind string) bool {
 			// Ensure non-empty strings and valid kind
 			if workloadName == "" {
-				workloadName = "test-workload"
+				workloadName = TestWorkloadName
 			}
 			if namespace == "" {
-				namespace = "default"
+				namespace = DefaultNamespace
 			}
 			validKinds := []string{"Deployment", "StatefulSet", "DaemonSet"}
 			if kind == "" || !contains(validKinds, kind) {
@@ -200,10 +207,10 @@ func TestProperty_StatusTracksApplyMethod(t *testing.T) {
 		func(workloadName string, namespace string, kind string) bool {
 			// Ensure non-empty strings and valid kind
 			if workloadName == "" {
-				workloadName = "test-workload"
+				workloadName = TestWorkloadName
 			}
 			if namespace == "" {
-				namespace = "default"
+				namespace = DefaultNamespace
 			}
 			validKinds := []string{"Deployment", "StatefulSet", "DaemonSet"}
 			if kind == "" || !contains(validKinds, kind) {
@@ -239,10 +246,10 @@ func TestProperty_StatusTracksApplyMethod(t *testing.T) {
 		func(useSSA bool, workloadName string, namespace string) bool {
 			// Ensure non-empty strings
 			if workloadName == "" {
-				workloadName = "test-workload"
+				workloadName = TestWorkloadName
 			}
 			if namespace == "" {
-				namespace = "default"
+				namespace = DefaultNamespace
 			}
 
 			// Create a workload status based on the apply method

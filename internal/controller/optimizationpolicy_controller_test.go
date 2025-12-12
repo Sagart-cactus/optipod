@@ -264,7 +264,8 @@ var _ = Describe("OptimizationPolicy Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			// Verify that requeue is set with the correct interval
-			Expect(result.RequeueAfter).To(Equal(2 * time.Minute))
+			// In Recommend mode, the requeue interval is doubled
+			Expect(result.RequeueAfter).To(Equal(4 * time.Minute))
 
 			// Clean up
 			Expect(k8sClient.Delete(ctx, policy)).Should(Succeed())

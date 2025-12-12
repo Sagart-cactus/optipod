@@ -560,13 +560,19 @@ func (result *ValidationResult) PrintValidationReport() {
 	fmt.Printf("Timestamp: %s\n", result.Timestamp.Format(time.RFC3339))
 	fmt.Printf("Overall Health: %s\n\n", result.OverallHealth)
 
+	const (
+		statusHealthy   = "✅"
+		statusDegraded = "⚠️"
+		statusUnhealthy = "❌"
+	)
+
 	fmt.Printf("Component Health:\n")
 	for component, health := range result.ComponentHealth {
-		status := "✅"
+		status := statusHealthy
 		if health == HealthStatusDegraded {
-			status = "⚠️"
+			status = statusDegraded
 		} else if health == HealthStatusUnhealthy {
-			status = "❌"
+			status = statusUnhealthy
 		}
 		fmt.Printf("  %s %s: %s\n", status, component, health)
 	}

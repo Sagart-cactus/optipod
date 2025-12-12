@@ -39,6 +39,11 @@ import (
 	"github.com/optipod/optipod/internal/recommendation"
 )
 
+const (
+	// FieldManagerName is the field manager name used by optipod
+	FieldManagerName = "optipod"
+)
+
 // mockDiscoveryClient is a mock implementation of discovery.DiscoveryInterface
 type mockDiscoveryClient struct {
 	discovery.DiscoveryInterface
@@ -1092,7 +1097,7 @@ func TestProperty_SSAFieldManager(t *testing.T) {
 			}
 
 			// Verify field manager is "optipod"
-			if capturedPatchOptions.FieldManager != "optipod" {
+			if capturedPatchOptions.FieldManager != FieldManagerName {
 				return false
 			}
 
@@ -1593,7 +1598,7 @@ func TestProperty_SSALoggingIncludesFieldManager(t *testing.T) {
 
 			// Verify that the patch was applied with correct field manager
 			// This indirectly verifies that logging would have included these values
-			if capturedPatchOptions.FieldManager != "optipod" {
+			if capturedPatchOptions.FieldManager != FieldManagerName {
 				return false
 			}
 

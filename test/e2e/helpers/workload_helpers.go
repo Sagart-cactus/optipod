@@ -15,6 +15,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+const (
+	// DefaultNginxImage is the default nginx image used in tests
+	DefaultNginxImage = "nginx:1.25-alpine"
+)
+
 // WorkloadHelper provides utilities for managing workload resources in tests
 type WorkloadHelper struct {
 	client    client.Client
@@ -253,7 +258,7 @@ func (h *WorkloadHelper) buildContainers(config WorkloadConfig) []corev1.Contain
 		// Default single container
 		image := config.Image
 		if image == "" {
-			image = "nginx:1.25-alpine"
+			image = DefaultNginxImage
 		}
 
 		container := corev1.Container{
@@ -280,7 +285,7 @@ func (h *WorkloadHelper) buildContainers(config WorkloadConfig) []corev1.Contain
 		}
 
 		// Add volume mounts for nginx
-		if image == "nginx:1.25-alpine" {
+		if image == DefaultNginxImage {
 			container.VolumeMounts = []corev1.VolumeMount{
 				{
 					Name:      "cache",
@@ -306,10 +311,10 @@ func (h *WorkloadHelper) buildVolumes(config WorkloadConfig) []corev1.Volume {
 	// Add volumes for nginx if using nginx image
 	image := config.Image
 	if image == "" {
-		image = "nginx:1.25-alpine"
+		image = DefaultNginxImage
 	}
 
-	if image == "nginx:1.25-alpine" {
+	if image == DefaultNginxImage {
 		volumes = append(volumes, []corev1.Volume{
 			{
 				Name: "cache",

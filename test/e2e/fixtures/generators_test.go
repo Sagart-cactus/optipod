@@ -7,6 +7,11 @@ import (
 	"github.com/optipod/optipod/test/e2e/helpers"
 )
 
+const (
+	// TrueString represents the string "true" used in labels and comparisons
+	TrueString = "true"
+)
+
 func TestPolicyConfigGenerator(t *testing.T) {
 	generator := NewPolicyConfigGenerator()
 
@@ -193,7 +198,7 @@ func TestWorkloadConfigGenerator(t *testing.T) {
 			}
 		}
 
-		if config.Labels["multi-container"] != "true" {
+		if config.Labels["multi-container"] != TrueString {
 			t.Error("Expected multi-container label to be true")
 		}
 
@@ -279,7 +284,7 @@ func TestTestScenarioGenerator(t *testing.T) {
 			t.Errorf("Expected policy mode Auto, got %s", policy.Mode)
 		}
 
-		if workload.Labels["auto-update"] != "true" {
+		if workload.Labels["auto-update"] != TrueString {
 			t.Error("Expected auto-update label for Auto mode")
 		}
 	})
@@ -291,7 +296,7 @@ func TestTestScenarioGenerator(t *testing.T) {
 			t.Errorf("Expected policy mode Recommend, got %s", policy.Mode)
 		}
 
-		if workload.Labels["test-bounds"] != "true" {
+		if workload.Labels["test-bounds"] != TrueString {
 			t.Error("Expected test-bounds label")
 		}
 	})

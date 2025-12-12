@@ -158,7 +158,8 @@ var _ = Describe("Integration Tests", func() {
 				},
 			})
 			Expect(err).NotTo(HaveOccurred())
-			Expect(result.RequeueAfter).To(Equal(1 * time.Minute))
+			// In Recommend mode, the requeue interval is doubled
+			Expect(result.RequeueAfter).To(Equal(2 * time.Minute))
 
 			// Verify policy status is updated
 			Eventually(func() bool {

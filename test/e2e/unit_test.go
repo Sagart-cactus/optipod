@@ -14,7 +14,11 @@ func TestCoverageValidatorUnit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tempDir)
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			t.Logf("Failed to clean up temp dir: %v", err)
+		}
+	}()
 
 	validator := &CoverageValidator{
 		RequirementsFile: filepath.Join(tempDir, "requirements.md"),

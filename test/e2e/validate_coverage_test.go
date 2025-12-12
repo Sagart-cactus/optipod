@@ -49,8 +49,8 @@ var _ = Describe("Test Coverage Validation", func() {
 
 			// Validate coverage thresholds
 			Expect(report.CoveragePercent).To(BeNumerically(">=", 70), "Test coverage should be at least 70%")
-			Expect(len(report.Requirements)).To(BeNumerically(">", 0), "Should have parsed requirements")
-			Expect(len(report.Properties)).To(BeNumerically(">", 0), "Should have parsed properties")
+			Expect(report.Requirements).ToNot(BeEmpty(), "Should have parsed requirements")
+			Expect(report.Properties).ToNot(BeEmpty(), "Should have parsed properties")
 			Expect(len(report.TestFiles)).To(BeNumerically(">", 5), "Should have multiple test files")
 		})
 
