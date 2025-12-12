@@ -57,14 +57,10 @@ var _ = Describe("Observability and Metrics", Ordered, func() {
 
 		// Create test namespace
 		By("creating test namespace for observability tests")
-		cmd := exec.Command("kubectl", "create", "ns", testNamespace)
-		_, err := utils.Run(cmd)
-		Expect(err).NotTo(HaveOccurred(), "Failed to create test namespace")
-
-		// Label the namespace for policy selection
-		cmd = exec.Command("kubectl", "label", "ns", testNamespace, "observability-test=true")
-		_, err = utils.Run(cmd)
-		Expect(err).NotTo(HaveOccurred(), "Failed to label test namespace")
+		err := createTestNamespace(context.Background(), k8sClient, testNamespace)
+		if err != nil && !strings.Contains(err.Error(), "already exists") {
+			Expect(err).NotTo(HaveOccurred(), "Failed to create test namespace")
+		}
 
 		// Track namespace for cleanup
 		cleanupHelper.TrackResource(helpers.ResourceRef{

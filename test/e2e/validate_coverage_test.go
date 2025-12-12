@@ -142,11 +142,27 @@ var _ = Describe("Test Coverage Validation", func() {
 		})
 
 		It("should validate helper components exist", func() {
-			helperFiles := []string{
-				"helpers/policy_helpers.go",
-				"helpers/workload_helpers.go",
-				"helpers/validation_helpers.go",
-				"helpers/cleanup_helpers.go",
+			// Get the current working directory to determine correct paths
+			wd, err := os.Getwd()
+			Expect(err).NotTo(HaveOccurred())
+			
+			var helperFiles []string
+			if strings.HasSuffix(wd, "test/e2e") {
+				// Running from test/e2e directory
+				helperFiles = []string{
+					"helpers/policy_helpers.go",
+					"helpers/workload_helpers.go",
+					"helpers/validation_helpers.go",
+					"helpers/cleanup_helpers.go",
+				}
+			} else {
+				// Running from project root
+				helperFiles = []string{
+					"test/e2e/helpers/policy_helpers.go",
+					"test/e2e/helpers/workload_helpers.go",
+					"test/e2e/helpers/validation_helpers.go",
+					"test/e2e/helpers/cleanup_helpers.go",
+				}
 			}
 
 			for _, helper := range helperFiles {

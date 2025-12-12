@@ -401,6 +401,18 @@ func (h *ValidationHelper) ValidateErrorHandling(err error, expectedErrorType st
 		if !strings.Contains(err.Error(), "permanent") && !strings.Contains(err.Error(), "invalid") && !strings.Contains(err.Error(), "configuration") {
 			return fmt.Errorf("expected permanent error but got: %s", err.Error())
 		}
+	case "missing_selector":
+		if !strings.Contains(err.Error(), "selector") {
+			return fmt.Errorf("expected selector error but got: %s", err.Error())
+		}
+	case "invalid_safety_factor":
+		if !strings.Contains(err.Error(), "safety factor") && !strings.Contains(err.Error(), "safety") {
+			return fmt.Errorf("expected safety factor error but got: %s", err.Error())
+		}
+	case "zero_resource":
+		if !strings.Contains(err.Error(), "greater than zero") && !strings.Contains(err.Error(), "zero") {
+			return fmt.Errorf("expected zero resource error but got: %s", err.Error())
+		}
 	case "unknown_error":
 		// For unknown errors, just validate that we got an error
 		return nil
