@@ -86,6 +86,35 @@ test-e2e: setup-test-e2e manifests generate fmt vet ## Run the e2e tests. Expect
 	KIND=$(KIND) KIND_CLUSTER=$(KIND_CLUSTER) go test -tags=e2e ./test/e2e/ -v -ginkgo.v
 	$(MAKE) cleanup-test-e2e
 
+.PHONY: test-e2e-enhanced
+test-e2e-enhanced: setup-test-e2e manifests generate fmt vet ## Run enhanced e2e tests with reporting and parallel execution.
+	@echo "Running enhanced e2e tests with focus: $(E2E_TEST_FOCUS)"
+	KIND=$(KIND) KIND_CLUSTER=$(KIND_CLUSTER) go test -tags=e2e ./test/e2e/ \
+		-v -ginkgo.v \
+		-ginkgo.focus="$(E2E_TEST_FOCUS)" \
+		-ginkgo.junit-report="$(GINKGO_JUNIT_REPORT_FILE)" \
+		-ginkgo.json-report="$(GINKGO_JSON_REPORT_FILE)" \
+		-ginkgo.procs=$(E2E_PARALLEL_NODES) \
+		-timeout=$(E2E_TEST_TIMEOUT)
+
+.PHONY: test-e2e-parallel
+test-e2e-parallel: setup-test-e2e manifests generate fmt vet ## Run e2e tests in parallel with specified number of nodes.
+	KIND=$(KIND) KIND_CLUSTER=$(KIND_CLUSTER) go test -tags=e2e ./test/e2e/ \
+		-v -ginkgo.v \
+		-ginkgo.procs=$(or $(E2E_PARALLEL_NODES),4) \
+		-timeout=$(or $(E2E_TEST_TIMEOUT),30m)
+	$(MAKE) cleanup-test-e2e
+
+.PHONY: test-e2e-with-reports
+test-e2e-with-reports: setup-test-e2e manifests generate fmt vet ## Run e2e tests with comprehensive reporting.
+	@mkdir -p test-artifacts/reports test-artifacts/logs
+	KIND=$(KIND) KIND_CLUSTER=$(KIND_CLUSTER) go test -tags=e2e ./test/e2e/ \
+		-v -ginkgo.v \
+		-ginkgo.junit-report="test-artifacts/reports/junit-e2e.xml" \
+		-ginkgo.json-report="test-artifacts/reports/report-e2e.json" \
+		-coverprofile=test-artifacts/reports/coverage-e2e.out
+	$(MAKE) cleanup-test-e2e
+
 .PHONY: cleanup-test-e2e
 cleanup-test-e2e: ## Tear down the Kind cluster used for e2e tests
 	@$(KIND) delete cluster --name $(KIND_CLUSTER)

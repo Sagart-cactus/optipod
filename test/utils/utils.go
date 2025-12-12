@@ -25,6 +25,13 @@ import (
 	"strings"
 
 	. "github.com/onsi/ginkgo/v2" // nolint:revive,staticcheck
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	optipodv1alpha1 "github.com/optipod/optipod/api/v1alpha1"
 )
 
 const (
@@ -223,4 +230,117 @@ func UncommentCode(filename, target, prefix string) error {
 	}
 
 	return nil
+}
+
+// InstallMetricsServer installs the metrics-server for Kind clusters
+func InstallMetricsServer() error {
+	// Install metrics-server
+	cmd := exec.Command("kubectl", "apply", "-f",
+		"https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml")
+	if _, err := Run(cmd); err != nil {
+		return fmt.Errorf("failed to install metrics-server: %w", err)
+	}
+
+	// Patch metrics-server to work with Kind and reduce scrape interval for faster tests
+	// --kubelet-insecure-tls: disable TLS verification for Kind
+	// --metric-resolution=15s: reduce scrape interval from 60s to 15s for faster test feedback
+	patchJSON := `[
+		{"op":"add","path":"/spec/template/spec/containers/0/args/-","value":"--kubelet-insecure-tls"},
+		{"op":"add","path":"/spec/template/spec/containers/0/args/-","value":"--metric-resolution=15s"}
+	]`
+	cmd = exec.Command("kubectl", "patch", "deployment", "metrics-server",
+		"-n", "kube-system",
+		"--type=json",
+		"-p", patchJSON)
+	if _, err := Run(cmd); err != nil {
+		return fmt.Errorf("failed to patch metrics-server: %w", err)
+	}
+
+	// Wait for metrics-server to be ready
+	cmd = exec.Command("kubectl", "wait", "deployment.apps/metrics-server",
+		"--for", "condition=Available",
+		"--namespace", "kube-system",
+		"--timeout", "3m")
+	if _, err := Run(cmd); err != nil {
+		return fmt.Errorf("failed waiting for metrics-server: %w", err)
+	}
+
+	return nil
+}
+
+// UninstallMetricsServer uninstalls the metrics-server
+func UninstallMetricsServer() {
+	cmd := exec.Command("kubectl", "delete", "-f",
+		"https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml")
+	if _, err := Run(cmd); err != nil {
+		warnError(err)
+	}
+}
+
+// IsMetricsServerInstalled checks if metrics-server is installed
+func IsMetricsServerInstalled() bool {
+	cmd := exec.Command("kubectl", "get", "deployment", "metrics-server", "-n", "kube-system")
+	_, err := Run(cmd)
+	return err == nil
+}
+
+// GetK8sClient returns a Kubernetes client for testing
+func GetK8sClient() (client.Client, error) {
+	// Get kubeconfig
+	config, err := getKubeConfig()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get kubeconfig: %w", err)
+	}
+
+	// Add OptipPod scheme
+	err = optipodv1alpha1.AddToScheme(scheme.Scheme)
+	if err != nil {
+		return nil, fmt.Errorf("failed to add OptipPod scheme: %w", err)
+	}
+
+	// Create client
+	k8sClient, err := client.New(config, client.Options{Scheme: scheme.Scheme})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create Kubernetes client: %w", err)
+	}
+
+	return k8sClient, nil
+}
+
+// GetK8sClientset returns a Kubernetes clientset for testing
+func GetK8sClientset() (kubernetes.Interface, error) {
+	// Get kubeconfig
+	config, err := getKubeConfig()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get kubeconfig: %w", err)
+	}
+
+	// Create clientset
+	clientset, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create Kubernetes clientset: %w", err)
+	}
+
+	return clientset, nil
+}
+
+// getKubeConfig returns the Kubernetes configuration
+func getKubeConfig() (*rest.Config, error) {
+	// Try in-cluster config first
+	if config, err := rest.InClusterConfig(); err == nil {
+		return config, nil
+	}
+
+	// Fall back to kubeconfig file
+	kubeconfig := os.Getenv("KUBECONFIG")
+	if kubeconfig == "" {
+		kubeconfig = clientcmd.RecommendedHomeFile
+	}
+
+	config, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build config from kubeconfig: %w", err)
+	}
+
+	return config, nil
 }

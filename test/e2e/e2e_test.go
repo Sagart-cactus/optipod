@@ -335,7 +335,7 @@ spec:
 				output, err := utils.Run(cmd)
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(output).To(Equal("True"), "Policy should be ready")
-			}, 2*time.Minute).Should(Succeed())
+			}, 4*time.Minute, 5*time.Second).Should(Succeed())
 		})
 
 		It("should deploy sample workloads and discover them", func() {
@@ -378,6 +378,16 @@ spec:
           runAsUser: 101
           seccompProfile:
             type: RuntimeDefault
+        volumeMounts:
+        - name: cache
+          mountPath: /var/cache/nginx
+        - name: run
+          mountPath: /var/run
+      volumes:
+      - name: cache
+        emptyDir: {}
+      - name: run
+        emptyDir: {}
 `
 			cmd := exec.Command("kubectl", "apply", "-f", "-")
 			cmd.Stdin = strings.NewReader(deploymentYAML)
@@ -400,7 +410,15 @@ spec:
 				output, err := utils.Run(cmd)
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(output).To(ContainSubstring("test-nginx"), "Workload should be discovered")
-			}, 3*time.Minute).Should(Succeed())
+			}, 5*time.Minute, 10*time.Second).Should(Succeed())
+
+			By("waiting for metrics to be available for the pod")
+			Eventually(func(g Gomega) {
+				cmd := exec.Command("kubectl", "top", "pod", "-n", "test-workloads", "-l", "app=nginx")
+				output, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(output).To(ContainSubstring("test-nginx"), "Pod metrics should be available")
+			}, 2*time.Minute, 10*time.Second).Should(Succeed())
 		})
 
 		It("should generate recommendations in Recommend mode", func() {
@@ -512,6 +530,16 @@ spec:
           runAsUser: 101
           seccompProfile:
             type: RuntimeDefault
+        volumeMounts:
+        - name: cache
+          mountPath: /var/cache/nginx
+        - name: run
+          mountPath: /var/run
+      volumes:
+      - name: cache
+        emptyDir: {}
+      - name: run
+        emptyDir: {}
 `
 			cmd = exec.Command("kubectl", "apply", "-f", "-")
 			cmd.Stdin = strings.NewReader(deploymentYAML)
@@ -535,6 +563,14 @@ spec:
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(output).To(ContainSubstring("test-auto-nginx"))
 			}, 3*time.Minute).Should(Succeed())
+
+			By("waiting for metrics to be available for the auto-update pod")
+			Eventually(func(g Gomega) {
+				cmd := exec.Command("kubectl", "top", "pod", "-n", "test-workloads", "-l", "app=auto-nginx")
+				output, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(output).To(ContainSubstring("test-auto-nginx"), "Pod metrics should be available")
+			}, 2*time.Minute, 10*time.Second).Should(Succeed())
 
 			By("verifying recommendations are applied (lastApplied timestamp exists)")
 			Eventually(func(g Gomega) {
@@ -619,11 +655,38 @@ spec:
           runAsUser: 101
           seccompProfile:
             type: RuntimeDefault
+        volumeMounts:
+        - name: cache
+          mountPath: /var/cache/nginx
+        - name: run
+          mountPath: /var/run
+      volumes:
+      - name: cache
+        emptyDir: {}
+      - name: run
+        emptyDir: {}
 `
 			cmd = exec.Command("kubectl", "apply", "-f", "-")
 			cmd.Stdin = strings.NewReader(deploymentYAML)
 			_, err = utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred(), "Failed to create bounds test deployment")
+
+			By("waiting for the deployment to be ready")
+			Eventually(func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "deployment", "test-bounds-app",
+					"-n", "test-workloads", "-o", "jsonpath={.status.readyReplicas}")
+				output, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(output).To(Equal("1"))
+			}, 2*time.Minute).Should(Succeed())
+
+			By("waiting for metrics to be available for the bounds test pod")
+			Eventually(func(g Gomega) {
+				cmd := exec.Command("kubectl", "top", "pod", "-n", "test-workloads", "-l", "app=bounds-app")
+				output, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(output).To(ContainSubstring("test-bounds-app"), "Pod metrics should be available")
+			}, 2*time.Minute, 10*time.Second).Should(Succeed())
 
 			By("waiting for recommendations to be generated")
 			Eventually(func(g Gomega) {
@@ -648,7 +711,7 @@ spec:
 			Eventually(func(g Gomega) {
 				metricsOutput, err := getMetricsOutput()
 				g.Expect(err).NotTo(HaveOccurred(), "Failed to retrieve metrics")
-				
+
 				// Check for OptiPod-specific metrics
 				g.Expect(metricsOutput).To(ContainSubstring("optipod_workloads_monitored"),
 					"Should expose workloads monitored metric")
@@ -699,7 +762,7 @@ spec:
 			cmd := exec.Command("kubectl", "apply", "-f", "-")
 			cmd.Stdin = strings.NewReader(invalidPolicyYAML)
 			output, err := utils.Run(cmd)
-			
+
 			// Should fail validation
 			Expect(err).To(HaveOccurred(), "Invalid policy should be rejected")
 			Expect(output).To(ContainSubstring("min"), "Error should mention bounds validation")
@@ -777,6 +840,16 @@ spec:
           runAsUser: 101
           seccompProfile:
             type: RuntimeDefault
+        volumeMounts:
+        - name: cache
+          mountPath: /var/cache/nginx
+        - name: run
+          mountPath: /var/run
+      volumes:
+      - name: cache
+        emptyDir: {}
+      - name: run
+        emptyDir: {}
 `
 			cmd = exec.Command("kubectl", "apply", "-f", "-")
 			cmd.Stdin = strings.NewReader(deploymentYAML)
@@ -785,7 +858,7 @@ spec:
 
 			By("waiting and verifying no recommendations are generated")
 			time.Sleep(2 * time.Minute)
-			
+
 			cmd = exec.Command("kubectl", "get", "optimizationpolicy", "test-policy-disabled",
 				"-n", namespace, "-o", "jsonpath={.status.workloads}")
 			output, err := utils.Run(cmd)

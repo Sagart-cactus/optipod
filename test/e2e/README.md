@@ -1,245 +1,367 @@
-# End-to-End Tests for OptiPod
+# OptipPod E2E Test Suite
 
-This directory contains end-to-end (E2E) tests for the OptiPod Kubernetes operator.
+This directory contains OptipPod's comprehensive end-to-end (e2e) test suite that validates the complete functionality of the OptipPod controller in real Kubernetes environments.
 
-## Prerequisites
+## 🎯 Overview
 
-- **Kind** (Kubernetes in Docker): Used to create a local test cluster
-- **kubectl**: Kubernetes command-line tool
-- **Docker**: Required by Kind to run Kubernetes nodes
-- **Go 1.21+**: To run the test suite
+The e2e test suite provides comprehensive validation of OptipPod's functionality through:
 
-## Installation
+- **Policy Mode Validation**: Auto, Recommend, and Disabled mode behavior
+- **Resource Bounds Enforcement**: CPU and memory limit validation and clamping
+- **RBAC and Security**: Permission validation and security constraint compliance
+- **Error Handling**: Edge cases, invalid configurations, and failure scenarios
+- **Workload Support**: Deployments, StatefulSets, and DaemonSets
+- **Observability**: Metrics exposure, logging, and monitoring integration
+- **Property-Based Testing**: Universal properties validated across multiple inputs
+- **Diagnostic Collection**: Comprehensive failure analysis and debugging
 
-### Install Kind
+## 🏗️ Architecture
+
+### Test Framework Stack
+
+- **Ginkgo v2**: BDD-style test framework for structured test organization
+- **Gomega**: Expressive assertion library for test validations
+- **Controller-Runtime**: Kubernetes client and testing utilities
+- **Kind**: Local Kubernetes cluster for test execution
+
+### Directory Structure
+
+```
+test/e2e/
+├── 📁 Core Test Files
+│   ├── e2e_suite_test.go              # Test suite setup and configuration
+│   ├── e2e_test.go                    # Basic controller functionality tests
+│   ├── policy_modes_test.go           # Policy mode validation tests
+│   ├── resource_bounds_test.go        # Resource bounds enforcement tests
+│   ├── rbac_security_test.go          # RBAC and security constraint tests
+│   ├── error_handling_test.go         # Error conditions and edge cases
+│   ├── workload_types_test.go         # Workload type support tests
+│   ├── observability_test.go          # Metrics and logging validation
+│   └── diagnostic_collection_property_test.go  # Diagnostic collection tests
+├── 📁 helpers/                        # Reusable test utilities
+│   ├── policy_helpers.go              # Policy creation and management
+│   ├── workload_helpers.go            # Workload creation and management
+│   ├── validation_helpers.go          # Common validation functions
+│   ├── cleanup_helpers.go             # Resource cleanup utilities
+│   └── reporting_helpers.go           # Test reporting and dashboards
+├── 📁 fixtures/                       # Test data generation
+│   └── generators.go                  # Programmatic configuration generation
+├── 📁 Configuration
+│   ├── parallel_config.go             # Parallel execution configuration
+│   └── performance_config.go          # Performance optimization settings
+└── 📁 Documentation
+    ├── README.md                      # This file
+    ├── TESTING_GUIDE.md              # Comprehensive testing guide
+    ├── TROUBLESHOOTING.md            # Troubleshooting guide
+    └── DEVELOPER_ONBOARDING.md       # Developer onboarding guide
+```
+
+## 🚀 Quick Start
+
+### Prerequisites
+
+Ensure you have the following installed:
+
+- **Go 1.21+**: `go version`
+- **Docker**: `docker --version`
+- **Kind**: `go install sigs.k8s.io/kind@latest`
+- **kubectl**: `kubectl version --client`
+- **Make**: `make --version`
+
+### Setup and Run
+
+1. **Create Kind cluster**:
+   ```bash
+   kind create cluster --name optipod-test
+   export KUBECONFIG="$(kind get kubeconfig-path --name="optipod-test")"
+   ```
+
+2. **Build and load OptipPod image**:
+   ```bash
+   make docker-build IMG=example.com/optipod:v0.0.1
+   kind load docker-image example.com/optipod:v0.0.1 --name optipod-test
+   ```
+
+3. **Run tests**:
+   ```bash
+   # Run all e2e tests
+   make test-e2e
+   
+   # Run with verbose output
+   make test-e2e ARGS="-v"
+   
+   # Run specific test
+   go test -v -tags=e2e ./test/e2e -run "TestBasicController"
+   ```
+
+## 🧪 Test Categories
+
+### 1. Policy Mode Tests (`policy_modes_test.go`)
+Validates OptipPod behavior across different policy modes:
+- **Auto Mode**: Verifies recommendations are applied automatically
+- **Recommend Mode**: Verifies recommendations are generated but not applied
+- **Disabled Mode**: Verifies no workload processing occurs
 
 ```bash
-# On macOS
-brew install kind
-
-# On Linux
-curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.20.0/kind-linux-amd64
-chmod +x ./kind
-sudo mv ./kind /usr/local/bin/kind
+go test -v -tags=e2e ./test/e2e -run "Policy.*Mode"
 ```
 
-### Install kubectl
+### 2. Resource Bounds Tests (`resource_bounds_test.go`)
+Validates resource bounds enforcement and clamping:
+- **Within Bounds**: Recommendations respect configured limits
+- **Below Minimum**: Recommendations clamped to minimum values
+- **Above Maximum**: Recommendations clamped to maximum values
 
 ```bash
-# On macOS
-brew install kubectl
-
-# On Linux
-curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
-chmod +x kubectl
-sudo mv kubectl /usr/local/bin/
+go test -v -tags=e2e ./test/e2e -run "Resource.*Bounds"
 ```
 
-## Running E2E Tests
-
-### Quick Start
-
-Run all E2E tests with automatic cluster setup and teardown:
+### 3. RBAC Security Tests (`rbac_security_test.go`)
+Validates RBAC permissions and security constraints:
+- **Restricted Permissions**: Appropriate error handling
+- **Security Policies**: Pod security policy compliance
+- **Permission Escalation**: Prevention of privilege escalation
 
 ```bash
-make test-e2e
+go test -v -tags=e2e ./test/e2e -run "RBAC.*Security"
 ```
 
-This command will:
-1. Create a Kind cluster named `optipod-test-e2e`
-2. Build the OptiPod operator Docker image
-3. Load the image into the Kind cluster
-4. Install CertManager (if needed)
-5. Deploy the operator
-6. Run all E2E test scenarios
-7. Clean up the cluster
-
-### Manual Cluster Management
-
-If you want to keep the cluster running between test runs:
+### 4. Error Handling Tests (`error_handling_test.go`)
+Validates error conditions and edge cases:
+- **Invalid Configurations**: Rejection and error messages
+- **Missing Metrics**: Graceful degradation
+- **Concurrent Modifications**: Conflict resolution
 
 ```bash
-# Create the cluster
-make setup-test-e2e
-
-# Run tests (without cleanup)
-KIND=kind KIND_CLUSTER=optipod-test-e2e go test -tags=e2e ./test/e2e/ -v -ginkgo.v
-
-# Clean up when done
-make cleanup-test-e2e
+go test -v -tags=e2e ./test/e2e -run "Error.*Handling"
 ```
 
-### Running Specific Tests
-
-To run a specific test scenario:
+### 5. Workload Type Tests (`workload_types_test.go`)
+Validates support for different Kubernetes workload types:
+- **Deployments**: Recommendation and update behavior
+- **StatefulSets**: Ordered update handling
+- **DaemonSets**: Node-based update behavior
 
 ```bash
-KIND=kind KIND_CLUSTER=optipod-test-e2e go test -tags=e2e ./test/e2e/ -v -ginkgo.focus="should create and validate OptimizationPolicy"
+go test -v -tags=e2e ./test/e2e -run "Workload.*Types"
 ```
 
-## Test Scenarios
-
-The E2E test suite covers the following scenarios:
-
-### 1. Controller Deployment
-- Verifies the OptiPod controller pod is running
-- Checks that the metrics endpoint is accessible
-- Validates Prometheus metrics exposure
-
-### 2. OptimizationPolicy Creation and Validation
-- Creates OptimizationPolicy resources
-- Validates policy configuration
-- Checks policy status conditions
-- Tests invalid policy configurations
-
-### 3. Workload Discovery
-- Deploys sample workloads (Deployments)
-- Verifies workloads are discovered by policies
-- Tests label selector matching
-- Validates namespace filtering
-
-### 4. Recommend Mode
-- Creates policies in Recommend mode
-- Verifies recommendations are generated
-- Ensures workloads are NOT modified
-- Validates recommendation format (CPU, memory, explanation)
-
-### 5. Auto Mode
-- Creates policies in Auto mode
-- Verifies recommendations are applied to workloads
-- Checks lastApplied timestamps
-- Validates resource request updates
-
-### 6. Resource Bounds
-- Tests min/max CPU and memory bounds
-- Verifies recommendations are clamped to bounds
-- Validates bound enforcement across different scenarios
-
-### 7. Disabled Mode
-- Creates policies in Disabled mode
-- Verifies workloads are not processed
-- Ensures no recommendations are generated
-
-### 8. Prometheus Metrics
-- Validates OptiPod-specific metrics are exposed
-- Checks controller reconciliation metrics
-- Verifies metric values are updated
-
-### 9. Error Handling
-- Tests invalid policy configurations
-- Verifies validation error messages
-- Checks Kubernetes event creation
-
-## Test Architecture
-
-The E2E tests use:
-- **Ginkgo**: BDD-style testing framework
-- **Gomega**: Matcher library for assertions
-- **Kind**: Local Kubernetes cluster
-- **kubectl**: Kubernetes API interactions
-
-## Debugging Failed Tests
-
-If tests fail, the suite automatically collects:
-- Controller manager pod logs
-- Kubernetes events in the test namespace
-- Pod descriptions
-- Metrics endpoint output
-
-These logs are printed to the test output for debugging.
-
-### Manual Debugging
-
-To inspect the cluster after a test failure:
+### 6. Observability Tests (`observability_test.go`)
+Validates metrics exposure and logging:
+- **Prometheus Metrics**: Metric exposure and accuracy
+- **Controller Logs**: Log content and formatting
+- **Monitoring Integration**: Alert and health check functionality
 
 ```bash
-# Keep the cluster running by skipping cleanup
-KIND=kind KIND_CLUSTER=optipod-test-e2e go test -tags=e2e ./test/e2e/ -v -ginkgo.v
-
-# In another terminal, inspect resources
-kubectl --context kind-optipod-test-e2e get pods -n optipod-system
-kubectl --context kind-optipod-test-e2e logs -n optipod-system <controller-pod-name>
-kubectl --context kind-optipod-test-e2e get optimizationpolicies -A
-kubectl --context kind-optipod-test-e2e describe optimizationpolicy <policy-name> -n optipod-system
+go test -v -tags=e2e ./test/e2e -run "Observability"
 ```
 
-## Environment Variables
+### 7. Property-Based Tests
+Validates universal properties across multiple inputs:
+- **Policy Mode Consistency**: Behavior across all policy modes
+- **Resource Bounds Enforcement**: Bounds respect across all configurations
+- **Diagnostic Collection**: Comprehensive diagnostic information collection
 
-- `KIND`: Path to the kind binary (default: `kind`)
-- `KIND_CLUSTER`: Name of the Kind cluster (default: `optipod-test-e2e`)
-- `CERT_MANAGER_INSTALL_SKIP`: Skip CertManager installation if already present (default: `false`)
-- `IMG`: Docker image name for the operator (default: `example.com/optipod:v0.0.1`)
-
-## Continuous Integration
-
-The E2E tests are designed to run in CI environments. Example GitHub Actions workflow:
-
-```yaml
-name: E2E Tests
-on: [push, pull_request]
-jobs:
-  e2e:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-go@v4
-        with:
-          go-version: '1.21'
-      - name: Install Kind
-        run: |
-          curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.20.0/kind-linux-amd64
-          chmod +x ./kind
-          sudo mv ./kind /usr/local/bin/kind
-      - name: Run E2E Tests
-        run: make test-e2e
-```
-
-## Troubleshooting
-
-### Kind cluster creation fails
 ```bash
-# Check Docker is running
-docker ps
-
-# Check Kind version
-kind version
-
-# Try creating cluster manually
-kind create cluster --name optipod-test-e2e
+go test -v -tags=e2e ./test/e2e -run "Property.*"
 ```
 
-### Image loading fails
+## ⚙️ Configuration
+
+### Environment Variables
+
+| Variable | Description | Default | Example |
+|----------|-------------|---------|---------|
+| `E2E_PARALLEL_NODES` | Number of parallel test nodes | 4 | 8 |
+| `E2E_TIMEOUT_MULTIPLIER` | Timeout multiplier for parallel execution | 1.0 | 2.0 |
+| `CERT_MANAGER_INSTALL_SKIP` | Skip CertManager installation | false | true |
+| `METRICS_SERVER_INSTALL_SKIP` | Skip MetricsServer installation | false | true |
+
+### Parallel Execution
+
+Run tests in parallel for faster execution:
+
 ```bash
-# Build image manually
-make docker-build IMG=example.com/optipod:v0.0.1
+# Default parallel execution (4 nodes)
+go test -v -tags=e2e ./test/e2e -ginkgo.procs=4
 
-# Load into Kind
-kind load docker-image example.com/optipod:v0.0.1 --name optipod-test-e2e
+# Custom parallel configuration
+E2E_PARALLEL_NODES=8 go test -v -tags=e2e ./test/e2e -ginkgo.procs=8
+
+# With timeout adjustment
+E2E_TIMEOUT_MULTIPLIER=2.0 go test -v -tags=e2e ./test/e2e -ginkgo.procs=4
 ```
 
-### Controller pod not starting
+### Performance Optimization
+
+For faster test execution:
+
 ```bash
-# Check pod status
-kubectl --context kind-optipod-test-e2e get pods -n optipod-system
+# Skip component installation if already present
+export CERT_MANAGER_INSTALL_SKIP=true
+export METRICS_SERVER_INSTALL_SKIP=true
 
-# Check pod logs
-kubectl --context kind-optipod-test-e2e logs -n optipod-system <pod-name>
+# Use performance mode
+export E2E_PERFORMANCE_MODE=true
 
-# Check events
-kubectl --context kind-optipod-test-e2e get events -n optipod-system
+# Reduce parallel load for resource-constrained environments
+export E2E_PARALLEL_NODES=2
 ```
 
-### Tests timeout
-- Increase timeout values in test code
-- Check cluster resources: `kubectl top nodes`
-- Verify metrics-server is running (required for some tests)
+## 🔧 Development
 
-## Contributing
+### Writing New Tests
 
-When adding new E2E tests:
-1. Follow the existing test structure using Ginkgo/Gomega
-2. Use descriptive test names with `It("should ...")`
-3. Clean up resources in `AfterEach` or at the end of tests
-4. Add appropriate timeouts and polling intervals
-5. Include helpful error messages in assertions
-6. Update this README with new test scenarios
+1. **Follow established patterns**: Use the same structure as existing tests
+2. **Use helper functions**: Leverage existing utilities in `helpers/`
+3. **Generate test data**: Use fixtures in `fixtures/` for configuration generation
+4. **Handle cleanup**: Always use cleanup helpers to track resources
+5. **Include documentation**: Add comments for complex test logic
+
+Example test structure:
+
+```go
+var _ = Describe("Feature Name", func() {
+    var (
+        ctx           context.Context
+        namespace     string
+        cleanupHelper *helpers.CleanupHelper
+    )
+
+    BeforeEach(func() {
+        // Test setup
+    })
+
+    AfterEach(func() {
+        // Test cleanup
+    })
+
+    Context("Test Category", func() {
+        It("should validate specific behavior", func() {
+            By("Step 1: Setup")
+            // Test implementation
+        })
+    })
+})
+```
+
+### Helper Usage
+
+Use existing helpers for common operations:
+
+```go
+// Policy operations
+policyHelper := helpers.NewPolicyHelper(k8sClient, namespace)
+policy, err := policyHelper.CreateOptimizationPolicy(config)
+
+// Workload operations
+workloadHelper := helpers.NewWorkloadHelper(k8sClient, namespace)
+deployment, err := workloadHelper.CreateDeployment(config)
+
+// Validation operations
+validationHelper := helpers.NewValidationHelper(k8sClient)
+err := validationHelper.ValidateResourceBounds(recommendations, bounds)
+
+// Cleanup tracking
+cleanupHelper.TrackPolicy(policy.Name, policy.Namespace)
+```
+
+## 🐛 Troubleshooting
+
+### Common Issues
+
+| Issue | Solution |
+|-------|----------|
+| `no nodes found for cluster "kind"` | `kind create cluster` |
+| `connection refused` | Check KUBECONFIG setting |
+| `image not found` | Build and load image: `make docker-build && kind load docker-image` |
+| `timeout exceeded` | Increase timeout: `-timeout=30m` |
+| `resource already exists` | Clean up: `kubectl delete ns --all --selector=test-namespace=true` |
+
+### Debug Mode
+
+Enable detailed logging for troubleshooting:
+
+```bash
+# Verbose Ginkgo output
+go test -v -tags=e2e ./test/e2e -ginkgo.v -ginkgo.trace
+
+# Controller-runtime debug logging
+KUBEBUILDER_ASSETS=$(setup-envtest use --use-env -p path) \
+go test -v -tags=e2e ./test/e2e -ginkgo.v
+```
+
+### Log Collection
+
+Collect diagnostic information:
+
+```bash
+# Controller logs
+kubectl logs -n optipod-system deployment/optipod-controller-manager
+
+# Test artifacts
+ls -la /tmp/optipod-diagnostics/
+
+# Kind cluster logs
+kind export logs /tmp/kind-logs --name optipod-test
+```
+
+## 📚 Documentation
+
+### Comprehensive Guides
+
+- **[TESTING_GUIDE.md](./TESTING_GUIDE.md)**: Complete guide to running and configuring tests
+- **[TROUBLESHOOTING.md](./TROUBLESHOOTING.md)**: Detailed troubleshooting for common issues
+- **[DEVELOPER_ONBOARDING.md](./DEVELOPER_ONBOARDING.md)**: Guide for new contributors
+
+### External Resources
+
+- [Ginkgo Documentation](https://onsi.github.io/ginkgo/)
+- [Gomega Documentation](https://onsi.github.io/gomega/)
+- [Controller-Runtime Testing](https://book.kubebuilder.io/cronjob-tutorial/writing-tests.html)
+- [Kind Documentation](https://kind.sigs.k8s.io/)
+
+## 🤝 Contributing
+
+We welcome contributions to improve the test suite! Please:
+
+1. **Read the guides**: Start with [DEVELOPER_ONBOARDING.md](./DEVELOPER_ONBOARDING.md)
+2. **Follow patterns**: Use established test structures and helpers
+3. **Test your changes**: Ensure tests pass locally before submitting
+4. **Update documentation**: Include any necessary documentation updates
+
+### Before Submitting
+
+```bash
+# Run your specific tests
+go test -v -tags=e2e ./test/e2e -run "YourTestName"
+
+# Run related test categories
+go test -v -tags=e2e ./test/e2e -run "RelatedCategory"
+
+# Check for resource leaks
+kubectl get all -A | grep test
+```
+
+## 📊 Test Metrics
+
+The test suite provides comprehensive metrics and reporting:
+
+- **Coverage Analysis**: Validates all requirements and properties are tested
+- **Performance Metrics**: Tracks test execution time and resource usage
+- **Failure Analysis**: Collects diagnostic information for failed tests
+- **CI Integration**: Structured reporting for continuous integration
+
+## 🎯 Quality Assurance
+
+Our test suite ensures OptipPod quality through:
+
+- **Comprehensive Coverage**: All features, edge cases, and error conditions
+- **Property-Based Testing**: Universal properties validated across inputs
+- **Real Environment Testing**: Tests run against actual Kubernetes clusters
+- **Parallel Execution**: Efficient test execution for faster feedback
+- **Diagnostic Collection**: Detailed failure analysis for quick resolution
+
+---
+
+For questions or issues with the test suite, please check the troubleshooting guide or open an issue with detailed information about the problem.
