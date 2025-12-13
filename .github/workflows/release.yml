@@ -175,7 +175,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Download image artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: container-image
           path: /tmp
@@ -254,7 +254,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Download image artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: container-image
           path: /tmp
@@ -287,13 +287,13 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Download image artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: container-image
           path: /tmp
 
       - name: Download SBOM
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: sbom
           path: /tmp
@@ -599,7 +599,7 @@ jobs:
     needs: [setup, build-binaries]
     steps:
       - name: Download all binaries
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           pattern: binary-*
           path: binaries
@@ -629,32 +629,32 @@ jobs:
           fetch-depth: 0
 
       - name: Download install manifest
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: install-manifest
           path: artifacts
 
       - name: Download binaries
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           pattern: binary-*
           path: artifacts/binaries
           merge-multiple: true
 
       - name: Download checksums
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: checksums
           path: artifacts
 
       - name: Download SBOM
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: sbom
           path: artifacts
 
       - name: Download security scan results
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: security-scan-results
           path: artifacts
