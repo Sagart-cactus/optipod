@@ -90,14 +90,10 @@ func (v *TestSuiteValidator) ValidateTestSuite(ctx context.Context) (*Validation
 	}
 
 	// Validate test structure and organization
-	if err := v.validateTestStructure(result); err != nil {
-		return nil, fmt.Errorf("failed to validate test structure: %w", err)
-	}
+	v.validateTestStructure(result)
 
 	// Validate helper components
-	if err := v.validateHelperComponents(result); err != nil {
-		return nil, fmt.Errorf("failed to validate helper components: %w", err)
-	}
+	v.validateHelperComponents(result)
 
 	// Validate test quality metrics
 	if err := v.validateQualityMetrics(result); err != nil {
@@ -280,7 +276,7 @@ func (v *TestSuiteValidator) validateResourceAvailability(ctx context.Context, r
 }
 
 // validateTestStructure validates test file structure and organization
-func (v *TestSuiteValidator) validateTestStructure(result *ValidationResult) error {
+func (v *TestSuiteValidator) validateTestStructure(result *ValidationResult) {
 	testDir := "."
 
 	// Check for required test files
@@ -340,12 +336,10 @@ func (v *TestSuiteValidator) validateTestStructure(result *ValidationResult) err
 			Suggestion:  "Create missing documentation files",
 		})
 	}
-
-	return nil
 }
 
 // validateHelperComponents validates test helper components
-func (v *TestSuiteValidator) validateHelperComponents(result *ValidationResult) error {
+func (v *TestSuiteValidator) validateHelperComponents(result *ValidationResult) {
 	// This would typically involve checking helper function coverage,
 	// API consistency, and usage patterns
 
@@ -380,8 +374,6 @@ func (v *TestSuiteValidator) validateHelperComponents(result *ValidationResult) 
 			result.ComponentHealth[component] = HealthStatusHealthy
 		}
 	}
-
-	return nil
 }
 
 // validateQualityMetrics validates test quality metrics
@@ -569,9 +561,10 @@ func (result *ValidationResult) PrintValidationReport() {
 	fmt.Printf("Component Health:\n")
 	for component, health := range result.ComponentHealth {
 		status := statusHealthy
-		if health == HealthStatusDegraded {
+		switch health {
+		case HealthStatusDegraded:
 			status = statusDegraded
-		} else if health == HealthStatusUnhealthy {
+		case HealthStatusUnhealthy:
 			status = statusUnhealthy
 		}
 		fmt.Printf("  %s %s: %s\n", status, component, health)

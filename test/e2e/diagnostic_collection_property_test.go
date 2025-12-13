@@ -427,7 +427,8 @@ func (dc *DiagnosticCollector) collectEvents(ctx context.Context) ([]EventInfo, 
 		return nil, err
 	}
 
-	var eventInfos []EventInfo
+	// Initialize with empty slice instead of nil
+	eventInfos := make([]EventInfo, 0)
 	for _, event := range events.Items {
 		eventInfos = append(eventInfos, EventInfo{
 			Type:      event.Type,

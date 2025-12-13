@@ -5,17 +5,14 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
-	"testing"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
 
 // TestValidateTestCoverage validates comprehensive test coverage
-func TestValidateTestCoverage(t *testing.T) {
-	RegisterFailHandler(Fail)
-	RunSpecs(t, "Test Coverage Validation Suite")
-}
+// TestValidateTestCoverage is included in the main e2e test suite
+// All tests in this file are automatically discovered by Ginkgo
 
 var _ = Describe("Test Coverage Validation", func() {
 	var validator *CoverageValidator
@@ -66,7 +63,8 @@ var _ = Describe("Test Coverage Validation", func() {
 			}
 
 			// Allow some missing coverage but flag if too much
-			missingPercent := float64(len(report.MissingCoverage)) / float64(len(report.Requirements)+len(report.Properties)) * 100
+			missingPercent := float64(len(report.MissingCoverage)) /
+				float64(len(report.Requirements)+len(report.Properties)) * 100
 			Expect(missingPercent).To(BeNumerically("<=", 30), "Missing coverage should not exceed 30%")
 		})
 

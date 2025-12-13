@@ -81,7 +81,10 @@ func TestMemorySafetyPropertyStandalone(t *testing.T) {
 				}
 			} else {
 				if err == nil {
-					t.Errorf("Memory change from %s to %s should be flagged as unsafe, but no error was returned", tc.originalMemory, tc.currentMemory)
+					t.Errorf(
+						"Memory change from %s to %s should be flagged as unsafe, but no error was returned",
+						tc.originalMemory, tc.currentMemory,
+					)
 				}
 			}
 		})
@@ -245,10 +248,16 @@ func TestMemorySafetyPropertyStandalone(t *testing.T) {
 			// Validate that the policy configuration is reasonable for memory safety testing
 			if tc.config.MetricsConfig.SafetyFactor > 1.0 && tc.expectedBehavior == "prevent_unsafe_decrease" {
 				// High safety factor should prevent unsafe decreases
-				t.Logf("Policy with safety factor %.1f should prevent unsafe memory decreases", tc.config.MetricsConfig.SafetyFactor)
+				t.Logf(
+					"Policy with safety factor %.1f should prevent unsafe memory decreases",
+					tc.config.MetricsConfig.SafetyFactor,
+				)
 			} else if tc.config.MetricsConfig.SafetyFactor < 1.0 && tc.expectedBehavior == "flag_unsafe_decrease" {
 				// Low safety factor might trigger decreases that should be flagged
-				t.Logf("Policy with safety factor %.1f might trigger decreases that should be flagged", tc.config.MetricsConfig.SafetyFactor)
+				t.Logf(
+					"Policy with safety factor %.1f might trigger decreases that should be flagged",
+					tc.config.MetricsConfig.SafetyFactor,
+				)
 			}
 
 			// Validate that the workload configuration is appropriate

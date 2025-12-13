@@ -1,0 +1,835 @@
+<?xml version="1.0" encoding="UTF-8"?>
+  <testsuites tests="270" disabled="157" errors="0" failures="0" time="25.864203">
+      <testsuite name="e2e suite" package="/Users/trivedi/Documents/Projects/optipod/test/e2e" tests="270" disabled="2" skipped="155" errors="0" failures="0" time="25.864203" timestamp="2025-12-13T10:50:06">
+          <properties>
+              <property name="SuiteSucceeded" value="true"></property>
+              <property name="SuiteHasProgrammaticFocus" value="false"></property>
+              <property name="SpecialSuiteFailureReason" value=""></property>
+              <property name="SuiteLabels" value="[]"></property>
+              <property name="RandomSeed" value="1765597806"></property>
+              <property name="RandomizeAllSpecs" value="false"></property>
+              <property name="LabelFilter" value=""></property>
+              <property name="FocusStrings" value="Unit Tests"></property>
+              <property name="SkipStrings" value=""></property>
+              <property name="FocusFiles" value=""></property>
+              <property name="SkipFiles" value=""></property>
+              <property name="FailOnPending" value="false"></property>
+              <property name="FailOnEmpty" value="false"></property>
+              <property name="FailFast" value="false"></property>
+              <property name="FlakeAttempts" value="0"></property>
+              <property name="DryRun" value="false"></property>
+              <property name="ParallelTotal" value="1"></property>
+              <property name="OutputInterceptorMode" value=""></property>
+          </properties>
+          <testcase name="[BeforeSuite]" classname="e2e suite" status="passed" time="5.098878196">
+              <system-err>&gt; Enter [BeforeSuite] TOP-LEVEL - /Users/trivedi/Documents/Projects/optipod/test/e2e/e2e_suite_test.go:69 @ 12/13/25 10:50:06.738&#xA;STEP: initializing Kubernetes client - /Users/trivedi/Documents/Projects/optipod/test/e2e/e2e_suite_test.go:70 @ 12/13/25 10:50:06.738&#xA;STEP: initializing parallel test execution - /Users/trivedi/Documents/Projects/optipod/test/e2e/e2e_suite_test.go:75 @ 12/13/25 10:50:06.739&#xA;Serial execution mode&#xA;STEP: initializing performance configuration - /Users/trivedi/Documents/Projects/optipod/test/e2e/e2e_suite_test.go:78 @ 12/13/25 10:50:06.739&#xA;Performance config initialized - Default timeout: 2m0s, Max retries: 3&#xA;STEP: building the manager(Operator) image - /Users/trivedi/Documents/Projects/optipod/test/e2e/e2e_suite_test.go:83 @ 12/13/25 10:50:06.739&#xA;running: &#34;make docker-build IMG=example.com/optipod:v0.0.1&#34;&#xA;STEP: loading the manager(Operator) image on Kind - /Users/trivedi/Documents/Projects/optipod/test/e2e/e2e_suite_test.go:90 @ 12/13/25 10:50:08.566&#xA;running: &#34;kind load docker-image example.com/optipod:v0.0.1 --name optipod-test-e2e&#34;&#xA;STEP: checking if cert manager is installed already - /Users/trivedi/Documents/Projects/optipod/test/e2e/e2e_suite_test.go:99 @ 12/13/25 10:50:11.635&#xA;running: &#34;kubectl get crds&#34;&#xA;WARNING: CertManager is already installed. Skipping installation...&#xA;STEP: checking if metrics-server is installed already - /Users/trivedi/Documents/Projects/optipod/test/e2e/e2e_suite_test.go:111 @ 12/13/25 10:50:11.751&#xA;running: &#34;kubectl get deployment metrics-server -n kube-system&#34;&#xA;WARNING: MetricsServer is already installed. Skipping installation...&#xA;STEP: waiting for parallel test stability - /Users/trivedi/Documents/Projects/optipod/test/e2e/e2e_suite_test.go:126 @ 12/13/25 10:50:11.837&#xA;&lt; Exit [BeforeSuite] TOP-LEVEL - /Users/trivedi/Documents/Projects/optipod/test/e2e/e2e_suite_test.go:69 @ 12/13/25 10:50:11.837 (5.099s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Observability and Metrics Prometheus Metrics Exposure should expose OptipPod-specific metrics" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Observability and Metrics Prometheus Metrics Exposure should expose metrics with proper labels" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Observability and Metrics Prometheus Metrics Exposure should update metric values based on system state" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Observability and Metrics Prometheus Metrics Exposure should expose controller runtime metrics" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Observability and Metrics Prometheus Metrics Exposure should validate metrics format and accessibility" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Observability and Metrics Prometheus Metrics Exposure should expose SSA-specific metrics" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Observability and Metrics Prometheus Metrics Exposure should track metrics collection duration" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Observability and Metrics Prometheus Metrics Exposure should expose workload processing metrics" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Observability and Metrics Prometheus Metrics Exposure Property Test: Metrics exposure correctness Auto mode with single workload" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Observability and Metrics Prometheus Metrics Exposure Property Test: Metrics exposure correctness Recommend mode with single workload" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Observability and Metrics Prometheus Metrics Exposure Property Test: Metrics exposure correctness Disabled mode with single workload" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Observability and Metrics Prometheus Metrics Exposure Property Test: Metrics exposure correctness Auto mode with multiple workloads" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Observability and Metrics Prometheus Metrics Exposure Property Test: Metrics exposure correctness Recommend mode with multiple workloads" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Observability and Metrics Prometheus Metrics Exposure Property Test: Metrics exposure correctness Auto mode error tracking" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Observability and Metrics Prometheus Metrics Exposure Property Test: Metrics exposure correctness Recommend mode error tracking" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Observability and Metrics Prometheus Metrics Exposure Property Test: Metrics exposure correctness Disabled mode error tracking" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Observability and Metrics Controller Logging should log policy reconciliation events" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Observability and Metrics Controller Logging should log workload discovery and processing" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Observability and Metrics Controller Logging should log errors with appropriate detail" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Observability and Metrics Controller Logging should log with proper levels and formatting" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Observability and Metrics Controller Logging should log system events correlation" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Observability and Metrics Controller Logging should not log sensitive information" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Observability and Metrics Controller Logging should log metrics collection activities" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Observability and Metrics Controller Logging should log reconciliation timing information" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Observability and Metrics Controller Logging Property Test: Log content validation Policy reconciliation logs" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Observability and Metrics Controller Logging Property Test: Log content validation Workload discovery logs" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Observability and Metrics Controller Logging Property Test: Log content validation Error handling logs" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Observability and Metrics Controller Logging Property Test: Log content validation Metrics collection logs" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Observability and Metrics Controller Logging Property Test: Log content validation Policy only scenario" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Observability and Metrics Controller Logging Property Test: Log content validation Reconciliation timing" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Observability and Metrics Metrics Endpoint Security should require authentication for metrics access" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Observability and Metrics Metrics Endpoint Security should use TLS for metrics endpoint" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Observability and Metrics Metrics Endpoint Security should validate RBAC permissions for metrics access" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Observability and Metrics Metrics Endpoint Security should protect against unauthorized access" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Observability and Metrics Metrics Endpoint Security should validate certificate configuration" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Observability and Metrics Metrics Endpoint Security should enforce security constraints compliance" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Observability and Metrics Metrics Endpoint Security should handle security policy violations gracefully" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Observability and Metrics Metrics Endpoint Security Property Test: Metrics endpoint security RBAC enforcement" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Observability and Metrics Metrics Endpoint Security Property Test: Metrics endpoint security TLS validation" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Observability and Metrics Metrics Endpoint Security Property Test: Metrics endpoint security Secure port usage" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Observability and Metrics Metrics Endpoint Security Property Test: Metrics endpoint security Pod security context" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Observability and Metrics Metrics Endpoint Security Property Test: Metrics endpoint security Sensitive data protection" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Observability and Metrics Metrics Endpoint Security Property Test: Metrics endpoint security Authentication flow" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Observability and Metrics Metrics Endpoint Security Property Test: Metrics endpoint security Security error handling" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Observability and Metrics Monitoring Integration should provide health check endpoints" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Observability and Metrics Monitoring Integration should expose metrics for monitoring system integration" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Observability and Metrics Monitoring Integration should validate alerting thresholds and conditions" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Observability and Metrics Monitoring Integration should support monitoring system service discovery" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Observability and Metrics Monitoring Integration should provide monitoring-friendly metric naming" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Observability and Metrics Monitoring Integration should handle monitoring system failures gracefully" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Observability and Metrics Monitoring Integration Property Test: Monitoring system integration Business metrics exposure" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Observability and Metrics Monitoring Integration Property Test: Monitoring system integration Health monitoring" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Observability and Metrics Monitoring Integration Property Test: Monitoring system integration Service discovery" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Observability and Metrics Monitoring Integration Property Test: Monitoring system integration Alerting integration" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Observability and Metrics Monitoring Integration Property Test: Monitoring system integration Metrics only scenario" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Observability and Metrics Monitoring Integration Property Test: Monitoring system integration Performance monitoring" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Error Handling Property Tests should handle invalid configurations robustly CPU min greater than max" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Error Handling Property Tests should handle invalid configurations robustly Memory min greater than max" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Error Handling Property Tests should handle invalid configurations robustly Zero CPU minimum" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Error Handling Property Tests should handle invalid configurations robustly Invalid safety factor" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Error Handling Property Tests should handle invalid configurations robustly Missing selectors" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Error Handling Property Tests should enforce memory decrease safety prevent unsafe memory decrease with high safety factor" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Error Handling Property Tests should enforce memory decrease safety flag unsafe memory decrease with low safety factor" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Error Handling Property Tests should enforce memory decrease safety maintain safety threshold with minimal bounds" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Property 20: Diagnostic Information Collection Diagnostic Collection Property Tests should collect comprehensive diagnostic information for any test failure" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Property 20: Diagnostic Information Collection Diagnostic Collection Property Tests should collect diagnostics when namespace is being deleted" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Property 20: Diagnostic Information Collection Diagnostic Collection Property Tests should collect diagnostics for multiple simultaneous failures" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Manager Manager should run successfully" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Manager Manager should ensure the metrics endpoint is serving metrics" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Manager Manager should create and validate OptimizationPolicy resources" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Manager Manager should deploy sample workloads and discover them" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Manager Manager should generate recommendations in Recommend mode" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Manager Manager should apply recommendations in Auto mode" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Manager Manager should respect resource bounds" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Manager Manager should expose Prometheus metrics" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Manager Manager should handle invalid policy configurations" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Manager Manager should handle Disabled mode correctly" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Manager Manager should clean up test resources" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Error Handling and Edge Cases Invalid Configuration Scenarios should reject policies with invalid CPU resource bounds (min &gt; max)" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Error Handling and Edge Cases Invalid Configuration Scenarios should reject policies with invalid memory resource bounds (min &gt; max)" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Error Handling and Edge Cases Invalid Configuration Scenarios should reject policies with zero resource bounds" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Error Handling and Edge Cases Invalid Configuration Scenarios should reject policies with invalid safety factor" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Error Handling and Edge Cases Invalid Configuration Scenarios should reject policies with missing required fields" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Error Handling and Edge Cases Invalid Configuration Scenarios should reject policies with invalid mode values" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Error Handling and Edge Cases Invalid Configuration Scenarios should reject policies without selectors" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Error Handling and Edge Cases Invalid Configuration Scenarios should handle workloads with malformed resource specifications" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Error Handling and Edge Cases Invalid Configuration Scenarios should validate configuration edge cases" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Error Handling and Edge Cases Missing Metrics Scenarios should handle gracefully when metrics-server is unavailable" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Error Handling and Edge Cases Missing Metrics Scenarios should handle fallback behavior when metrics are temporarily unavailable" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Error Handling and Edge Cases Missing Metrics Scenarios should validate error reporting for metrics issues" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Error Handling and Edge Cases Concurrent Modification Scenarios should handle concurrent policy updates correctly" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Error Handling and Edge Cases Concurrent Modification Scenarios should handle concurrent workload modifications" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Error Handling and Edge Cases Concurrent Modification Scenarios concurrent modification safety property concurrent policy updates" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Error Handling and Edge Cases Concurrent Modification Scenarios concurrent modification safety property concurrent workload modifications" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Error Handling and Edge Cases Concurrent Modification Scenarios concurrent modification safety property mixed concurrent operations" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Error Handling and Edge Cases Memory Decrease Safety Scenarios should prevent unsafe memory decreases" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Resource Bounds Unit Tests Resource Quantity Parsing should parse CPU quantities correctly" classname="e2e suite" status="passed" time="0.000122745">
+              <system-err>&gt; Enter [BeforeEach] Resource Bounds Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/resource_bounds_unit_test.go:14 @ 12/13/25 10:50:11.84&#xA;&lt; Exit [BeforeEach] Resource Bounds Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/resource_bounds_unit_test.go:14 @ 12/13/25 10:50:11.84 (0s)&#xA;&gt; Enter [It] should parse CPU quantities correctly - /Users/trivedi/Documents/Projects/optipod/test/e2e/resource_bounds_unit_test.go:19 @ 12/13/25 10:50:11.84&#xA;&lt; Exit [It] should parse CPU quantities correctly - /Users/trivedi/Documents/Projects/optipod/test/e2e/resource_bounds_unit_test.go:19 @ 12/13/25 10:50:11.84 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Resource Bounds Unit Tests Resource Quantity Parsing should parse memory quantities correctly" classname="e2e suite" status="passed" time="3.9101e-05">
+              <system-err>&gt; Enter [BeforeEach] Resource Bounds Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/resource_bounds_unit_test.go:14 @ 12/13/25 10:50:11.84&#xA;&lt; Exit [BeforeEach] Resource Bounds Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/resource_bounds_unit_test.go:14 @ 12/13/25 10:50:11.84 (0s)&#xA;&gt; Enter [It] should parse memory quantities correctly - /Users/trivedi/Documents/Projects/optipod/test/e2e/resource_bounds_unit_test.go:38 @ 12/13/25 10:50:11.84&#xA;&lt; Exit [It] should parse memory quantities correctly - /Users/trivedi/Documents/Projects/optipod/test/e2e/resource_bounds_unit_test.go:38 @ 12/13/25 10:50:11.84 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Resource Bounds Unit Tests Resource Quantity Parsing should handle resource quantity parsing consistency" classname="e2e suite" status="passed" time="4.6496e-05">
+              <system-err>&gt; Enter [BeforeEach] Resource Bounds Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/resource_bounds_unit_test.go:14 @ 12/13/25 10:50:11.84&#xA;&lt; Exit [BeforeEach] Resource Bounds Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/resource_bounds_unit_test.go:14 @ 12/13/25 10:50:11.84 (0s)&#xA;&gt; Enter [It] should handle resource quantity parsing consistency - /Users/trivedi/Documents/Projects/optipod/test/e2e/resource_bounds_unit_test.go:56 @ 12/13/25 10:50:11.84&#xA;&lt; Exit [It] should handle resource quantity parsing consistency - /Users/trivedi/Documents/Projects/optipod/test/e2e/resource_bounds_unit_test.go:56 @ 12/13/25 10:50:11.84 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Resource Bounds Unit Tests Bounds Validation Logic should validate resources within bounds" classname="e2e suite" status="passed" time="2.8004e-05">
+              <system-err>&gt; Enter [BeforeEach] Resource Bounds Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/resource_bounds_unit_test.go:14 @ 12/13/25 10:50:11.84&#xA;&lt; Exit [BeforeEach] Resource Bounds Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/resource_bounds_unit_test.go:14 @ 12/13/25 10:50:11.84 (0s)&#xA;&gt; Enter [It] should validate resources within bounds - /Users/trivedi/Documents/Projects/optipod/test/e2e/resource_bounds_unit_test.go:64 @ 12/13/25 10:50:11.84&#xA;&lt; Exit [It] should validate resources within bounds - /Users/trivedi/Documents/Projects/optipod/test/e2e/resource_bounds_unit_test.go:64 @ 12/13/25 10:50:11.84 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Resource Bounds Unit Tests Bounds Validation Logic should detect resources below minimum bounds" classname="e2e suite" status="passed" time="3.3913e-05">
+              <system-err>&gt; Enter [BeforeEach] Resource Bounds Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/resource_bounds_unit_test.go:14 @ 12/13/25 10:50:11.84&#xA;&lt; Exit [BeforeEach] Resource Bounds Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/resource_bounds_unit_test.go:14 @ 12/13/25 10:50:11.84 (0s)&#xA;&gt; Enter [It] should detect resources below minimum bounds - /Users/trivedi/Documents/Projects/optipod/test/e2e/resource_bounds_unit_test.go:85 @ 12/13/25 10:50:11.84&#xA;&lt; Exit [It] should detect resources below minimum bounds - /Users/trivedi/Documents/Projects/optipod/test/e2e/resource_bounds_unit_test.go:85 @ 12/13/25 10:50:11.84 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Resource Bounds Unit Tests Bounds Validation Logic should detect resources above maximum bounds" classname="e2e suite" status="passed" time="2.3319e-05">
+              <system-err>&gt; Enter [BeforeEach] Resource Bounds Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/resource_bounds_unit_test.go:14 @ 12/13/25 10:50:11.84&#xA;&lt; Exit [BeforeEach] Resource Bounds Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/resource_bounds_unit_test.go:14 @ 12/13/25 10:50:11.84 (0s)&#xA;&gt; Enter [It] should detect resources above maximum bounds - /Users/trivedi/Documents/Projects/optipod/test/e2e/resource_bounds_unit_test.go:107 @ 12/13/25 10:50:11.84&#xA;&lt; Exit [It] should detect resources above maximum bounds - /Users/trivedi/Documents/Projects/optipod/test/e2e/resource_bounds_unit_test.go:107 @ 12/13/25 10:50:11.84 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Resource Bounds Unit Tests Clamping Algorithms should validate clamping to minimum values" classname="e2e suite" status="passed" time="2.5438e-05">
+              <system-err>&gt; Enter [BeforeEach] Resource Bounds Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/resource_bounds_unit_test.go:14 @ 12/13/25 10:50:11.84&#xA;&lt; Exit [BeforeEach] Resource Bounds Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/resource_bounds_unit_test.go:14 @ 12/13/25 10:50:11.84 (0s)&#xA;&gt; Enter [It] should validate clamping to minimum values - /Users/trivedi/Documents/Projects/optipod/test/e2e/resource_bounds_unit_test.go:131 @ 12/13/25 10:50:11.84&#xA;&lt; Exit [It] should validate clamping to minimum values - /Users/trivedi/Documents/Projects/optipod/test/e2e/resource_bounds_unit_test.go:131 @ 12/13/25 10:50:11.84 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Resource Bounds Unit Tests Clamping Algorithms should validate clamping to maximum values" classname="e2e suite" status="passed" time="2.1788e-05">
+              <system-err>&gt; Enter [BeforeEach] Resource Bounds Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/resource_bounds_unit_test.go:14 @ 12/13/25 10:50:11.84&#xA;&lt; Exit [BeforeEach] Resource Bounds Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/resource_bounds_unit_test.go:14 @ 12/13/25 10:50:11.84 (0s)&#xA;&gt; Enter [It] should validate clamping to maximum values - /Users/trivedi/Documents/Projects/optipod/test/e2e/resource_bounds_unit_test.go:141 @ 12/13/25 10:50:11.84&#xA;&lt; Exit [It] should validate clamping to maximum values - /Users/trivedi/Documents/Projects/optipod/test/e2e/resource_bounds_unit_test.go:141 @ 12/13/25 10:50:11.84 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Resource Bounds Unit Tests Clamping Algorithms should validate resources within bounds without clamping" classname="e2e suite" status="passed" time="2.6459e-05">
+              <system-err>&gt; Enter [BeforeEach] Resource Bounds Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/resource_bounds_unit_test.go:14 @ 12/13/25 10:50:11.84&#xA;&lt; Exit [BeforeEach] Resource Bounds Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/resource_bounds_unit_test.go:14 @ 12/13/25 10:50:11.84 (0s)&#xA;&gt; Enter [It] should validate resources within bounds without clamping - /Users/trivedi/Documents/Projects/optipod/test/e2e/resource_bounds_unit_test.go:151 @ 12/13/25 10:50:11.84&#xA;&lt; Exit [It] should validate resources within bounds without clamping - /Users/trivedi/Documents/Projects/optipod/test/e2e/resource_bounds_unit_test.go:151 @ 12/13/25 10:50:11.84 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Resource Bounds Unit Tests Clamping Algorithms should detect incorrect clamping expectations" classname="e2e suite" status="passed" time="2.332e-05">
+              <system-err>&gt; Enter [BeforeEach] Resource Bounds Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/resource_bounds_unit_test.go:14 @ 12/13/25 10:50:11.84&#xA;&lt; Exit [BeforeEach] Resource Bounds Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/resource_bounds_unit_test.go:14 @ 12/13/25 10:50:11.84 (0s)&#xA;&gt; Enter [It] should detect incorrect clamping expectations - /Users/trivedi/Documents/Projects/optipod/test/e2e/resource_bounds_unit_test.go:161 @ 12/13/25 10:50:11.84&#xA;&lt; Exit [It] should detect incorrect clamping expectations - /Users/trivedi/Documents/Projects/optipod/test/e2e/resource_bounds_unit_test.go:161 @ 12/13/25 10:50:11.84 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Resource Bounds Unit Tests Resource Comparison should compare resource quantities correctly" classname="e2e suite" status="passed" time="3.5719e-05">
+              <system-err>&gt; Enter [BeforeEach] Resource Bounds Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/resource_bounds_unit_test.go:14 @ 12/13/25 10:50:11.84&#xA;&lt; Exit [BeforeEach] Resource Bounds Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/resource_bounds_unit_test.go:14 @ 12/13/25 10:50:11.84 (0s)&#xA;&gt; Enter [It] should compare resource quantities correctly - /Users/trivedi/Documents/Projects/optipod/test/e2e/resource_bounds_unit_test.go:170 @ 12/13/25 10:50:11.84&#xA;&lt; Exit [It] should compare resource quantities correctly - /Users/trivedi/Documents/Projects/optipod/test/e2e/resource_bounds_unit_test.go:170 @ 12/13/25 10:50:11.84 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Resource Bounds Unit Tests Resource Comparison should handle invalid resource quantities" classname="e2e suite" status="passed" time="4.2222e-05">
+              <system-err>&gt; Enter [BeforeEach] Resource Bounds Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/resource_bounds_unit_test.go:14 @ 12/13/25 10:50:11.84&#xA;&lt; Exit [BeforeEach] Resource Bounds Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/resource_bounds_unit_test.go:14 @ 12/13/25 10:50:11.84 (0s)&#xA;&gt; Enter [It] should handle invalid resource quantities - /Users/trivedi/Documents/Projects/optipod/test/e2e/resource_bounds_unit_test.go:191 @ 12/13/25 10:50:11.84&#xA;&lt; Exit [It] should handle invalid resource quantities - /Users/trivedi/Documents/Projects/optipod/test/e2e/resource_bounds_unit_test.go:191 @ 12/13/25 10:50:11.84 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Resource Bounds Unit Tests Resource Conversion should convert resource quantities to bytes/millicores" classname="e2e suite" status="passed" time="2.9919e-05">
+              <system-err>&gt; Enter [BeforeEach] Resource Bounds Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/resource_bounds_unit_test.go:14 @ 12/13/25 10:50:11.84&#xA;&lt; Exit [BeforeEach] Resource Bounds Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/resource_bounds_unit_test.go:14 @ 12/13/25 10:50:11.84 (0s)&#xA;&gt; Enter [It] should convert resource quantities to bytes/millicores - /Users/trivedi/Documents/Projects/optipod/test/e2e/resource_bounds_unit_test.go:201 @ 12/13/25 10:50:11.84&#xA;&lt; Exit [It] should convert resource quantities to bytes/millicores - /Users/trivedi/Documents/Projects/optipod/test/e2e/resource_bounds_unit_test.go:201 @ 12/13/25 10:50:11.84 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Resource Bounds Unit Tests Resource Conversion should handle invalid resource conversion" classname="e2e suite" status="passed" time="2.5191e-05">
+              <system-err>&gt; Enter [BeforeEach] Resource Bounds Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/resource_bounds_unit_test.go:14 @ 12/13/25 10:50:11.84&#xA;&lt; Exit [BeforeEach] Resource Bounds Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/resource_bounds_unit_test.go:14 @ 12/13/25 10:50:11.84 (0s)&#xA;&gt; Enter [It] should handle invalid resource conversion - /Users/trivedi/Documents/Projects/optipod/test/e2e/resource_bounds_unit_test.go:223 @ 12/13/25 10:50:11.84&#xA;&lt; Exit [It] should handle invalid resource conversion - /Users/trivedi/Documents/Projects/optipod/test/e2e/resource_bounds_unit_test.go:223 @ 12/13/25 10:50:11.84 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Workload Types and Update Strategies Deployment Workload Scenarios should optimize Deployment resources correctly" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Workload Types and Update Strategies Deployment Workload Scenarios should handle Deployment selector matching correctly" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Workload Types and Update Strategies Deployment Workload Scenarios should validate Deployment rollout behavior" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Workload Types and Update Strategies StatefulSet Workload Scenarios should optimize StatefulSet resources correctly" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Workload Types and Update Strategies StatefulSet Workload Scenarios should handle StatefulSet ordered update correctly" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Workload Types and Update Strategies StatefulSet Workload Scenarios should handle StatefulSet persistent volume considerations" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Workload Types and Update Strategies DaemonSet Workload Scenarios should optimize DaemonSet resources correctly" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Workload Types and Update Strategies DaemonSet Workload Scenarios should handle DaemonSet node-based update correctly" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Workload Types and Update Strategies DaemonSet Workload Scenarios should validate resource optimization for system workloads" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Workload Types and Update Strategies Update Strategy Scenarios should respect in-place resize update strategy" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Workload Types and Update Strategies Update Strategy Scenarios should respect recreation update strategy" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Workload Types and Update Strategies Update Strategy Scenarios should respect requests-only update strategy" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Workload Types and Update Strategies Update Strategy Scenarios should validate strategy compliance and validation" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Workload Types and Update Strategies Property-Based Tests update strategy compliance property in-place resize strategy compliance" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Workload Types and Update Strategies Property-Based Tests update strategy compliance property recreation strategy compliance" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Workload Types and Update Strategies Property-Based Tests update strategy compliance property requests-only strategy compliance" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Workload Types and Update Strategies Property-Based Tests update strategy compliance property conflicting strategies handling" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Workload Types and Update Strategies Workload Status Validation should report workload status accurately after optimization" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Workload Types and Update Strategies Workload Status Validation should update status after optimization changes" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Workload Types and Update Strategies Workload Status Validation should maintain status consistency across workload types" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Workload Types and Update Strategies Workload Status Validation should validate status field population" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Workload Types and Update Strategies Workload Status Validation status reporting accuracy property deployment status accuracy" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Workload Types and Update Strategies Workload Status Validation status reporting accuracy property statefulset status accuracy" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Workload Types and Update Strategies Workload Status Validation status reporting accuracy property daemonset status accuracy" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Workload Types and Update Strategies Workload Status Validation status reporting accuracy property policy status consistency" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Workload Types and Update Strategies Unit Tests for Workload Scenarios should detect workload types correctly" classname="e2e suite" status="passed" time="6.101059187">
+              <system-err>&gt; Enter [BeforeAll] Workload Types and Update Strategies - /Users/trivedi/Documents/Projects/optipod/test/e2e/workload_types_test.go:53 @ 12/13/25 10:50:11.841&#xA;STEP: setting up test environment - /Users/trivedi/Documents/Projects/optipod/test/e2e/workload_types_test.go:54 @ 12/13/25 10:50:11.841&#xA;&lt; Exit [BeforeAll] Workload Types and Update Strategies - /Users/trivedi/Documents/Projects/optipod/test/e2e/workload_types_test.go:53 @ 12/13/25 10:50:11.843 (2ms)&#xA;&gt; Enter [BeforeEach] Workload Types and Update Strategies - /Users/trivedi/Documents/Projects/optipod/test/e2e/workload_types_test.go:72 @ 12/13/25 10:50:11.843&#xA;&lt; Exit [BeforeEach] Workload Types and Update Strategies - /Users/trivedi/Documents/Projects/optipod/test/e2e/workload_types_test.go:72 @ 12/13/25 10:50:11.858 (15ms)&#xA;&gt; Enter [It] should detect workload types correctly - /Users/trivedi/Documents/Projects/optipod/test/e2e/workload_types_test.go:2645 @ 12/13/25 10:50:11.858&#xA;STEP: Testing workload type detection for Deployment - /Users/trivedi/Documents/Projects/optipod/test/e2e/workload_types_test.go:2646 @ 12/13/25 10:50:11.858&#xA;STEP: Testing workload type detection for StatefulSet - /Users/trivedi/Documents/Projects/optipod/test/e2e/workload_types_test.go:2675 @ 12/13/25 10:50:11.863&#xA;STEP: Testing workload type detection for DaemonSet - /Users/trivedi/Documents/Projects/optipod/test/e2e/workload_types_test.go:2704 @ 12/13/25 10:50:11.868&#xA;&lt; Exit [It] should detect workload types correctly - /Users/trivedi/Documents/Projects/optipod/test/e2e/workload_types_test.go:2645 @ 12/13/25 10:50:11.874 (16ms)&#xA;&gt; Enter [AfterEach] Workload Types and Update Strategies - /Users/trivedi/Documents/Projects/optipod/test/e2e/workload_types_test.go:100 @ 12/13/25 10:50:11.874&#xA;&lt; Exit [AfterEach] Workload Types and Update Strategies - /Users/trivedi/Documents/Projects/optipod/test/e2e/workload_types_test.go:100 @ 12/13/25 10:50:17.942 (6.067s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Workload Types and Update Strategies Unit Tests for Workload Scenarios should select correct update strategy based on policy configuration" classname="e2e suite" status="passed" time="6.015789443">
+              <system-err>&gt; Enter [BeforeEach] Workload Types and Update Strategies - /Users/trivedi/Documents/Projects/optipod/test/e2e/workload_types_test.go:72 @ 12/13/25 10:50:17.942&#xA;&lt; Exit [BeforeEach] Workload Types and Update Strategies - /Users/trivedi/Documents/Projects/optipod/test/e2e/workload_types_test.go:72 @ 12/13/25 10:50:17.946 (4ms)&#xA;&gt; Enter [It] should select correct update strategy based on policy configuration - /Users/trivedi/Documents/Projects/optipod/test/e2e/workload_types_test.go:2734 @ 12/13/25 10:50:17.946&#xA;STEP: Testing update strategy configuration validation - /Users/trivedi/Documents/Projects/optipod/test/e2e/workload_types_test.go:2735 @ 12/13/25 10:50:17.946&#xA;&lt; Exit [It] should select correct update strategy based on policy configuration - /Users/trivedi/Documents/Projects/optipod/test/e2e/workload_types_test.go:2734 @ 12/13/25 10:50:17.946 (0s)&#xA;&gt; Enter [AfterEach] Workload Types and Update Strategies - /Users/trivedi/Documents/Projects/optipod/test/e2e/workload_types_test.go:100 @ 12/13/25 10:50:17.946&#xA;&lt; Exit [AfterEach] Workload Types and Update Strategies - /Users/trivedi/Documents/Projects/optipod/test/e2e/workload_types_test.go:100 @ 12/13/25 10:50:23.958 (6.012s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Workload Types and Update Strategies Unit Tests for Workload Scenarios should validate status reporting logic" classname="e2e suite" status="pending" time="0">
+              <skipped message="pending"></skipped>
+          </testcase>
+          <testcase name="[It] Workload Types and Update Strategies Unit Tests for Workload Scenarios should validate workload annotation handling" classname="e2e suite" status="pending" time="0">
+              <skipped message="pending"></skipped>
+          </testcase>
+          <testcase name="[It] Workload Types and Update Strategies Unit Tests for Workload Scenarios should validate resource bounds enforcement logic" classname="e2e suite" status="passed" time="6.016285185">
+              <system-err>&gt; Enter [BeforeEach] Workload Types and Update Strategies - /Users/trivedi/Documents/Projects/optipod/test/e2e/workload_types_test.go:72 @ 12/13/25 10:50:23.958&#xA;&lt; Exit [BeforeEach] Workload Types and Update Strategies - /Users/trivedi/Documents/Projects/optipod/test/e2e/workload_types_test.go:72 @ 12/13/25 10:50:23.962 (4ms)&#xA;&gt; Enter [It] should validate resource bounds enforcement logic - /Users/trivedi/Documents/Projects/optipod/test/e2e/workload_types_test.go:2953 @ 12/13/25 10:50:23.962&#xA;STEP: Testing resource bounds validation - /Users/trivedi/Documents/Projects/optipod/test/e2e/workload_types_test.go:2954 @ 12/13/25 10:50:23.962&#xA;STEP: Testing memory bounds validation - /Users/trivedi/Documents/Projects/optipod/test/e2e/workload_types_test.go:2972 @ 12/13/25 10:50:23.962&#xA;STEP: Testing resource unit conversions - /Users/trivedi/Documents/Projects/optipod/test/e2e/workload_types_test.go:2989 @ 12/13/25 10:50:23.962&#xA;&lt; Exit [It] should validate resource bounds enforcement logic - /Users/trivedi/Documents/Projects/optipod/test/e2e/workload_types_test.go:2953 @ 12/13/25 10:50:23.962 (0s)&#xA;&gt; Enter [AfterEach] Workload Types and Update Strategies - /Users/trivedi/Documents/Projects/optipod/test/e2e/workload_types_test.go:100 @ 12/13/25 10:50:23.962&#xA;&lt; Exit [AfterEach] Workload Types and Update Strategies - /Users/trivedi/Documents/Projects/optipod/test/e2e/workload_types_test.go:100 @ 12/13/25 10:50:29.974 (6.012s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Test Suite Validation Test Suite Health Validation should validate test suite health successfully" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Test Suite Validation Test Suite Health Validation should detect cluster connectivity issues" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Test Suite Validation Test Suite Health Validation should validate test structure correctly" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Test Suite Validation Test Suite Health Validation should validate helper components" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Test Suite Validation Test Suite Health Validation should calculate quality metrics appropriately" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Test Suite Validation Test Suite Health Validation should generate appropriate recommendations" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Test Suite Validation Health Status Calculation should calculate healthy status correctly" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Test Suite Validation Health Status Calculation should calculate degraded status correctly" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Test Suite Validation Health Status Calculation should calculate unhealthy status correctly" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Test Suite Validation Quick Health Check should perform quick health check successfully" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Coverage Validator Unit Tests Requirements Parsing should parse requirements from markdown file" classname="e2e suite" status="passed" time="0.00127944">
+              <system-err>&gt; Enter [BeforeEach] Coverage Validator Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:32 @ 12/13/25 10:50:29.975&#xA;&lt; Exit [BeforeEach] Coverage Validator Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:32 @ 12/13/25 10:50:29.975 (0s)&#xA;&gt; Enter [It] should parse requirements from markdown file - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:52 @ 12/13/25 10:50:29.975&#xA;&lt; Exit [It] should parse requirements from markdown file - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:52 @ 12/13/25 10:50:29.976 (1ms)&#xA;&gt; Enter [AfterEach] Coverage Validator Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:45 @ 12/13/25 10:50:29.976&#xA;&lt; Exit [AfterEach] Coverage Validator Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:45 @ 12/13/25 10:50:29.976 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Coverage Validator Unit Tests Requirements Parsing should handle empty requirements file" classname="e2e suite" status="passed" time="0.000709584">
+              <system-err>&gt; Enter [BeforeEach] Coverage Validator Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:32 @ 12/13/25 10:50:29.976&#xA;&lt; Exit [BeforeEach] Coverage Validator Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:32 @ 12/13/25 10:50:29.976 (0s)&#xA;&gt; Enter [It] should handle empty requirements file - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:76 @ 12/13/25 10:50:29.976&#xA;&lt; Exit [It] should handle empty requirements file - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:76 @ 12/13/25 10:50:29.977 (0s)&#xA;&gt; Enter [AfterEach] Coverage Validator Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:45 @ 12/13/25 10:50:29.977&#xA;&lt; Exit [AfterEach] Coverage Validator Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:45 @ 12/13/25 10:50:29.977 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Coverage Validator Unit Tests Requirements Parsing should handle missing requirements file" classname="e2e suite" status="passed" time="0.000267493">
+              <system-err>&gt; Enter [BeforeEach] Coverage Validator Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:32 @ 12/13/25 10:50:29.977&#xA;&lt; Exit [BeforeEach] Coverage Validator Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:32 @ 12/13/25 10:50:29.977 (0s)&#xA;&gt; Enter [It] should handle missing requirements file - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:85 @ 12/13/25 10:50:29.977&#xA;&lt; Exit [It] should handle missing requirements file - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:85 @ 12/13/25 10:50:29.977 (0s)&#xA;&gt; Enter [AfterEach] Coverage Validator Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:45 @ 12/13/25 10:50:29.977&#xA;&lt; Exit [AfterEach] Coverage Validator Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:45 @ 12/13/25 10:50:29.977 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Coverage Validator Unit Tests Properties Parsing should parse properties from design file" classname="e2e suite" status="passed" time="0.000708796">
+              <system-err>&gt; Enter [BeforeEach] Coverage Validator Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:32 @ 12/13/25 10:50:29.977&#xA;&lt; Exit [BeforeEach] Coverage Validator Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:32 @ 12/13/25 10:50:29.977 (0s)&#xA;&gt; Enter [It] should parse properties from design file - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:93 @ 12/13/25 10:50:29.977&#xA;&lt; Exit [It] should parse properties from design file - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:93 @ 12/13/25 10:50:29.978 (0s)&#xA;&gt; Enter [AfterEach] Coverage Validator Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:45 @ 12/13/25 10:50:29.978&#xA;&lt; Exit [AfterEach] Coverage Validator Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:45 @ 12/13/25 10:50:29.978 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Coverage Validator Unit Tests Properties Parsing should handle design file without properties" classname="e2e suite" status="passed" time="0.000696194">
+              <system-err>&gt; Enter [BeforeEach] Coverage Validator Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:32 @ 12/13/25 10:50:29.978&#xA;&lt; Exit [BeforeEach] Coverage Validator Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:32 @ 12/13/25 10:50:29.978 (0s)&#xA;&gt; Enter [It] should handle design file without properties - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:116 @ 12/13/25 10:50:29.978&#xA;&lt; Exit [It] should handle design file without properties - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:116 @ 12/13/25 10:50:29.979 (0s)&#xA;&gt; Enter [AfterEach] Coverage Validator Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:45 @ 12/13/25 10:50:29.979&#xA;&lt; Exit [AfterEach] Coverage Validator Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:45 @ 12/13/25 10:50:29.979 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Coverage Validator Unit Tests Test File Scanning should find test files in directory" classname="e2e suite" status="passed" time="0.001359902">
+              <system-err>&gt; Enter [BeforeEach] Coverage Validator Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:32 @ 12/13/25 10:50:29.979&#xA;&lt; Exit [BeforeEach] Coverage Validator Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:32 @ 12/13/25 10:50:29.979 (0s)&#xA;&gt; Enter [It] should find test files in directory - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:132 @ 12/13/25 10:50:29.979&#xA;&lt; Exit [It] should find test files in directory - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:132 @ 12/13/25 10:50:29.98 (1ms)&#xA;&gt; Enter [AfterEach] Coverage Validator Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:45 @ 12/13/25 10:50:29.98&#xA;&lt; Exit [AfterEach] Coverage Validator Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:45 @ 12/13/25 10:50:29.98 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Coverage Validator Unit Tests Test File Scanning should handle directory with no test files" classname="e2e suite" status="passed" time="0.000430639">
+              <system-err>&gt; Enter [BeforeEach] Coverage Validator Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:32 @ 12/13/25 10:50:29.98&#xA;&lt; Exit [BeforeEach] Coverage Validator Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:32 @ 12/13/25 10:50:29.98 (0s)&#xA;&gt; Enter [It] should handle directory with no test files - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:159 @ 12/13/25 10:50:29.98&#xA;&lt; Exit [It] should handle directory with no test files - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:159 @ 12/13/25 10:50:29.981 (0s)&#xA;&gt; Enter [AfterEach] Coverage Validator Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:45 @ 12/13/25 10:50:29.981&#xA;&lt; Exit [AfterEach] Coverage Validator Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:45 @ 12/13/25 10:50:29.981 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Coverage Validator Unit Tests Requirement Coverage Analysis should analyze requirement coverage correctly" classname="e2e suite" status="passed" time="0.001002625">
+              <system-err>&gt; Enter [BeforeEach] Coverage Validator Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:32 @ 12/13/25 10:50:29.981&#xA;&lt; Exit [BeforeEach] Coverage Validator Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:32 @ 12/13/25 10:50:29.981 (0s)&#xA;&gt; Enter [It] should analyze requirement coverage correctly - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:167 @ 12/13/25 10:50:29.981&#xA;&lt; Exit [It] should analyze requirement coverage correctly - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:167 @ 12/13/25 10:50:29.981 (0s)&#xA;&gt; Enter [AfterEach] Coverage Validator Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:45 @ 12/13/25 10:50:29.981&#xA;&lt; Exit [AfterEach] Coverage Validator Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:45 @ 12/13/25 10:50:29.982 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Coverage Validator Unit Tests Property Coverage Analysis should analyze property coverage correctly" classname="e2e suite" status="passed" time="0.001139106">
+              <system-err>&gt; Enter [BeforeEach] Coverage Validator Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:32 @ 12/13/25 10:50:29.982&#xA;&lt; Exit [BeforeEach] Coverage Validator Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:32 @ 12/13/25 10:50:29.982 (0s)&#xA;&gt; Enter [It] should analyze property coverage correctly - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:200 @ 12/13/25 10:50:29.982&#xA;&lt; Exit [It] should analyze property coverage correctly - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:200 @ 12/13/25 10:50:29.983 (1ms)&#xA;&gt; Enter [AfterEach] Coverage Validator Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:45 @ 12/13/25 10:50:29.983&#xA;&lt; Exit [AfterEach] Coverage Validator Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:45 @ 12/13/25 10:50:29.983 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Coverage Validator Unit Tests Coverage Calculation should calculate coverage percentage correctly" classname="e2e suite" status="passed" time="0.000302314">
+              <system-err>&gt; Enter [BeforeEach] Coverage Validator Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:32 @ 12/13/25 10:50:29.983&#xA;&lt; Exit [BeforeEach] Coverage Validator Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:32 @ 12/13/25 10:50:29.983 (0s)&#xA;&gt; Enter [It] should calculate coverage percentage correctly - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:233 @ 12/13/25 10:50:29.983&#xA;&lt; Exit [It] should calculate coverage percentage correctly - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:233 @ 12/13/25 10:50:29.983 (0s)&#xA;&gt; Enter [AfterEach] Coverage Validator Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:45 @ 12/13/25 10:50:29.983&#xA;&lt; Exit [AfterEach] Coverage Validator Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:45 @ 12/13/25 10:50:29.983 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Coverage Validator Unit Tests Coverage Calculation should handle empty report" classname="e2e suite" status="passed" time="0.000230079">
+              <system-err>&gt; Enter [BeforeEach] Coverage Validator Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:32 @ 12/13/25 10:50:29.983&#xA;&lt; Exit [BeforeEach] Coverage Validator Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:32 @ 12/13/25 10:50:29.983 (0s)&#xA;&gt; Enter [It] should handle empty report - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:252 @ 12/13/25 10:50:29.983&#xA;&lt; Exit [It] should handle empty report - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:252 @ 12/13/25 10:50:29.983 (0s)&#xA;&gt; Enter [AfterEach] Coverage Validator Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:45 @ 12/13/25 10:50:29.983&#xA;&lt; Exit [AfterEach] Coverage Validator Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:45 @ 12/13/25 10:50:29.984 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Coverage Validator Unit Tests Missing Coverage Identification should identify missing coverage correctly" classname="e2e suite" status="passed" time="0.000220273">
+              <system-err>&gt; Enter [BeforeEach] Coverage Validator Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:32 @ 12/13/25 10:50:29.984&#xA;&lt; Exit [BeforeEach] Coverage Validator Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:32 @ 12/13/25 10:50:29.984 (0s)&#xA;&gt; Enter [It] should identify missing coverage correctly - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:264 @ 12/13/25 10:50:29.984&#xA;&lt; Exit [It] should identify missing coverage correctly - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:264 @ 12/13/25 10:50:29.984 (0s)&#xA;&gt; Enter [AfterEach] Coverage Validator Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:45 @ 12/13/25 10:50:29.984&#xA;&lt; Exit [AfterEach] Coverage Validator Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:45 @ 12/13/25 10:50:29.984 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Coverage Validator Unit Tests Recommendations Generation should generate appropriate recommendations" classname="e2e suite" status="passed" time="0.000262977">
+              <system-err>&gt; Enter [BeforeEach] Coverage Validator Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:32 @ 12/13/25 10:50:29.984&#xA;&lt; Exit [BeforeEach] Coverage Validator Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:32 @ 12/13/25 10:50:29.984 (0s)&#xA;&gt; Enter [It] should generate appropriate recommendations - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:284 @ 12/13/25 10:50:29.984&#xA;&lt; Exit [It] should generate appropriate recommendations - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:284 @ 12/13/25 10:50:29.984 (0s)&#xA;&gt; Enter [AfterEach] Coverage Validator Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:45 @ 12/13/25 10:50:29.984&#xA;&lt; Exit [AfterEach] Coverage Validator Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:45 @ 12/13/25 10:50:29.984 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Validation Result Reporting Report Generation should generate comprehensive validation reports" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Validation Result Reporting Unit Tests Report Generation should generate reports without panicking" classname="e2e suite" status="passed" time="9.152e-05">
+              <system-err>&gt; Enter [It] should generate reports without panicking - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:648 @ 12/13/25 10:50:29.984&#xA;&lt; Exit [It] should generate reports without panicking - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:648 @ 12/13/25 10:50:29.984 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Validation Result Reporting Unit Tests Report Generation should handle empty validation result" classname="e2e suite" status="passed" time="4.5629e-05">
+              <system-err>&gt; Enter [It] should handle empty validation result - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:685 @ 12/13/25 10:50:29.984&#xA;&lt; Exit [It] should handle empty validation result - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:685 @ 12/13/25 10:50:29.984 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] CI Integration Unit Tests Test execution scripts should validate parallel configuration parsing" classname="e2e suite" status="passed" time="3.7321e-05">
+              <system-err>&gt; Enter [It] should validate parallel configuration parsing - /Users/trivedi/Documents/Projects/optipod/test/e2e/ci_integration_unit_test.go:21 @ 12/13/25 10:50:29.984&#xA;&lt; Exit [It] should validate parallel configuration parsing - /Users/trivedi/Documents/Projects/optipod/test/e2e/ci_integration_unit_test.go:21 @ 12/13/25 10:50:29.984 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] CI Integration Unit Tests Test execution scripts should validate performance configuration parsing" classname="e2e suite" status="passed" time="2.9876e-05">
+              <system-err>&gt; Enter [It] should validate performance configuration parsing - /Users/trivedi/Documents/Projects/optipod/test/e2e/ci_integration_unit_test.go:42 @ 12/13/25 10:50:29.984&#xA;&lt; Exit [It] should validate performance configuration parsing - /Users/trivedi/Documents/Projects/optipod/test/e2e/ci_integration_unit_test.go:42 @ 12/13/25 10:50:29.984 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] CI Integration Unit Tests Test execution scripts should validate timeout calculation logic" classname="e2e suite" status="passed" time="1.7764e-05">
+              <system-err>&gt; Enter [It] should validate timeout calculation logic - /Users/trivedi/Documents/Projects/optipod/test/e2e/ci_integration_unit_test.go:67 @ 12/13/25 10:50:29.984&#xA;&lt; Exit [It] should validate timeout calculation logic - /Users/trivedi/Documents/Projects/optipod/test/e2e/ci_integration_unit_test.go:67 @ 12/13/25 10:50:29.984 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] CI Integration Unit Tests Test execution scripts should validate parallel node information" classname="e2e suite" status="passed" time="2.2547e-05">
+              <system-err>&gt; Enter [It] should validate parallel node information - /Users/trivedi/Documents/Projects/optipod/test/e2e/ci_integration_unit_test.go:84 @ 12/13/25 10:50:29.985&#xA;&lt; Exit [It] should validate parallel node information - /Users/trivedi/Documents/Projects/optipod/test/e2e/ci_integration_unit_test.go:84 @ 12/13/25 10:50:29.985 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] CI Integration Unit Tests Reporting functions should generate valid JUnit report structure" classname="e2e suite" status="passed" time="0.000822515">
+              <system-err>&gt; Enter [BeforeEach] Reporting functions - /Users/trivedi/Documents/Projects/optipod/test/e2e/ci_integration_unit_test.go:109 @ 12/13/25 10:50:29.985&#xA;&lt; Exit [BeforeEach] Reporting functions - /Users/trivedi/Documents/Projects/optipod/test/e2e/ci_integration_unit_test.go:109 @ 12/13/25 10:50:29.985 (0s)&#xA;&gt; Enter [It] should generate valid JUnit report structure - /Users/trivedi/Documents/Projects/optipod/test/e2e/ci_integration_unit_test.go:115 @ 12/13/25 10:50:29.985&#xA;&lt; Exit [It] should generate valid JUnit report structure - /Users/trivedi/Documents/Projects/optipod/test/e2e/ci_integration_unit_test.go:115 @ 12/13/25 10:50:29.985 (0s)&#xA;&gt; Enter [DeferCleanup (Each)] Reporting functions - /Users/trivedi/go/pkg/mod/github.com/onsi/ginkgo/v2@v2.22.0/internal/testingtproxy/testing_t_proxy.go:153 @ 12/13/25 10:50:29.985&#xA;&lt; Exit [DeferCleanup (Each)] Reporting functions - /Users/trivedi/go/pkg/mod/github.com/onsi/ginkgo/v2@v2.22.0/internal/testingtproxy/testing_t_proxy.go:153 @ 12/13/25 10:50:29.985 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] CI Integration Unit Tests Reporting functions should generate valid JSON report structure" classname="e2e suite" status="passed" time="0.000934708">
+              <system-err>&gt; Enter [BeforeEach] Reporting functions - /Users/trivedi/Documents/Projects/optipod/test/e2e/ci_integration_unit_test.go:109 @ 12/13/25 10:50:29.985&#xA;&lt; Exit [BeforeEach] Reporting functions - /Users/trivedi/Documents/Projects/optipod/test/e2e/ci_integration_unit_test.go:109 @ 12/13/25 10:50:29.986 (0s)&#xA;&gt; Enter [It] should generate valid JSON report structure - /Users/trivedi/Documents/Projects/optipod/test/e2e/ci_integration_unit_test.go:135 @ 12/13/25 10:50:29.986&#xA;&lt; Exit [It] should generate valid JSON report structure - /Users/trivedi/Documents/Projects/optipod/test/e2e/ci_integration_unit_test.go:135 @ 12/13/25 10:50:29.986 (0s)&#xA;&gt; Enter [DeferCleanup (Each)] Reporting functions - /Users/trivedi/go/pkg/mod/github.com/onsi/ginkgo/v2@v2.22.0/internal/testingtproxy/testing_t_proxy.go:153 @ 12/13/25 10:50:29.986&#xA;&lt; Exit [DeferCleanup (Each)] Reporting functions - /Users/trivedi/go/pkg/mod/github.com/onsi/ginkgo/v2@v2.22.0/internal/testingtproxy/testing_t_proxy.go:153 @ 12/13/25 10:50:29.986 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] CI Integration Unit Tests Reporting functions should handle report generation errors gracefully" classname="e2e suite" status="passed" time="0.000346078">
+              <system-err>&gt; Enter [BeforeEach] Reporting functions - /Users/trivedi/Documents/Projects/optipod/test/e2e/ci_integration_unit_test.go:109 @ 12/13/25 10:50:29.986&#xA;&lt; Exit [BeforeEach] Reporting functions - /Users/trivedi/Documents/Projects/optipod/test/e2e/ci_integration_unit_test.go:109 @ 12/13/25 10:50:29.987 (0s)&#xA;&gt; Enter [It] should handle report generation errors gracefully - /Users/trivedi/Documents/Projects/optipod/test/e2e/ci_integration_unit_test.go:155 @ 12/13/25 10:50:29.987&#xA;&lt; Exit [It] should handle report generation errors gracefully - /Users/trivedi/Documents/Projects/optipod/test/e2e/ci_integration_unit_test.go:155 @ 12/13/25 10:50:29.987 (0s)&#xA;&gt; Enter [DeferCleanup (Each)] Reporting functions - /Users/trivedi/go/pkg/mod/github.com/onsi/ginkgo/v2@v2.22.0/internal/testingtproxy/testing_t_proxy.go:153 @ 12/13/25 10:50:29.987&#xA;&lt; Exit [DeferCleanup (Each)] Reporting functions - /Users/trivedi/go/pkg/mod/github.com/onsi/ginkgo/v2@v2.22.0/internal/testingtproxy/testing_t_proxy.go:153 @ 12/13/25 10:50:29.987 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] CI Integration Unit Tests Reporting functions should validate report naming conventions" classname="e2e suite" status="passed" time="0.000322292">
+              <system-err>&gt; Enter [BeforeEach] Reporting functions - /Users/trivedi/Documents/Projects/optipod/test/e2e/ci_integration_unit_test.go:109 @ 12/13/25 10:50:29.987&#xA;&lt; Exit [BeforeEach] Reporting functions - /Users/trivedi/Documents/Projects/optipod/test/e2e/ci_integration_unit_test.go:109 @ 12/13/25 10:50:29.987 (0s)&#xA;&gt; Enter [It] should validate report naming conventions - /Users/trivedi/Documents/Projects/optipod/test/e2e/ci_integration_unit_test.go:164 @ 12/13/25 10:50:29.987&#xA;&lt; Exit [It] should validate report naming conventions - /Users/trivedi/Documents/Projects/optipod/test/e2e/ci_integration_unit_test.go:164 @ 12/13/25 10:50:29.987 (0s)&#xA;&gt; Enter [DeferCleanup (Each)] Reporting functions - /Users/trivedi/go/pkg/mod/github.com/onsi/ginkgo/v2@v2.22.0/internal/testingtproxy/testing_t_proxy.go:153 @ 12/13/25 10:50:29.987&#xA;&lt; Exit [DeferCleanup (Each)] Reporting functions - /Users/trivedi/go/pkg/mod/github.com/onsi/ginkgo/v2@v2.22.0/internal/testingtproxy/testing_t_proxy.go:153 @ 12/13/25 10:50:29.987 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] CI Integration Unit Tests Artifact collection should create artifact directory structure" classname="e2e suite" status="passed" time="0.001320228">
+              <system-err>&gt; Enter [BeforeEach] Artifact collection - /Users/trivedi/Documents/Projects/optipod/test/e2e/ci_integration_unit_test.go:180 @ 12/13/25 10:50:29.987&#xA;&lt; Exit [BeforeEach] Artifact collection - /Users/trivedi/Documents/Projects/optipod/test/e2e/ci_integration_unit_test.go:180 @ 12/13/25 10:50:29.987 (0s)&#xA;&gt; Enter [It] should create artifact directory structure - /Users/trivedi/Documents/Projects/optipod/test/e2e/ci_integration_unit_test.go:186 @ 12/13/25 10:50:29.987&#xA;&lt; Exit [It] should create artifact directory structure - /Users/trivedi/Documents/Projects/optipod/test/e2e/ci_integration_unit_test.go:186 @ 12/13/25 10:50:29.988 (0s)&#xA;&gt; Enter [DeferCleanup (Each)] Artifact collection - /Users/trivedi/go/pkg/mod/github.com/onsi/ginkgo/v2@v2.22.0/internal/testingtproxy/testing_t_proxy.go:153 @ 12/13/25 10:50:29.988&#xA;&lt; Exit [DeferCleanup (Each)] Artifact collection - /Users/trivedi/go/pkg/mod/github.com/onsi/ginkgo/v2@v2.22.0/internal/testingtproxy/testing_t_proxy.go:153 @ 12/13/25 10:50:29.988 (1ms)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] CI Integration Unit Tests Artifact collection should validate artifact file permissions" classname="e2e suite" status="passed" time="0.000686474">
+              <system-err>&gt; Enter [BeforeEach] Artifact collection - /Users/trivedi/Documents/Projects/optipod/test/e2e/ci_integration_unit_test.go:180 @ 12/13/25 10:50:29.989&#xA;&lt; Exit [BeforeEach] Artifact collection - /Users/trivedi/Documents/Projects/optipod/test/e2e/ci_integration_unit_test.go:180 @ 12/13/25 10:50:29.989 (0s)&#xA;&gt; Enter [It] should validate artifact file permissions - /Users/trivedi/Documents/Projects/optipod/test/e2e/ci_integration_unit_test.go:202 @ 12/13/25 10:50:29.989&#xA;&lt; Exit [It] should validate artifact file permissions - /Users/trivedi/Documents/Projects/optipod/test/e2e/ci_integration_unit_test.go:202 @ 12/13/25 10:50:29.989 (0s)&#xA;&gt; Enter [DeferCleanup (Each)] Artifact collection - /Users/trivedi/go/pkg/mod/github.com/onsi/ginkgo/v2@v2.22.0/internal/testingtproxy/testing_t_proxy.go:153 @ 12/13/25 10:50:29.989&#xA;&lt; Exit [DeferCleanup (Each)] Artifact collection - /Users/trivedi/go/pkg/mod/github.com/onsi/ginkgo/v2@v2.22.0/internal/testingtproxy/testing_t_proxy.go:153 @ 12/13/25 10:50:29.989 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] CI Integration Unit Tests Artifact collection should handle concurrent artifact generation" classname="e2e suite" status="passed" time="0.001246961">
+              <system-err>&gt; Enter [BeforeEach] Artifact collection - /Users/trivedi/Documents/Projects/optipod/test/e2e/ci_integration_unit_test.go:180 @ 12/13/25 10:50:29.989&#xA;&lt; Exit [BeforeEach] Artifact collection - /Users/trivedi/Documents/Projects/optipod/test/e2e/ci_integration_unit_test.go:180 @ 12/13/25 10:50:29.989 (0s)&#xA;&gt; Enter [It] should handle concurrent artifact generation - /Users/trivedi/Documents/Projects/optipod/test/e2e/ci_integration_unit_test.go:217 @ 12/13/25 10:50:29.989&#xA;&lt; Exit [It] should handle concurrent artifact generation - /Users/trivedi/Documents/Projects/optipod/test/e2e/ci_integration_unit_test.go:217 @ 12/13/25 10:50:29.99 (0s)&#xA;&gt; Enter [DeferCleanup (Each)] Artifact collection - /Users/trivedi/go/pkg/mod/github.com/onsi/ginkgo/v2@v2.22.0/internal/testingtproxy/testing_t_proxy.go:153 @ 12/13/25 10:50:29.99&#xA;&lt; Exit [DeferCleanup (Each)] Artifact collection - /Users/trivedi/go/pkg/mod/github.com/onsi/ginkgo/v2@v2.22.0/internal/testingtproxy/testing_t_proxy.go:153 @ 12/13/25 10:50:29.99 (1ms)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] CI Integration Unit Tests CI environment detection should detect CI environment variables" classname="e2e suite" status="passed" time="2.0069e-05">
+              <system-err>&gt; Enter [It] should detect CI environment variables - /Users/trivedi/Documents/Projects/optipod/test/e2e/ci_integration_unit_test.go:245 @ 12/13/25 10:50:29.991&#xA;&lt; Exit [It] should detect CI environment variables - /Users/trivedi/Documents/Projects/optipod/test/e2e/ci_integration_unit_test.go:245 @ 12/13/25 10:50:29.991 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] CI Integration Unit Tests CI environment detection should validate test timeout adjustments for CI" classname="e2e suite" status="passed" time="1.9554e-05">
+              <system-err>&gt; Enter [It] should validate test timeout adjustments for CI - /Users/trivedi/Documents/Projects/optipod/test/e2e/ci_integration_unit_test.go:269 @ 12/13/25 10:50:29.991&#xA;&lt; Exit [It] should validate test timeout adjustments for CI - /Users/trivedi/Documents/Projects/optipod/test/e2e/ci_integration_unit_test.go:269 @ 12/13/25 10:50:29.991 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] CI Integration Unit Tests CI environment detection should validate parallel execution limits for CI" classname="e2e suite" status="passed" time="2.32e-05">
+              <system-err>&gt; Enter [It] should validate parallel execution limits for CI - /Users/trivedi/Documents/Projects/optipod/test/e2e/ci_integration_unit_test.go:284 @ 12/13/25 10:50:29.991&#xA;&lt; Exit [It] should validate parallel execution limits for CI - /Users/trivedi/Documents/Projects/optipod/test/e2e/ci_integration_unit_test.go:284 @ 12/13/25 10:50:29.991 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] CI Integration Unit Tests Error handling and exit codes should validate error message formatting" classname="e2e suite" status="passed" time="1.4804e-05">
+              <system-err>&gt; Enter [It] should validate error message formatting - /Users/trivedi/Documents/Projects/optipod/test/e2e/ci_integration_unit_test.go:298 @ 12/13/25 10:50:29.991&#xA;&lt; Exit [It] should validate error message formatting - /Users/trivedi/Documents/Projects/optipod/test/e2e/ci_integration_unit_test.go:298 @ 12/13/25 10:50:29.991 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] CI Integration Unit Tests Error handling and exit codes should validate timeout error handling" classname="e2e suite" status="passed" time="0.00118706">
+              <system-err>&gt; Enter [It] should validate timeout error handling - /Users/trivedi/Documents/Projects/optipod/test/e2e/ci_integration_unit_test.go:306 @ 12/13/25 10:50:29.991&#xA;&lt; Exit [It] should validate timeout error handling - /Users/trivedi/Documents/Projects/optipod/test/e2e/ci_integration_unit_test.go:306 @ 12/13/25 10:50:29.992 (1ms)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] CI Integration Unit Tests Error handling and exit codes should validate retry logic parameters" classname="e2e suite" status="passed" time="2.50164788">
+              <system-err>&gt; Enter [It] should validate retry logic parameters - /Users/trivedi/Documents/Projects/optipod/test/e2e/ci_integration_unit_test.go:317 @ 12/13/25 10:50:29.992&#xA;Retrying operation (attempt 1/3) after 1s&#xA;Retrying operation (attempt 2/3) after 1.5s&#xA;Operation succeeded after 2 retries&#xA;&lt; Exit [It] should validate retry logic parameters - /Users/trivedi/Documents/Projects/optipod/test/e2e/ci_integration_unit_test.go:317 @ 12/13/25 10:50:32.494 (2.502s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Invalid Configuration Unit Tests Policy Validation should reject policies with invalid CPU resource bounds (min &gt; max)" classname="e2e suite" status="passed" time="7.682e-05">
+              <system-err>&gt; Enter [It] should reject policies with invalid CPU resource bounds (min &gt; max) - /Users/trivedi/Documents/Projects/optipod/test/e2e/invalid_config_unit_test.go:65 @ 12/13/25 10:50:32.494&#xA;&lt; Exit [It] should reject policies with invalid CPU resource bounds (min &gt; max) - /Users/trivedi/Documents/Projects/optipod/test/e2e/invalid_config_unit_test.go:65 @ 12/13/25 10:50:32.494 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Invalid Configuration Unit Tests Policy Validation should reject policies with invalid memory resource bounds (min &gt; max)" classname="e2e suite" status="passed" time="3.5674e-05">
+              <system-err>&gt; Enter [It] should reject policies with invalid memory resource bounds (min &gt; max) - /Users/trivedi/Documents/Projects/optipod/test/e2e/invalid_config_unit_test.go:74 @ 12/13/25 10:50:32.494&#xA;&lt; Exit [It] should reject policies with invalid memory resource bounds (min &gt; max) - /Users/trivedi/Documents/Projects/optipod/test/e2e/invalid_config_unit_test.go:74 @ 12/13/25 10:50:32.494 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Invalid Configuration Unit Tests Policy Validation should reject policies with zero resource bounds" classname="e2e suite" status="passed" time="3.5576e-05">
+              <system-err>&gt; Enter [It] should reject policies with zero resource bounds - /Users/trivedi/Documents/Projects/optipod/test/e2e/invalid_config_unit_test.go:83 @ 12/13/25 10:50:32.494&#xA;&lt; Exit [It] should reject policies with zero resource bounds - /Users/trivedi/Documents/Projects/optipod/test/e2e/invalid_config_unit_test.go:83 @ 12/13/25 10:50:32.494 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Invalid Configuration Unit Tests Policy Validation should reject policies with invalid safety factor" classname="e2e suite" status="passed" time="4.3145e-05">
+              <system-err>&gt; Enter [It] should reject policies with invalid safety factor - /Users/trivedi/Documents/Projects/optipod/test/e2e/invalid_config_unit_test.go:121 @ 12/13/25 10:50:32.494&#xA;&lt; Exit [It] should reject policies with invalid safety factor - /Users/trivedi/Documents/Projects/optipod/test/e2e/invalid_config_unit_test.go:121 @ 12/13/25 10:50:32.494 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Invalid Configuration Unit Tests Policy Validation should reject policies without selectors" classname="e2e suite" status="passed" time="3.4746e-05">
+              <system-err>&gt; Enter [It] should reject policies without selectors - /Users/trivedi/Documents/Projects/optipod/test/e2e/invalid_config_unit_test.go:160 @ 12/13/25 10:50:32.494&#xA;&lt; Exit [It] should reject policies without selectors - /Users/trivedi/Documents/Projects/optipod/test/e2e/invalid_config_unit_test.go:160 @ 12/13/25 10:50:32.494 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Invalid Configuration Unit Tests Policy Validation should accept policies with valid configuration edge cases" classname="e2e suite" status="passed" time="8.7412e-05">
+              <system-err>&gt; Enter [It] should accept policies with valid configuration edge cases - /Users/trivedi/Documents/Projects/optipod/test/e2e/invalid_config_unit_test.go:196 @ 12/13/25 10:50:32.494&#xA;STEP: Testing policy with extremely large resource bounds - /Users/trivedi/Documents/Projects/optipod/test/e2e/invalid_config_unit_test.go:197 @ 12/13/25 10:50:32.494&#xA;STEP: Testing policy with very small resource bounds - /Users/trivedi/Documents/Projects/optipod/test/e2e/invalid_config_unit_test.go:233 @ 12/13/25 10:50:32.494&#xA;STEP: Testing policy with maximum safety factor - /Users/trivedi/Documents/Projects/optipod/test/e2e/invalid_config_unit_test.go:269 @ 12/13/25 10:50:32.494&#xA;&lt; Exit [It] should accept policies with valid configuration edge cases - /Users/trivedi/Documents/Projects/optipod/test/e2e/invalid_config_unit_test.go:196 @ 12/13/25 10:50:32.494 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Diagnostic Collector Unit Tests Controller Logs Collection should collect simulated controller logs" classname="e2e suite" status="passed" time="0.076374629">
+              <system-err>&gt; Enter [BeforeEach] Diagnostic Collector Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:469 @ 12/13/25 10:50:32.494&#xA;&lt; Exit [BeforeEach] Diagnostic Collector Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:469 @ 12/13/25 10:50:32.571 (76ms)&#xA;&gt; Enter [It] should collect simulated controller logs - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:481 @ 12/13/25 10:50:32.571&#xA;&lt; Exit [It] should collect simulated controller logs - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:481 @ 12/13/25 10:50:32.571 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Diagnostic Collector Unit Tests Resource States Collection should collect resource states from namespace" classname="e2e suite" status="passed" time="0.00399823">
+              <system-err>&gt; Enter [BeforeEach] Diagnostic Collector Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:469 @ 12/13/25 10:50:32.571&#xA;&lt; Exit [BeforeEach] Diagnostic Collector Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:469 @ 12/13/25 10:50:32.572 (1ms)&#xA;&gt; Enter [It] should collect resource states from namespace - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:503 @ 12/13/25 10:50:32.572&#xA;&lt; Exit [It] should collect resource states from namespace - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:503 @ 12/13/25 10:50:32.575 (3ms)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Diagnostic Collector Unit Tests Resource States Collection should handle empty namespace" classname="e2e suite" status="passed" time="0.00123518">
+              <system-err>&gt; Enter [BeforeEach] Diagnostic Collector Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:469 @ 12/13/25 10:50:32.575&#xA;&lt; Exit [BeforeEach] Diagnostic Collector Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:469 @ 12/13/25 10:50:32.576 (1ms)&#xA;&gt; Enter [It] should handle empty namespace - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:529 @ 12/13/25 10:50:32.576&#xA;&lt; Exit [It] should handle empty namespace - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:529 @ 12/13/25 10:50:32.576 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Diagnostic Collector Unit Tests Events Collection should collect Kubernetes events" classname="e2e suite" status="passed" time="0.001859108">
+              <system-err>&gt; Enter [BeforeEach] Diagnostic Collector Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:469 @ 12/13/25 10:50:32.576&#xA;&lt; Exit [BeforeEach] Diagnostic Collector Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:469 @ 12/13/25 10:50:32.577 (1ms)&#xA;&gt; Enter [It] should collect Kubernetes events - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:539 @ 12/13/25 10:50:32.577&#xA;&lt; Exit [It] should collect Kubernetes events - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:539 @ 12/13/25 10:50:32.578 (1ms)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Diagnostic Collector Unit Tests Diagnostic Collection Integration should collect comprehensive diagnostics" classname="e2e suite" status="passed" time="0.003271229">
+              <system-err>&gt; Enter [BeforeEach] Diagnostic Collector Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:469 @ 12/13/25 10:50:32.578&#xA;&lt; Exit [BeforeEach] Diagnostic Collector Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:469 @ 12/13/25 10:50:32.58 (2ms)&#xA;&gt; Enter [It] should collect comprehensive diagnostics - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:571 @ 12/13/25 10:50:32.58&#xA;&lt; Exit [It] should collect comprehensive diagnostics - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:571 @ 12/13/25 10:50:32.581 (1ms)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Diagnostic Collector Unit Tests Artifact Generation should generate diagnostic artifacts" classname="e2e suite" status="passed" time="0.002204163">
+              <system-err>&gt; Enter [BeforeEach] Diagnostic Collector Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:469 @ 12/13/25 10:50:32.581&#xA;&lt; Exit [BeforeEach] Diagnostic Collector Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:469 @ 12/13/25 10:50:32.583 (1ms)&#xA;&gt; Enter [It] should generate diagnostic artifacts - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:600 @ 12/13/25 10:50:32.583&#xA;&lt; Exit [It] should generate diagnostic artifacts - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:600 @ 12/13/25 10:50:32.583 (1ms)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Error Handling Unit Tests Error Message Formatting should format configuration validation errors correctly" classname="e2e suite" status="passed" time="4.9296e-05">
+              <system-err>&gt; Enter [BeforeEach] Error Handling Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/error_handling_unit_test.go:32 @ 12/13/25 10:50:32.583&#xA;&lt; Exit [BeforeEach] Error Handling Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/error_handling_unit_test.go:32 @ 12/13/25 10:50:32.583 (0s)&#xA;&gt; Enter [It] should format configuration validation errors correctly - /Users/trivedi/Documents/Projects/optipod/test/e2e/error_handling_unit_test.go:37 @ 12/13/25 10:50:32.583&#xA;&lt; Exit [It] should format configuration validation errors correctly - /Users/trivedi/Documents/Projects/optipod/test/e2e/error_handling_unit_test.go:37 @ 12/13/25 10:50:32.584 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Error Handling Unit Tests Error Message Formatting should validate error message content" classname="e2e suite" status="passed" time="3.6754e-05">
+              <system-err>&gt; Enter [BeforeEach] Error Handling Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/error_handling_unit_test.go:32 @ 12/13/25 10:50:32.584&#xA;&lt; Exit [BeforeEach] Error Handling Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/error_handling_unit_test.go:32 @ 12/13/25 10:50:32.584 (0s)&#xA;&gt; Enter [It] should validate error message content - /Users/trivedi/Documents/Projects/optipod/test/e2e/error_handling_unit_test.go:57 @ 12/13/25 10:50:32.584&#xA;&lt; Exit [It] should validate error message content - /Users/trivedi/Documents/Projects/optipod/test/e2e/error_handling_unit_test.go:57 @ 12/13/25 10:50:32.584 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Error Handling Unit Tests Error Message Formatting should detect missing error messages" classname="e2e suite" status="passed" time="2.0544e-05">
+              <system-err>&gt; Enter [BeforeEach] Error Handling Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/error_handling_unit_test.go:32 @ 12/13/25 10:50:32.584&#xA;&lt; Exit [BeforeEach] Error Handling Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/error_handling_unit_test.go:32 @ 12/13/25 10:50:32.584 (0s)&#xA;&gt; Enter [It] should detect missing error messages - /Users/trivedi/Documents/Projects/optipod/test/e2e/error_handling_unit_test.go:71 @ 12/13/25 10:50:32.584&#xA;&lt; Exit [It] should detect missing error messages - /Users/trivedi/Documents/Projects/optipod/test/e2e/error_handling_unit_test.go:71 @ 12/13/25 10:50:32.584 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Error Handling Unit Tests Error Message Formatting should validate error message clarity" classname="e2e suite" status="passed" time="2.4137e-05">
+              <system-err>&gt; Enter [BeforeEach] Error Handling Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/error_handling_unit_test.go:32 @ 12/13/25 10:50:32.584&#xA;&lt; Exit [BeforeEach] Error Handling Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/error_handling_unit_test.go:32 @ 12/13/25 10:50:32.584 (0s)&#xA;&gt; Enter [It] should validate error message clarity - /Users/trivedi/Documents/Projects/optipod/test/e2e/error_handling_unit_test.go:77 @ 12/13/25 10:50:32.584&#xA;&lt; Exit [It] should validate error message clarity - /Users/trivedi/Documents/Projects/optipod/test/e2e/error_handling_unit_test.go:77 @ 12/13/25 10:50:32.584 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Error Handling Unit Tests Configuration Validation Logic should validate configuration rejection reasons" classname="e2e suite" status="passed" time="2.142e-05">
+              <system-err>&gt; Enter [BeforeEach] Error Handling Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/error_handling_unit_test.go:32 @ 12/13/25 10:50:32.584&#xA;&lt; Exit [BeforeEach] Error Handling Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/error_handling_unit_test.go:32 @ 12/13/25 10:50:32.584 (0s)&#xA;&gt; Enter [It] should validate configuration rejection reasons - /Users/trivedi/Documents/Projects/optipod/test/e2e/error_handling_unit_test.go:106 @ 12/13/25 10:50:32.584&#xA;&lt; Exit [It] should validate configuration rejection reasons - /Users/trivedi/Documents/Projects/optipod/test/e2e/error_handling_unit_test.go:106 @ 12/13/25 10:50:32.584 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Error Handling Unit Tests Configuration Validation Logic should validate graceful degradation behavior" classname="e2e suite" status="passed" time="1.7447e-05">
+              <system-err>&gt; Enter [BeforeEach] Error Handling Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/error_handling_unit_test.go:32 @ 12/13/25 10:50:32.584&#xA;&lt; Exit [BeforeEach] Error Handling Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/error_handling_unit_test.go:32 @ 12/13/25 10:50:32.584 (0s)&#xA;&gt; Enter [It] should validate graceful degradation behavior - /Users/trivedi/Documents/Projects/optipod/test/e2e/error_handling_unit_test.go:138 @ 12/13/25 10:50:32.584&#xA;&lt; Exit [It] should validate graceful degradation behavior - /Users/trivedi/Documents/Projects/optipod/test/e2e/error_handling_unit_test.go:138 @ 12/13/25 10:50:32.584 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Error Handling Unit Tests Configuration Validation Logic should validate error recovery mechanisms" classname="e2e suite" status="passed" time="2.354e-05">
+              <system-err>&gt; Enter [BeforeEach] Error Handling Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/error_handling_unit_test.go:32 @ 12/13/25 10:50:32.584&#xA;&lt; Exit [BeforeEach] Error Handling Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/error_handling_unit_test.go:32 @ 12/13/25 10:50:32.584 (0s)&#xA;&gt; Enter [It] should validate error recovery mechanisms - /Users/trivedi/Documents/Projects/optipod/test/e2e/error_handling_unit_test.go:150 @ 12/13/25 10:50:32.584&#xA;&lt; Exit [It] should validate error recovery mechanisms - /Users/trivedi/Documents/Projects/optipod/test/e2e/error_handling_unit_test.go:150 @ 12/13/25 10:50:32.584 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Error Handling Unit Tests Retry Logic Validation should validate retry behavior for transient errors" classname="e2e suite" status="passed" time="2.315e-05">
+              <system-err>&gt; Enter [BeforeEach] Error Handling Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/error_handling_unit_test.go:32 @ 12/13/25 10:50:32.584&#xA;&lt; Exit [BeforeEach] Error Handling Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/error_handling_unit_test.go:32 @ 12/13/25 10:50:32.584 (0s)&#xA;&gt; Enter [It] should validate retry behavior for transient errors - /Users/trivedi/Documents/Projects/optipod/test/e2e/error_handling_unit_test.go:167 @ 12/13/25 10:50:32.584&#xA;&lt; Exit [It] should validate retry behavior for transient errors - /Users/trivedi/Documents/Projects/optipod/test/e2e/error_handling_unit_test.go:167 @ 12/13/25 10:50:32.584 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Error Handling Unit Tests Retry Logic Validation should validate non-retry behavior for permanent errors" classname="e2e suite" status="passed" time="2.123e-05">
+              <system-err>&gt; Enter [BeforeEach] Error Handling Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/error_handling_unit_test.go:32 @ 12/13/25 10:50:32.584&#xA;&lt; Exit [BeforeEach] Error Handling Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/error_handling_unit_test.go:32 @ 12/13/25 10:50:32.584 (0s)&#xA;&gt; Enter [It] should validate non-retry behavior for permanent errors - /Users/trivedi/Documents/Projects/optipod/test/e2e/error_handling_unit_test.go:183 @ 12/13/25 10:50:32.584&#xA;&lt; Exit [It] should validate non-retry behavior for permanent errors - /Users/trivedi/Documents/Projects/optipod/test/e2e/error_handling_unit_test.go:183 @ 12/13/25 10:50:32.584 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Error Handling Unit Tests Retry Logic Validation should validate retry backoff behavior" classname="e2e suite" status="passed" time="1.6628e-05">
+              <system-err>&gt; Enter [BeforeEach] Error Handling Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/error_handling_unit_test.go:32 @ 12/13/25 10:50:32.584&#xA;&lt; Exit [BeforeEach] Error Handling Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/error_handling_unit_test.go:32 @ 12/13/25 10:50:32.584 (0s)&#xA;&gt; Enter [It] should validate retry backoff behavior - /Users/trivedi/Documents/Projects/optipod/test/e2e/error_handling_unit_test.go:199 @ 12/13/25 10:50:32.584&#xA;&lt; Exit [It] should validate retry backoff behavior - /Users/trivedi/Documents/Projects/optipod/test/e2e/error_handling_unit_test.go:199 @ 12/13/25 10:50:32.584 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Error Handling Unit Tests Memory Safety Validation should validate memory decrease safety thresholds" classname="e2e suite" status="passed" time="3.8358e-05">
+              <system-err>&gt; Enter [BeforeEach] Error Handling Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/error_handling_unit_test.go:32 @ 12/13/25 10:50:32.584&#xA;&lt; Exit [BeforeEach] Error Handling Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/error_handling_unit_test.go:32 @ 12/13/25 10:50:32.584 (0s)&#xA;&gt; Enter [It] should validate memory decrease safety thresholds - /Users/trivedi/Documents/Projects/optipod/test/e2e/error_handling_unit_test.go:212 @ 12/13/25 10:50:32.584&#xA;&lt; Exit [It] should validate memory decrease safety thresholds - /Users/trivedi/Documents/Projects/optipod/test/e2e/error_handling_unit_test.go:212 @ 12/13/25 10:50:32.584 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Error Handling Unit Tests Memory Safety Validation should validate memory safety warning generation" classname="e2e suite" status="passed" time="2.587e-05">
+              <system-err>&gt; Enter [BeforeEach] Error Handling Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/error_handling_unit_test.go:32 @ 12/13/25 10:50:32.584&#xA;&lt; Exit [BeforeEach] Error Handling Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/error_handling_unit_test.go:32 @ 12/13/25 10:50:32.584 (0s)&#xA;&gt; Enter [It] should validate memory safety warning generation - /Users/trivedi/Documents/Projects/optipod/test/e2e/error_handling_unit_test.go:238 @ 12/13/25 10:50:32.584&#xA;&lt; Exit [It] should validate memory safety warning generation - /Users/trivedi/Documents/Projects/optipod/test/e2e/error_handling_unit_test.go:238 @ 12/13/25 10:50:32.584 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Error Handling Unit Tests Concurrent Safety Validation should validate concurrent modification safety" classname="e2e suite" status="passed" time="1.9936e-05">
+              <system-err>&gt; Enter [BeforeEach] Error Handling Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/error_handling_unit_test.go:32 @ 12/13/25 10:50:32.584&#xA;&lt; Exit [BeforeEach] Error Handling Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/error_handling_unit_test.go:32 @ 12/13/25 10:50:32.584 (0s)&#xA;&gt; Enter [It] should validate concurrent modification safety - /Users/trivedi/Documents/Projects/optipod/test/e2e/error_handling_unit_test.go:247 @ 12/13/25 10:50:32.584&#xA;&lt; Exit [It] should validate concurrent modification safety - /Users/trivedi/Documents/Projects/optipod/test/e2e/error_handling_unit_test.go:247 @ 12/13/25 10:50:32.584 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Error Handling Unit Tests Concurrent Safety Validation should validate resource consistency after concurrent operations" classname="e2e suite" status="passed" time="1.7216e-05">
+              <system-err>&gt; Enter [BeforeEach] Error Handling Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/error_handling_unit_test.go:32 @ 12/13/25 10:50:32.584&#xA;&lt; Exit [BeforeEach] Error Handling Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/error_handling_unit_test.go:32 @ 12/13/25 10:50:32.584 (0s)&#xA;&gt; Enter [It] should validate resource consistency after concurrent operations - /Users/trivedi/Documents/Projects/optipod/test/e2e/error_handling_unit_test.go:262 @ 12/13/25 10:50:32.584&#xA;&lt; Exit [It] should validate resource consistency after concurrent operations - /Users/trivedi/Documents/Projects/optipod/test/e2e/error_handling_unit_test.go:262 @ 12/13/25 10:50:32.584 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Error Handling Unit Tests Error Classification should classify errors correctly" classname="e2e suite" status="passed" time="2.5431e-05">
+              <system-err>&gt; Enter [BeforeEach] Error Handling Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/error_handling_unit_test.go:32 @ 12/13/25 10:50:32.584&#xA;&lt; Exit [BeforeEach] Error Handling Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/error_handling_unit_test.go:32 @ 12/13/25 10:50:32.584 (0s)&#xA;&gt; Enter [It] should classify errors correctly - /Users/trivedi/Documents/Projects/optipod/test/e2e/error_handling_unit_test.go:270 @ 12/13/25 10:50:32.584&#xA;&lt; Exit [It] should classify errors correctly - /Users/trivedi/Documents/Projects/optipod/test/e2e/error_handling_unit_test.go:270 @ 12/13/25 10:50:32.584 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Error Handling Unit Tests Error Classification should handle unknown error types gracefully" classname="e2e suite" status="passed" time="1.8403e-05">
+              <system-err>&gt; Enter [BeforeEach] Error Handling Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/error_handling_unit_test.go:32 @ 12/13/25 10:50:32.584&#xA;&lt; Exit [BeforeEach] Error Handling Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/error_handling_unit_test.go:32 @ 12/13/25 10:50:32.584 (0s)&#xA;&gt; Enter [It] should handle unknown error types gracefully - /Users/trivedi/Documents/Projects/optipod/test/e2e/error_handling_unit_test.go:288 @ 12/13/25 10:50:32.584&#xA;&lt; Exit [It] should handle unknown error types gracefully - /Users/trivedi/Documents/Projects/optipod/test/e2e/error_handling_unit_test.go:288 @ 12/13/25 10:50:32.584 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Artifact Generation Property Tests Property 13: Test artifact generation should generate appropriate test artifacts for different test scenarios successful test run" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Artifact Generation Property Tests Property 13: Test artifact generation should generate appropriate test artifacts for different test scenarios failed test run" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Artifact Generation Property Tests Property 13: Test artifact generation should generate appropriate test artifacts for different test scenarios minimal artifacts" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Artifact Generation Property Tests Property 13: Test artifact generation should generate appropriate test artifacts for different test scenarios logs only" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Artifact Generation Property Tests Property 13: Test artifact generation should generate appropriate test artifacts for different test scenarios reports only" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Artifact Generation Property Tests Property 13: Test artifact generation should generate artifacts with proper naming conventions" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Artifact Generation Property Tests Property 13: Test artifact generation should handle artifact generation failures gracefully" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Test Coverage Validation Requirements Coverage Analysis should validate all requirements are covered by tests" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Test Coverage Validation Requirements Coverage Analysis should identify missing test coverage" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Test Coverage Validation Requirements Coverage Analysis should provide actionable recommendations" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Test Coverage Validation Property Coverage Analysis should validate all correctness properties have corresponding tests" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Test Coverage Validation Property Coverage Analysis should identify property-based tests" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Test Coverage Validation Test Organization Analysis should validate test file organization" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Test Coverage Validation Test Organization Analysis should validate helper components exist" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Observability Unit Tests MetricsCollector should create a new MetricsCollector with proper configuration" classname="e2e suite" status="passed" time="2.7464e-05">
+              <system-err>&gt; Enter [BeforeEach] MetricsCollector - /Users/trivedi/Documents/Projects/optipod/test/e2e/observability_unit_test.go:36 @ 12/13/25 10:50:32.584&#xA;&lt; Exit [BeforeEach] MetricsCollector - /Users/trivedi/Documents/Projects/optipod/test/e2e/observability_unit_test.go:36 @ 12/13/25 10:50:32.584 (0s)&#xA;&gt; Enter [It] should create a new MetricsCollector with proper configuration - /Users/trivedi/Documents/Projects/optipod/test/e2e/observability_unit_test.go:40 @ 12/13/25 10:50:32.584&#xA;&lt; Exit [It] should create a new MetricsCollector with proper configuration - /Users/trivedi/Documents/Projects/optipod/test/e2e/observability_unit_test.go:40 @ 12/13/25 10:50:32.584 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Observability Unit Tests MetricsCollector should collect metrics from HTTP endpoint" classname="e2e suite" status="passed" time="0.000636387">
+              <system-err>&gt; Enter [BeforeEach] MetricsCollector - /Users/trivedi/Documents/Projects/optipod/test/e2e/observability_unit_test.go:36 @ 12/13/25 10:50:32.584&#xA;&lt; Exit [BeforeEach] MetricsCollector - /Users/trivedi/Documents/Projects/optipod/test/e2e/observability_unit_test.go:36 @ 12/13/25 10:50:32.584 (0s)&#xA;&gt; Enter [It] should collect metrics from HTTP endpoint - /Users/trivedi/Documents/Projects/optipod/test/e2e/observability_unit_test.go:46 @ 12/13/25 10:50:32.584&#xA;&lt; Exit [It] should collect metrics from HTTP endpoint - /Users/trivedi/Documents/Projects/optipod/test/e2e/observability_unit_test.go:46 @ 12/13/25 10:50:32.585 (1ms)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Observability Unit Tests MetricsCollector should handle authentication errors" classname="e2e suite" status="passed" time="0.000385859">
+              <system-err>&gt; Enter [BeforeEach] MetricsCollector - /Users/trivedi/Documents/Projects/optipod/test/e2e/observability_unit_test.go:36 @ 12/13/25 10:50:32.585&#xA;&lt; Exit [BeforeEach] MetricsCollector - /Users/trivedi/Documents/Projects/optipod/test/e2e/observability_unit_test.go:36 @ 12/13/25 10:50:32.585 (0s)&#xA;&gt; Enter [It] should handle authentication errors - /Users/trivedi/Documents/Projects/optipod/test/e2e/observability_unit_test.go:73 @ 12/13/25 10:50:32.585&#xA;&lt; Exit [It] should handle authentication errors - /Users/trivedi/Documents/Projects/optipod/test/e2e/observability_unit_test.go:73 @ 12/13/25 10:50:32.586 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Observability Unit Tests MetricsCollector should handle network errors gracefully" classname="e2e suite" status="passed" time="0.003034872">
+              <system-err>&gt; Enter [BeforeEach] MetricsCollector - /Users/trivedi/Documents/Projects/optipod/test/e2e/observability_unit_test.go:36 @ 12/13/25 10:50:32.586&#xA;&lt; Exit [BeforeEach] MetricsCollector - /Users/trivedi/Documents/Projects/optipod/test/e2e/observability_unit_test.go:36 @ 12/13/25 10:50:32.586 (0s)&#xA;&gt; Enter [It] should handle network errors gracefully - /Users/trivedi/Documents/Projects/optipod/test/e2e/observability_unit_test.go:86 @ 12/13/25 10:50:32.586&#xA;&lt; Exit [It] should handle network errors gracefully - /Users/trivedi/Documents/Projects/optipod/test/e2e/observability_unit_test.go:86 @ 12/13/25 10:50:32.589 (3ms)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Observability Unit Tests MetricsCollector should validate metric format correctly" classname="e2e suite" status="passed" time="9.2281e-05">
+              <system-err>&gt; Enter [BeforeEach] MetricsCollector - /Users/trivedi/Documents/Projects/optipod/test/e2e/observability_unit_test.go:36 @ 12/13/25 10:50:32.589&#xA;&lt; Exit [BeforeEach] MetricsCollector - /Users/trivedi/Documents/Projects/optipod/test/e2e/observability_unit_test.go:36 @ 12/13/25 10:50:32.589 (0s)&#xA;&gt; Enter [It] should validate metric format correctly - /Users/trivedi/Documents/Projects/optipod/test/e2e/observability_unit_test.go:94 @ 12/13/25 10:50:32.589&#xA;&lt; Exit [It] should validate metric format correctly - /Users/trivedi/Documents/Projects/optipod/test/e2e/observability_unit_test.go:94 @ 12/13/25 10:50:32.589 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Observability Unit Tests MetricsCollector should reject invalid metric format" classname="e2e suite" status="passed" time="4.3959e-05">
+              <system-err>&gt; Enter [BeforeEach] MetricsCollector - /Users/trivedi/Documents/Projects/optipod/test/e2e/observability_unit_test.go:36 @ 12/13/25 10:50:32.589&#xA;&lt; Exit [BeforeEach] MetricsCollector - /Users/trivedi/Documents/Projects/optipod/test/e2e/observability_unit_test.go:36 @ 12/13/25 10:50:32.589 (0s)&#xA;&gt; Enter [It] should reject invalid metric format - /Users/trivedi/Documents/Projects/optipod/test/e2e/observability_unit_test.go:107 @ 12/13/25 10:50:32.589&#xA;&lt; Exit [It] should reject invalid metric format - /Users/trivedi/Documents/Projects/optipod/test/e2e/observability_unit_test.go:107 @ 12/13/25 10:50:32.589 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Observability Unit Tests MetricsCollector should handle empty metrics gracefully" classname="e2e suite" status="passed" time="1.8586e-05">
+              <system-err>&gt; Enter [BeforeEach] MetricsCollector - /Users/trivedi/Documents/Projects/optipod/test/e2e/observability_unit_test.go:36 @ 12/13/25 10:50:32.589&#xA;&lt; Exit [BeforeEach] MetricsCollector - /Users/trivedi/Documents/Projects/optipod/test/e2e/observability_unit_test.go:36 @ 12/13/25 10:50:32.589 (0s)&#xA;&gt; Enter [It] should handle empty metrics gracefully - /Users/trivedi/Documents/Projects/optipod/test/e2e/observability_unit_test.go:117 @ 12/13/25 10:50:32.589&#xA;&lt; Exit [It] should handle empty metrics gracefully - /Users/trivedi/Documents/Projects/optipod/test/e2e/observability_unit_test.go:117 @ 12/13/25 10:50:32.589 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Observability Unit Tests MetricsCollector should validate metrics with comments" classname="e2e suite" status="passed" time="3.3857e-05">
+              <system-err>&gt; Enter [BeforeEach] MetricsCollector - /Users/trivedi/Documents/Projects/optipod/test/e2e/observability_unit_test.go:36 @ 12/13/25 10:50:32.589&#xA;&lt; Exit [BeforeEach] MetricsCollector - /Users/trivedi/Documents/Projects/optipod/test/e2e/observability_unit_test.go:36 @ 12/13/25 10:50:32.589 (0s)&#xA;&gt; Enter [It] should validate metrics with comments - /Users/trivedi/Documents/Projects/optipod/test/e2e/observability_unit_test.go:122 @ 12/13/25 10:50:32.589&#xA;&lt; Exit [It] should validate metrics with comments - /Users/trivedi/Documents/Projects/optipod/test/e2e/observability_unit_test.go:122 @ 12/13/25 10:50:32.589 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Observability Unit Tests LogValidator should create a new LogValidator" classname="e2e suite" status="passed" time="1.8549e-05">
+              <system-err>&gt; Enter [BeforeEach] LogValidator - /Users/trivedi/Documents/Projects/optipod/test/e2e/observability_unit_test.go:137 @ 12/13/25 10:50:32.589&#xA;&lt; Exit [BeforeEach] LogValidator - /Users/trivedi/Documents/Projects/optipod/test/e2e/observability_unit_test.go:137 @ 12/13/25 10:50:32.589 (0s)&#xA;&gt; Enter [It] should create a new LogValidator - /Users/trivedi/Documents/Projects/optipod/test/e2e/observability_unit_test.go:141 @ 12/13/25 10:50:32.589&#xA;&lt; Exit [It] should create a new LogValidator - /Users/trivedi/Documents/Projects/optipod/test/e2e/observability_unit_test.go:141 @ 12/13/25 10:50:32.589 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Observability Unit Tests LogValidator should validate proper log format" classname="e2e suite" status="passed" time="6.8531e-05">
+              <system-err>&gt; Enter [BeforeEach] LogValidator - /Users/trivedi/Documents/Projects/optipod/test/e2e/observability_unit_test.go:137 @ 12/13/25 10:50:32.589&#xA;&lt; Exit [BeforeEach] LogValidator - /Users/trivedi/Documents/Projects/optipod/test/e2e/observability_unit_test.go:137 @ 12/13/25 10:50:32.589 (0s)&#xA;&gt; Enter [It] should validate proper log format - /Users/trivedi/Documents/Projects/optipod/test/e2e/observability_unit_test.go:145 @ 12/13/25 10:50:32.589&#xA;&lt; Exit [It] should validate proper log format - /Users/trivedi/Documents/Projects/optipod/test/e2e/observability_unit_test.go:145 @ 12/13/25 10:50:32.589 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Observability Unit Tests LogValidator should handle logs with flexible format" classname="e2e suite" status="passed" time="4.5205e-05">
+              <system-err>&gt; Enter [BeforeEach] LogValidator - /Users/trivedi/Documents/Projects/optipod/test/e2e/observability_unit_test.go:137 @ 12/13/25 10:50:32.589&#xA;&lt; Exit [BeforeEach] LogValidator - /Users/trivedi/Documents/Projects/optipod/test/e2e/observability_unit_test.go:137 @ 12/13/25 10:50:32.589 (0s)&#xA;&gt; Enter [It] should handle logs with flexible format - /Users/trivedi/Documents/Projects/optipod/test/e2e/observability_unit_test.go:156 @ 12/13/25 10:50:32.589&#xA;&lt; Exit [It] should handle logs with flexible format - /Users/trivedi/Documents/Projects/optipod/test/e2e/observability_unit_test.go:156 @ 12/13/25 10:50:32.589 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Observability Unit Tests LogValidator should validate log content with expected patterns" classname="e2e suite" status="passed" time="5.1191e-05">
+              <system-err>&gt; Enter [BeforeEach] LogValidator - /Users/trivedi/Documents/Projects/optipod/test/e2e/observability_unit_test.go:137 @ 12/13/25 10:50:32.589&#xA;&lt; Exit [BeforeEach] LogValidator - /Users/trivedi/Documents/Projects/optipod/test/e2e/observability_unit_test.go:137 @ 12/13/25 10:50:32.589 (0s)&#xA;&gt; Enter [It] should validate log content with expected patterns - /Users/trivedi/Documents/Projects/optipod/test/e2e/observability_unit_test.go:166 @ 12/13/25 10:50:32.589&#xA;&lt; Exit [It] should validate log content with expected patterns - /Users/trivedi/Documents/Projects/optipod/test/e2e/observability_unit_test.go:166 @ 12/13/25 10:50:32.589 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Observability Unit Tests LogValidator should detect missing expected patterns" classname="e2e suite" status="passed" time="3.5914e-05">
+              <system-err>&gt; Enter [BeforeEach] LogValidator - /Users/trivedi/Documents/Projects/optipod/test/e2e/observability_unit_test.go:137 @ 12/13/25 10:50:32.589&#xA;&lt; Exit [BeforeEach] LogValidator - /Users/trivedi/Documents/Projects/optipod/test/e2e/observability_unit_test.go:137 @ 12/13/25 10:50:32.589 (0s)&#xA;&gt; Enter [It] should detect missing expected patterns - /Users/trivedi/Documents/Projects/optipod/test/e2e/observability_unit_test.go:182 @ 12/13/25 10:50:32.589&#xA;&lt; Exit [It] should detect missing expected patterns - /Users/trivedi/Documents/Projects/optipod/test/e2e/observability_unit_test.go:182 @ 12/13/25 10:50:32.589 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Observability Unit Tests LogValidator should detect sensitive information in logs" classname="e2e suite" status="passed" time="3.7184e-05">
+              <system-err>&gt; Enter [BeforeEach] LogValidator - /Users/trivedi/Documents/Projects/optipod/test/e2e/observability_unit_test.go:137 @ 12/13/25 10:50:32.589&#xA;&lt; Exit [BeforeEach] LogValidator - /Users/trivedi/Documents/Projects/optipod/test/e2e/observability_unit_test.go:137 @ 12/13/25 10:50:32.589 (0s)&#xA;&gt; Enter [It] should detect sensitive information in logs - /Users/trivedi/Documents/Projects/optipod/test/e2e/observability_unit_test.go:196 @ 12/13/25 10:50:32.589&#xA;&lt; Exit [It] should detect sensitive information in logs - /Users/trivedi/Documents/Projects/optipod/test/e2e/observability_unit_test.go:196 @ 12/13/25 10:50:32.589 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Observability Unit Tests LogValidator should pass logs without sensitive information" classname="e2e suite" status="passed" time="7.1969e-05">
+              <system-err>&gt; Enter [BeforeEach] LogValidator - /Users/trivedi/Documents/Projects/optipod/test/e2e/observability_unit_test.go:137 @ 12/13/25 10:50:32.589&#xA;&lt; Exit [BeforeEach] LogValidator - /Users/trivedi/Documents/Projects/optipod/test/e2e/observability_unit_test.go:137 @ 12/13/25 10:50:32.589 (0s)&#xA;&gt; Enter [It] should pass logs without sensitive information - /Users/trivedi/Documents/Projects/optipod/test/e2e/observability_unit_test.go:207 @ 12/13/25 10:50:32.589&#xA;&lt; Exit [It] should pass logs without sensitive information - /Users/trivedi/Documents/Projects/optipod/test/e2e/observability_unit_test.go:207 @ 12/13/25 10:50:32.589 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Observability Unit Tests LogValidator should handle empty logs" classname="e2e suite" status="passed" time="4.9302e-05">
+              <system-err>&gt; Enter [BeforeEach] LogValidator - /Users/trivedi/Documents/Projects/optipod/test/e2e/observability_unit_test.go:137 @ 12/13/25 10:50:32.59&#xA;&lt; Exit [BeforeEach] LogValidator - /Users/trivedi/Documents/Projects/optipod/test/e2e/observability_unit_test.go:137 @ 12/13/25 10:50:32.59 (0s)&#xA;&gt; Enter [It] should handle empty logs - /Users/trivedi/Documents/Projects/optipod/test/e2e/observability_unit_test.go:217 @ 12/13/25 10:50:32.59&#xA;&lt; Exit [It] should handle empty logs - /Users/trivedi/Documents/Projects/optipod/test/e2e/observability_unit_test.go:217 @ 12/13/25 10:50:32.59 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Observability Unit Tests LogValidator should handle invalid regex patterns gracefully" classname="e2e suite" status="passed" time="3.4708e-05">
+              <system-err>&gt; Enter [BeforeEach] LogValidator - /Users/trivedi/Documents/Projects/optipod/test/e2e/observability_unit_test.go:137 @ 12/13/25 10:50:32.59&#xA;&lt; Exit [BeforeEach] LogValidator - /Users/trivedi/Documents/Projects/optipod/test/e2e/observability_unit_test.go:137 @ 12/13/25 10:50:32.59 (0s)&#xA;&gt; Enter [It] should handle invalid regex patterns gracefully - /Users/trivedi/Documents/Projects/optipod/test/e2e/observability_unit_test.go:228 @ 12/13/25 10:50:32.59&#xA;&lt; Exit [It] should handle invalid regex patterns gracefully - /Users/trivedi/Documents/Projects/optipod/test/e2e/observability_unit_test.go:228 @ 12/13/25 10:50:32.59 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Observability Unit Tests LogValidator should validate case-insensitive patterns" classname="e2e suite" status="passed" time="3.8348e-05">
+              <system-err>&gt; Enter [BeforeEach] LogValidator - /Users/trivedi/Documents/Projects/optipod/test/e2e/observability_unit_test.go:137 @ 12/13/25 10:50:32.59&#xA;&lt; Exit [BeforeEach] LogValidator - /Users/trivedi/Documents/Projects/optipod/test/e2e/observability_unit_test.go:137 @ 12/13/25 10:50:32.59 (0s)&#xA;&gt; Enter [It] should validate case-insensitive patterns - /Users/trivedi/Documents/Projects/optipod/test/e2e/observability_unit_test.go:240 @ 12/13/25 10:50:32.59&#xA;&lt; Exit [It] should validate case-insensitive patterns - /Users/trivedi/Documents/Projects/optipod/test/e2e/observability_unit_test.go:240 @ 12/13/25 10:50:32.59 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Observability Unit Tests Metrics Format Validation should validate Prometheus metric naming conventions" classname="e2e suite" status="passed" time="5.3864e-05">
+              <system-err>&gt; Enter [It] should validate Prometheus metric naming conventions - /Users/trivedi/Documents/Projects/optipod/test/e2e/observability_unit_test.go:256 @ 12/13/25 10:50:32.59&#xA;&lt; Exit [It] should validate Prometheus metric naming conventions - /Users/trivedi/Documents/Projects/optipod/test/e2e/observability_unit_test.go:256 @ 12/13/25 10:50:32.59 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Observability Unit Tests Metrics Format Validation should validate metric suffixes" classname="e2e suite" status="passed" time="1.6074e-05">
+              <system-err>&gt; Enter [It] should validate metric suffixes - /Users/trivedi/Documents/Projects/optipod/test/e2e/observability_unit_test.go:270 @ 12/13/25 10:50:32.59&#xA;&lt; Exit [It] should validate metric suffixes - /Users/trivedi/Documents/Projects/optipod/test/e2e/observability_unit_test.go:270 @ 12/13/25 10:50:32.59 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Observability Unit Tests Metrics Format Validation should validate metric labels format" classname="e2e suite" status="passed" time="5.6302e-05">
+              <system-err>&gt; Enter [It] should validate metric labels format - /Users/trivedi/Documents/Projects/optipod/test/e2e/observability_unit_test.go:293 @ 12/13/25 10:50:32.59&#xA;&lt; Exit [It] should validate metric labels format - /Users/trivedi/Documents/Projects/optipod/test/e2e/observability_unit_test.go:293 @ 12/13/25 10:50:32.59 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Observability Unit Tests Metrics Format Validation should reject invalid metric formats" classname="e2e suite" status="passed" time="0.000143345">
+              <system-err>&gt; Enter [It] should reject invalid metric formats - /Users/trivedi/Documents/Projects/optipod/test/e2e/observability_unit_test.go:306 @ 12/13/25 10:50:32.59&#xA;&lt; Exit [It] should reject invalid metric formats - /Users/trivedi/Documents/Projects/optipod/test/e2e/observability_unit_test.go:306 @ 12/13/25 10:50:32.59 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Observability Unit Tests Log Pattern Validation should validate common log patterns" classname="e2e suite" status="passed" time="0.000101175">
+              <system-err>&gt; Enter [It] should validate common log patterns - /Users/trivedi/Documents/Projects/optipod/test/e2e/observability_unit_test.go:326 @ 12/13/25 10:50:32.59&#xA;&lt; Exit [It] should validate common log patterns - /Users/trivedi/Documents/Projects/optipod/test/e2e/observability_unit_test.go:326 @ 12/13/25 10:50:32.59 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Observability Unit Tests Log Pattern Validation should validate contextual information in logs" classname="e2e suite" status="passed" time="0.000107859">
+              <system-err>&gt; Enter [It] should validate contextual information in logs - /Users/trivedi/Documents/Projects/optipod/test/e2e/observability_unit_test.go:349 @ 12/13/25 10:50:32.59&#xA;&lt; Exit [It] should validate contextual information in logs - /Users/trivedi/Documents/Projects/optipod/test/e2e/observability_unit_test.go:349 @ 12/13/25 10:50:32.59 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Observability Unit Tests Log Pattern Validation should validate error log detail" classname="e2e suite" status="passed" time="5.1074e-05">
+              <system-err>&gt; Enter [It] should validate error log detail - /Users/trivedi/Documents/Projects/optipod/test/e2e/observability_unit_test.go:368 @ 12/13/25 10:50:32.59&#xA;&lt; Exit [It] should validate error log detail - /Users/trivedi/Documents/Projects/optipod/test/e2e/observability_unit_test.go:368 @ 12/13/25 10:50:32.59 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Observability Unit Tests Security Validation should detect various sensitive information patterns" classname="e2e suite" status="passed" time="0.000109937">
+              <system-err>&gt; Enter [It] should detect various sensitive information patterns - /Users/trivedi/Documents/Projects/optipod/test/e2e/observability_unit_test.go:388 @ 12/13/25 10:50:32.59&#xA;&lt; Exit [It] should detect various sensitive information patterns - /Users/trivedi/Documents/Projects/optipod/test/e2e/observability_unit_test.go:388 @ 12/13/25 10:50:32.591 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Observability Unit Tests Security Validation should allow safe log content" classname="e2e suite" status="passed" time="0.000122639">
+              <system-err>&gt; Enter [It] should allow safe log content - /Users/trivedi/Documents/Projects/optipod/test/e2e/observability_unit_test.go:407 @ 12/13/25 10:50:32.591&#xA;&lt; Exit [It] should allow safe log content - /Users/trivedi/Documents/Projects/optipod/test/e2e/observability_unit_test.go:407 @ 12/13/25 10:50:32.591 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Server-Side Apply (SSA) End-to-End SSA Flow should apply resource changes using Server-Side Apply" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Server-Side Apply (SSA) End-to-End SSA Flow should track apply method in workload status" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Server-Side Apply (SSA) SSA with Strategic Merge Patch Fallback should use Strategic Merge Patch when SSA is disabled" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Server-Side Apply (SSA) SSA with Multiple Field Managers should coexist with other field managers" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Server-Side Apply (SSA) SSA Observability should emit events for SSA operations" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Server-Side Apply (SSA) SSA Observability should expose SSA metrics" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Server-Side Apply (SSA) ArgoCD Compatibility should coexist with ArgoCD without sync conflicts" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Server-Side Apply (SSA) ArgoCD Compatibility should handle multiple OptipPod policies with ArgoCD" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Server-Side Apply (SSA) Cleanup should clean up SSA test resources" classname="e2e suite" status="skipped" time="0">
+              <skipped message="skipped"></skipped>
+          </testcase>
+          <testcase name="[It] Test Suite Validator Unit Tests Cluster Connectivity Validation should validate healthy cluster connectivity" classname="e2e suite" status="passed" time="0.001980487">
+              <system-err>&gt; Enter [BeforeEach] Test Suite Validator Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:313 @ 12/13/25 10:50:32.591&#xA;&lt; Exit [BeforeEach] Test Suite Validator Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:313 @ 12/13/25 10:50:32.592 (1ms)&#xA;&gt; Enter [It] should validate healthy cluster connectivity - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:325 @ 12/13/25 10:50:32.592&#xA;&lt; Exit [It] should validate healthy cluster connectivity - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:325 @ 12/13/25 10:50:32.593 (1ms)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Test Suite Validator Unit Tests Cluster Connectivity Validation should detect cluster with no nodes" classname="e2e suite" status="passed" time="0.001220293">
+              <system-err>&gt; Enter [BeforeEach] Test Suite Validator Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:313 @ 12/13/25 10:50:32.593&#xA;&lt; Exit [BeforeEach] Test Suite Validator Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:313 @ 12/13/25 10:50:32.594 (1ms)&#xA;&gt; Enter [It] should detect cluster with no nodes - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:353 @ 12/13/25 10:50:32.594&#xA;&lt; Exit [It] should detect cluster with no nodes - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:353 @ 12/13/25 10:50:32.594 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Test Suite Validator Unit Tests Overall Health Calculation should calculate healthy status" classname="e2e suite" status="passed" time="0.001992454">
+              <system-err>&gt; Enter [BeforeEach] Test Suite Validator Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:313 @ 12/13/25 10:50:32.594&#xA;&lt; Exit [BeforeEach] Test Suite Validator Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:313 @ 12/13/25 10:50:32.596 (2ms)&#xA;&gt; Enter [It] should calculate healthy status - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:368 @ 12/13/25 10:50:32.596&#xA;&lt; Exit [It] should calculate healthy status - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:368 @ 12/13/25 10:50:32.596 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Test Suite Validator Unit Tests Overall Health Calculation should calculate degraded status" classname="e2e suite" status="passed" time="0.001403187">
+              <system-err>&gt; Enter [BeforeEach] Test Suite Validator Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:313 @ 12/13/25 10:50:32.596&#xA;&lt; Exit [BeforeEach] Test Suite Validator Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:313 @ 12/13/25 10:50:32.597 (1ms)&#xA;&gt; Enter [It] should calculate degraded status - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:383 @ 12/13/25 10:50:32.597&#xA;&lt; Exit [It] should calculate degraded status - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:383 @ 12/13/25 10:50:32.598 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Test Suite Validator Unit Tests Overall Health Calculation should calculate unhealthy status" classname="e2e suite" status="passed" time="0.001443543">
+              <system-err>&gt; Enter [BeforeEach] Test Suite Validator Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:313 @ 12/13/25 10:50:32.598&#xA;&lt; Exit [BeforeEach] Test Suite Validator Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:313 @ 12/13/25 10:50:32.599 (1ms)&#xA;&gt; Enter [It] should calculate unhealthy status - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:402 @ 12/13/25 10:50:32.599&#xA;&lt; Exit [It] should calculate unhealthy status - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:402 @ 12/13/25 10:50:32.599 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Test Suite Validator Unit Tests Recommendations Generation should generate recommendations for unhealthy suite" classname="e2e suite" status="passed" time="0.001370891">
+              <system-err>&gt; Enter [BeforeEach] Test Suite Validator Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:313 @ 12/13/25 10:50:32.599&#xA;&lt; Exit [BeforeEach] Test Suite Validator Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:313 @ 12/13/25 10:50:32.6 (1ms)&#xA;&gt; Enter [It] should generate recommendations for unhealthy suite - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:420 @ 12/13/25 10:50:32.6&#xA;&lt; Exit [It] should generate recommendations for unhealthy suite - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:420 @ 12/13/25 10:50:32.6 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[It] Test Suite Validator Unit Tests Recommendations Generation should generate recommendations for healthy suite" classname="e2e suite" status="passed" time="0.001244625">
+              <system-err>&gt; Enter [BeforeEach] Test Suite Validator Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:313 @ 12/13/25 10:50:32.601&#xA;&lt; Exit [BeforeEach] Test Suite Validator Unit Tests - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:313 @ 12/13/25 10:50:32.602 (1ms)&#xA;&gt; Enter [It] should generate recommendations for healthy suite - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:440 @ 12/13/25 10:50:32.602&#xA;&lt; Exit [It] should generate recommendations for healthy suite - /Users/trivedi/Documents/Projects/optipod/test/e2e/integration_components_test.go:440 @ 12/13/25 10:50:32.602 (0s)&#xA;</system-err>
+          </testcase>
+          <testcase name="[AfterSuite]" classname="e2e suite" status="passed" time="4.0391e-05">
+              <system-err>&gt; Enter [AfterSuite] TOP-LEVEL - /Users/trivedi/Documents/Projects/optipod/test/e2e/e2e_suite_test.go:133 @ 12/13/25 10:50:32.602&#xA;STEP: cleaning up parallel test resources - /Users/trivedi/Documents/Projects/optipod/test/e2e/e2e_suite_test.go:134 @ 12/13/25 10:50:32.602&#xA;&lt; Exit [AfterSuite] TOP-LEVEL - /Users/trivedi/Documents/Projects/optipod/test/e2e/e2e_suite_test.go:133 @ 12/13/25 10:50:32.602 (0s)&#xA;</system-err>
+          </testcase>
+      </testsuite>
+  </testsuites>

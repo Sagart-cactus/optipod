@@ -199,7 +199,17 @@ func (h *CleanupHelper) deleteResource(resource ResourceRef) error {
 		Namespace: resource.Namespace,
 	}
 
-	obj := resource.Object.DeepCopyObject().(client.Object)
+	// Create the appropriate object based on Kind if Object is not provided
+	var obj client.Object
+	if resource.Object != nil {
+		obj = resource.Object.DeepCopyObject().(client.Object)
+	} else {
+		obj = h.createObjectByKind(resource.Kind)
+		if obj == nil {
+			return fmt.Errorf("unsupported resource kind: %s", resource.Kind)
+		}
+	}
+
 	err := h.client.Get(context.TODO(), namespacedName, obj)
 	if errors.IsNotFound(err) {
 		// Resource already deleted
@@ -226,88 +236,120 @@ func (h *CleanupHelper) deleteResource(resource ResourceRef) error {
 	return nil
 }
 
+// createObjectByKind creates an empty object of the specified kind
+func (h *CleanupHelper) createObjectByKind(kind string) client.Object {
+	switch kind {
+	case "Deployment":
+		return &appsv1.Deployment{}
+	case "StatefulSet":
+		return &appsv1.StatefulSet{}
+	case "DaemonSet":
+		return &appsv1.DaemonSet{}
+	case "Pod":
+		return &corev1.Pod{}
+	case "Service":
+		return &corev1.Service{}
+	case "ConfigMap":
+		return &corev1.ConfigMap{}
+	case "Secret":
+		return &corev1.Secret{}
+	case "Namespace":
+		return &corev1.Namespace{}
+	case "OptimizationPolicy":
+		return &v1alpha1.OptimizationPolicy{}
+	default:
+		return nil
+	}
+}
+
 // waitForNamespaceDeletion waits for a namespace to be fully deleted
 func (h *CleanupHelper) waitForNamespaceDeletion(namespaceName string) error {
-	return wait.PollUntilContextTimeout(context.TODO(), 2*time.Second, 2*time.Minute, true, func(ctx context.Context) (bool, error) {
-		namespace := &corev1.Namespace{}
-		err := h.client.Get(context.TODO(), types.NamespacedName{Name: namespaceName}, namespace)
-		if errors.IsNotFound(err) {
-			return true, nil
-		}
-		if err != nil {
-			return false, err
-		}
-		return false, nil
-	})
+	return wait.PollUntilContextTimeout(
+		context.TODO(), 2*time.Second, 2*time.Minute, true,
+		func(ctx context.Context) (bool, error) {
+			namespace := &corev1.Namespace{}
+			err := h.client.Get(context.TODO(), types.NamespacedName{Name: namespaceName}, namespace)
+			if errors.IsNotFound(err) {
+				return true, nil
+			}
+			if err != nil {
+				return false, err
+			}
+			return false, nil
+		})
 }
 
 // waitForWorkloadDeletion waits for a workload to be fully deleted
 func (h *CleanupHelper) waitForWorkloadDeletion(name, namespace, kind string) error {
-	return wait.PollImmediate(2*time.Second, 1*time.Minute, func() (bool, error) {
-		var obj client.Object
+	return wait.PollUntilContextTimeout(
+		context.TODO(), 2*time.Second, 1*time.Minute, true,
+		func(ctx context.Context) (bool, error) {
+			var obj client.Object
 
-		switch kind {
-		case "Deployment":
-			obj = &appsv1.Deployment{}
-		case "StatefulSet":
-			obj = &appsv1.StatefulSet{}
-		case "DaemonSet":
-			obj = &appsv1.DaemonSet{}
-		default:
-			return true, nil // Skip waiting for unknown types
-		}
+			switch kind {
+			case "Deployment":
+				obj = &appsv1.Deployment{}
+			case "StatefulSet":
+				obj = &appsv1.StatefulSet{}
+			case "DaemonSet":
+				obj = &appsv1.DaemonSet{}
+			default:
+				return true, nil // Skip waiting for unknown types
+			}
 
-		err := h.client.Get(context.TODO(), types.NamespacedName{
-			Name:      name,
-			Namespace: namespace,
-		}, obj)
-		if errors.IsNotFound(err) {
-			return true, nil
-		}
-		if err != nil {
-			return false, err
-		}
-		return false, nil
-	})
+			err := h.client.Get(context.TODO(), types.NamespacedName{
+				Name:      name,
+				Namespace: namespace,
+			}, obj)
+			if errors.IsNotFound(err) {
+				return true, nil
+			}
+			if err != nil {
+				return false, err
+			}
+			return false, nil
+		})
 }
 
 // waitForNamespaceCleanup waits for all resources in a namespace to be cleaned up
 func (h *CleanupHelper) waitForNamespaceCleanup(namespace string) error {
-	return wait.PollImmediate(5*time.Second, 2*time.Minute, func() (bool, error) {
-		// Check if any OptimizationPolicies remain
-		policies := &v1alpha1.OptimizationPolicyList{}
-		if err := h.client.List(context.TODO(), policies, client.InNamespace(namespace)); err == nil {
-			if len(policies.Items) > 0 {
-				return false, nil
+	return wait.PollUntilContextTimeout(
+		context.TODO(), 5*time.Second, 2*time.Minute, true,
+		func(ctx context.Context) (bool, error) {
+			// Check if any OptimizationPolicies remain
+			policies := &v1alpha1.OptimizationPolicyList{}
+			if err := h.client.List(context.TODO(), policies, client.InNamespace(namespace)); err == nil {
+				if len(policies.Items) > 0 {
+					return false, nil
+				}
 			}
-		}
 
-		// Check if any Deployments remain
-		deployments := &appsv1.DeploymentList{}
-		if err := h.client.List(context.TODO(), deployments, client.InNamespace(namespace)); err == nil {
-			if len(deployments.Items) > 0 {
-				return false, nil
+			// Check if any Deployments remain
+			deployments := &appsv1.DeploymentList{}
+			if err := h.client.List(context.TODO(), deployments, client.InNamespace(namespace)); err == nil {
+				if len(deployments.Items) > 0 {
+					return false, nil
+				}
 			}
-		}
 
-		// Check if any StatefulSets remain
-		statefulSets := &appsv1.StatefulSetList{}
-		if err := h.client.List(context.TODO(), statefulSets, client.InNamespace(namespace)); err == nil {
-			if len(statefulSets.Items) > 0 {
-				return false, nil
+			// Check if any StatefulSets remain
+			statefulSets := &appsv1.StatefulSetList{}
+			if err := h.client.List(context.TODO(), statefulSets, client.InNamespace(namespace)); err == nil {
+				if len(statefulSets.Items) > 0 {
+					return false, nil
+				}
 			}
-		}
 
-		// Check if any DaemonSets remain
-		daemonSets := &appsv1.DaemonSetList{}
-		if err := h.client.List(context.TODO(), daemonSets, client.InNamespace(namespace)); err == nil {
-			if len(daemonSets.Items) > 0 {
-				return false, nil
+			// Check if any DaemonSets remain
+			daemonSets := &appsv1.DaemonSetList{}
+			if err := h.client.List(context.TODO(), daemonSets, client.InNamespace(namespace)); err == nil {
+				if len(daemonSets.Items) > 0 {
+					return false, nil
+				}
 			}
-		}
 
-		return true, nil
-	})
+			return true, nil
+		})
 }
 
 // ForceCleanupAll forcefully removes all tracked resources without waiting

@@ -1,5 +1,4 @@
 //go:build e2e
-// +build e2e
 
 package e2e
 
@@ -117,8 +116,7 @@ var _ = Describe("Test Suite Validation", func() {
 				Issues:          []ValidationIssue{},
 			}
 
-			err := validator.validateTestStructure(result)
-			Expect(err).NotTo(HaveOccurred())
+			validator.validateTestStructure(result)
 
 			By("Validating test structure status")
 			status, exists := result.ComponentHealth["test-structure"]
@@ -135,8 +133,7 @@ var _ = Describe("Test Suite Validation", func() {
 				Issues:          []ValidationIssue{},
 			}
 
-			err := validator.validateHelperComponents(result)
-			Expect(err).NotTo(HaveOccurred())
+			validator.validateHelperComponents(result)
 
 			By("Validating helper component statuses")
 			expectedHelpers := []string{

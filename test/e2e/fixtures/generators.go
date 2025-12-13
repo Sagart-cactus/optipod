@@ -243,7 +243,9 @@ func (g *WorkloadConfigGenerator) GenerateRandomWorkloadConfig(name string) help
 }
 
 // GenerateMultiContainerWorkloadConfig generates a workload configuration with multiple containers
-func (g *WorkloadConfigGenerator) GenerateMultiContainerWorkloadConfig(name string, containerCount int) helpers.WorkloadConfig {
+func (g *WorkloadConfigGenerator) GenerateMultiContainerWorkloadConfig(
+	name string, containerCount int,
+) helpers.WorkloadConfig {
 	config := g.GenerateBasicWorkloadConfig(name, helpers.WorkloadTypeDeployment)
 
 	containers := make([]helpers.ContainerConfig, containerCount)
@@ -695,7 +697,9 @@ func NewTestScenarioGenerator() *TestScenarioGenerator {
 }
 
 // GeneratePolicyModeScenario generates a complete policy mode test scenario
-func (g *TestScenarioGenerator) GeneratePolicyModeScenario(mode v1alpha1.PolicyMode) (helpers.PolicyConfig, helpers.WorkloadConfig) {
+func (g *TestScenarioGenerator) GeneratePolicyModeScenario(
+	mode v1alpha1.PolicyMode,
+) (helpers.PolicyConfig, helpers.WorkloadConfig) {
 	policyName := fmt.Sprintf("test-policy-%s", toLowerCase(string(mode)))
 	workloadName := fmt.Sprintf("test-workload-%s", toLowerCase(string(mode)))
 
@@ -714,7 +718,9 @@ func (g *TestScenarioGenerator) GeneratePolicyModeScenario(mode v1alpha1.PolicyM
 }
 
 // GenerateResourceBoundsScenario generates a complete resource bounds test scenario
-func (g *TestScenarioGenerator) GenerateResourceBoundsScenario(expectation BoundsExpectation) (helpers.PolicyConfig, helpers.WorkloadConfig) {
+func (g *TestScenarioGenerator) GenerateResourceBoundsScenario(
+	expectation BoundsExpectation,
+) (helpers.PolicyConfig, helpers.WorkloadConfig) {
 	var testCase BoundsTestCase
 
 	switch expectation {
@@ -858,7 +864,9 @@ func (g *RandomizedTestDataGenerator) generateRandomPolicy(name string, mode v1a
 }
 
 // generateRandomWorkload generates a random workload configuration
-func (g *RandomizedTestDataGenerator) generateRandomWorkload(name string, workloadType helpers.WorkloadType) helpers.WorkloadConfig {
+func (g *RandomizedTestDataGenerator) generateRandomWorkload(
+	name string, workloadType helpers.WorkloadType,
+) helpers.WorkloadConfig {
 	cpuRequests := []string{"100m", "200m", "500m", "1000m"}
 	memRequests := []string{"128Mi", "256Mi", "512Mi", "1Gi"}
 	cpuLimits := []string{"500m", "1000m", "2000m", "4000m"}
@@ -952,24 +960,26 @@ func (h *ScenarioValidationHelper) validateWorkloadConfig(workload helpers.Workl
 }
 
 // validateExpectations validates that expectations are consistent with policy configuration
-func (h *ScenarioValidationHelper) validateExpectations(policy helpers.PolicyConfig, expected ScenarioExpectation) error {
+func (h *ScenarioValidationHelper) validateExpectations(
+	policy helpers.PolicyConfig, expected ScenarioExpectation,
+) error {
 	// Auto mode should apply updates
 	if policy.Mode == v1alpha1.ModeAuto && !expected.ShouldApplyUpdates {
-		return fmt.Errorf("Auto mode should apply updates")
+		return fmt.Errorf("auto mode should apply updates")
 	}
 
 	// Disabled mode should not generate recommendations
 	if policy.Mode == v1alpha1.ModeDisabled && expected.ShouldGenerateRecommendations {
-		return fmt.Errorf("Disabled mode should not generate recommendations")
+		return fmt.Errorf("disabled mode should not generate recommendations")
 	}
 
 	// Recommend mode should generate recommendations but not apply updates
 	if policy.Mode == v1alpha1.ModeRecommend {
 		if !expected.ShouldGenerateRecommendations {
-			return fmt.Errorf("Recommend mode should generate recommendations")
+			return fmt.Errorf("recommend mode should generate recommendations")
 		}
 		if expected.ShouldApplyUpdates {
-			return fmt.Errorf("Recommend mode should not apply updates")
+			return fmt.Errorf("recommend mode should not apply updates")
 		}
 	}
 

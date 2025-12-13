@@ -1,5 +1,4 @@
 //go:build e2e
-// +build e2e
 
 package e2e
 
@@ -8,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"testing"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -22,10 +20,8 @@ import (
 )
 
 // TestIntegrationComponents tests the integration components without requiring a full e2e environment
-func TestIntegrationComponents(t *testing.T) {
-	RegisterFailHandler(Fail)
-	RunSpecs(t, "Integration Components Unit Test Suite")
-}
+// TestIntegrationComponents is included in the main e2e test suite
+// All tests in this file are automatically discovered by Ginkgo
 
 var _ = Describe("Coverage Validator Unit Tests", func() {
 	var (
@@ -207,7 +203,12 @@ func TestResourceBounds(t *testing.T) {
 
 // **Feature: test-feature, Property 1: Policy mode behavior consistency**
 func TestPolicyModeProperty(t *testing.T) {
-	// Property test implementation
+	// Property 1 test implementation
+}
+
+// **Feature: test-feature, Property 2: Resource bounds enforcement**  
+func TestResourceBoundsProperty(t *testing.T) {
+	// Property 2 test implementation - not implemented yet
 }
 `
 			testFile := filepath.Join(tempDir, "property_test.go")
@@ -589,6 +590,7 @@ var _ = Describe("Diagnostic Collector Unit Tests", func() {
 			Expect(diagnostics.ControllerLogs).NotTo(BeEmpty())
 			Expect(diagnostics.ResourceStates).NotTo(BeNil())
 			Expect(diagnostics.Events).NotTo(BeNil())
+			// Events may be empty in test environment, but should be initialized
 			Expect(diagnostics.ArtifactPaths).NotTo(BeEmpty())
 			Expect(diagnostics.ErrorDetails).NotTo(BeEmpty())
 		})

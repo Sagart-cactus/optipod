@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
-	"strings"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -243,100 +242,6 @@ func (r *OptimizationPolicyReconciler) updatePolicyStatus(ctx context.Context, p
 	return fmt.Errorf("failed to update policy status after %d attempts, last error: %w", maxRetries, lastErr)
 }
 
-// processWorkloadsParallel processes workloads concurrently for better performance
-func (r *OptimizationPolicyReconciler) processWorkloadsParallel(ctx context.Context, workloads []discovery.Workload, policyObj *optipodv1alpha1.OptimizationPolicy) (int, error) {
-	log := logf.FromContext(ctx)
-
-	if r.WorkloadProcessor == nil {
-		log.Info("WorkloadProcessor not configured, skipping workload processing")
-		return 0, nil
-	}
-
-	// Use a semaphore to limit concurrent processing
-	const maxConcurrentWorkloads = 10
-	sem := make(chan struct{}, maxConcurrentWorkloads)
-
-	// Track results
-	type result struct {
-		workload string
-		status   string
-		err      error
-	}
-	results := make(chan result, len(workloads))
-
-	// Process each workload in a goroutine
-	for _, workload := range workloads {
-		go func(wl discovery.Workload) {
-			// Acquire semaphore
-			sem <- struct{}{}
-			defer func() { <-sem }() // Release semaphore
-
-			// Process workload
-			status, err := r.WorkloadProcessor.ProcessWorkload(ctx, &wl, policyObj)
-
-			// Send result
-			res := result{
-				workload: fmt.Sprintf("%s/%s", wl.Namespace, wl.Name),
-			}
-			if err != nil {
-				res.err = err
-			} else if status != nil {
-				res.status = status.Status
-			}
-			results <- res
-		}(workload)
-	}
-
-	// Collect results
-	processedCount := 0
-	updatedCount := 0
-	skippedCount := make(map[string]int)
-
-	for i := 0; i < len(workloads); i++ {
-		res := <-results
-
-		if res.err != nil {
-			log.Error(res.err, "Failed to process workload", "workload", res.workload)
-			r.Recorder.Event(policyObj, corev1.EventTypeWarning, "ProcessingFailed",
-				fmt.Sprintf("Failed to process workload %s: %v", res.workload, res.err))
-			observability.ReconciliationErrors.WithLabelValues(policyObj.Name, "processing_error").Inc()
-			continue
-		}
-
-		processedCount++
-
-		// Track metrics based on status
-		switch res.status {
-		case StatusApplied:
-			if r.EventRecorder != nil {
-				parts := splitWorkloadName(res.workload)
-				r.EventRecorder.RecordWorkloadUpdateSuccess(policyObj, parts[1], parts[0], "InPlace")
-			}
-			updatedCount++
-			observability.ApplicationsTotal.WithLabelValues(policyObj.Name, "InPlace").Inc()
-
-		case StatusSkipped:
-			skippedCount["skipped"]++
-
-		case "Recommended":
-			observability.RecommendationsTotal.WithLabelValues(policyObj.Name).Inc()
-		}
-	}
-
-	// Update metrics
-	observability.WorkloadsUpdated.WithLabelValues(policyObj.Namespace, policyObj.Name).Set(float64(updatedCount))
-	for reason, count := range skippedCount {
-		observability.WorkloadsSkipped.WithLabelValues(policyObj.Namespace, policyObj.Name, reason).Set(float64(count))
-	}
-
-	log.Info("Completed parallel workload processing",
-		"total", len(workloads),
-		"processed", processedCount,
-		"updated", updatedCount)
-
-	return processedCount, nil
-}
-
 // updatePolicySummary updates the policy status with summary information
 // Uses retry logic to handle concurrent modification conflicts
 func (r *OptimizationPolicyReconciler) updatePolicySummary(ctx context.Context, pol *optipodv1alpha1.OptimizationPolicy, discovered, processed int) error {
@@ -516,16 +421,6 @@ func (r *OptimizationPolicyReconciler) processWorkloadsWithPolicySelection(ctx c
 		"processed", processedCount)
 
 	return processedCount, len(workloads), nil
-}
-
-// splitWorkloadName splits a workload identifier in "namespace/name" format
-func splitWorkloadName(workload string) []string {
-	parts := strings.Split(workload, "/")
-	if len(parts) == 2 {
-		return parts // [namespace, name]
-	}
-	// Fallback for invalid format
-	return []string{"default", "unknown"}
 }
 
 // SetupWithManager sets up the controller with the Manager.

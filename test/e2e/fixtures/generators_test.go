@@ -121,7 +121,10 @@ func TestWorkloadConfigGenerator(t *testing.T) {
 	})
 
 	t.Run("GenerateWorkloadWithResources", func(t *testing.T) {
-		config := generator.GenerateWorkloadWithResources("resource-workload", helpers.WorkloadTypeDeployment, "300m", "384Mi", "600m", "768Mi")
+		config := generator.GenerateWorkloadWithResources(
+			"resource-workload", helpers.WorkloadTypeDeployment,
+			"300m", "384Mi", "600m", "768Mi",
+		)
 
 		if config.Resources.Requests.CPU != "300m" {
 			t.Errorf("Expected CPU request '300m', got %s", config.Resources.Requests.CPU)
@@ -148,7 +151,11 @@ func TestWorkloadConfigGenerator(t *testing.T) {
 		}
 
 		// Verify workload type is valid
-		validTypes := []helpers.WorkloadType{helpers.WorkloadTypeDeployment, helpers.WorkloadTypeStatefulSet, helpers.WorkloadTypeDaemonSet}
+		validTypes := []helpers.WorkloadType{
+			helpers.WorkloadTypeDeployment,
+			helpers.WorkloadTypeStatefulSet,
+			helpers.WorkloadTypeDaemonSet,
+		}
 		typeValid := false
 		for _, wType := range validTypes {
 			if config.Type == wType {

@@ -77,6 +77,10 @@ type ResourceList struct {
 // CreateDeployment creates a Deployment with the specified configuration
 func (h *WorkloadHelper) CreateDeployment(config WorkloadConfig) (*appsv1.Deployment, error) {
 	deployment := &appsv1.Deployment{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "Deployment",
+			APIVersion: "apps/v1",
+		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      config.Name,
 			Namespace: h.namespace,
@@ -115,12 +119,20 @@ func (h *WorkloadHelper) CreateDeployment(config WorkloadConfig) (*appsv1.Deploy
 		return nil, fmt.Errorf("failed to create Deployment %s: %w", config.Name, err)
 	}
 
+	// Restore TypeMeta fields that may be cleared by the client
+	deployment.Kind = "Deployment"
+	deployment.APIVersion = "apps/v1"
+
 	return deployment, nil
 }
 
 // CreateStatefulSet creates a StatefulSet with the specified configuration
 func (h *WorkloadHelper) CreateStatefulSet(config WorkloadConfig) (*appsv1.StatefulSet, error) {
 	statefulSet := &appsv1.StatefulSet{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "StatefulSet",
+			APIVersion: "apps/v1",
+		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      config.Name,
 			Namespace: h.namespace,
@@ -166,12 +178,20 @@ func (h *WorkloadHelper) CreateStatefulSet(config WorkloadConfig) (*appsv1.State
 		return nil, fmt.Errorf("failed to create StatefulSet %s: %w", config.Name, err)
 	}
 
+	// Restore TypeMeta fields that may be cleared by the client
+	statefulSet.Kind = "StatefulSet"
+	statefulSet.APIVersion = "apps/v1"
+
 	return statefulSet, nil
 }
 
 // CreateDaemonSet creates a DaemonSet with the specified configuration
 func (h *WorkloadHelper) CreateDaemonSet(config WorkloadConfig) (*appsv1.DaemonSet, error) {
 	daemonSet := &appsv1.DaemonSet{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "DaemonSet",
+			APIVersion: "apps/v1",
+		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      config.Name,
 			Namespace: h.namespace,
@@ -218,6 +238,10 @@ func (h *WorkloadHelper) CreateDaemonSet(config WorkloadConfig) (*appsv1.DaemonS
 	if err != nil {
 		return nil, fmt.Errorf("failed to create DaemonSet %s: %w", config.Name, err)
 	}
+
+	// Restore TypeMeta fields that may be cleared by the client
+	daemonSet.Kind = "DaemonSet"
+	daemonSet.APIVersion = "apps/v1"
 
 	return daemonSet, nil
 }
@@ -364,50 +388,56 @@ func (h *WorkloadHelper) buildResourceRequirements(resources ResourceRequirement
 }
 
 // WaitForWorkloadReady waits for the workload to be ready
-func (h *WorkloadHelper) WaitForWorkloadReady(workloadName string, workloadType WorkloadType, timeout time.Duration) error {
-	return wait.PollImmediate(5*time.Second, timeout, func() (bool, error) {
-		switch workloadType {
-		case WorkloadTypeDeployment:
-			deployment := &appsv1.Deployment{}
-			err := h.client.Get(context.TODO(), types.NamespacedName{
-				Name:      workloadName,
-				Namespace: h.namespace,
-			}, deployment)
-			if err != nil {
-				return false, err
-			}
-			return deployment.Status.ReadyReplicas == *deployment.Spec.Replicas, nil
+func (h *WorkloadHelper) WaitForWorkloadReady(
+	workloadName string, workloadType WorkloadType, timeout time.Duration,
+) error {
+	return wait.PollUntilContextTimeout(
+		context.TODO(), 5*time.Second, timeout, true,
+		func(ctx context.Context) (bool, error) {
+			switch workloadType {
+			case WorkloadTypeDeployment:
+				deployment := &appsv1.Deployment{}
+				err := h.client.Get(context.TODO(), types.NamespacedName{
+					Name:      workloadName,
+					Namespace: h.namespace,
+				}, deployment)
+				if err != nil {
+					return false, err
+				}
+				return deployment.Status.ReadyReplicas == *deployment.Spec.Replicas, nil
 
-		case WorkloadTypeStatefulSet:
-			statefulSet := &appsv1.StatefulSet{}
-			err := h.client.Get(context.TODO(), types.NamespacedName{
-				Name:      workloadName,
-				Namespace: h.namespace,
-			}, statefulSet)
-			if err != nil {
-				return false, err
-			}
-			return statefulSet.Status.ReadyReplicas == *statefulSet.Spec.Replicas, nil
+			case WorkloadTypeStatefulSet:
+				statefulSet := &appsv1.StatefulSet{}
+				err := h.client.Get(context.TODO(), types.NamespacedName{
+					Name:      workloadName,
+					Namespace: h.namespace,
+				}, statefulSet)
+				if err != nil {
+					return false, err
+				}
+				return statefulSet.Status.ReadyReplicas == *statefulSet.Spec.Replicas, nil
 
-		case WorkloadTypeDaemonSet:
-			daemonSet := &appsv1.DaemonSet{}
-			err := h.client.Get(context.TODO(), types.NamespacedName{
-				Name:      workloadName,
-				Namespace: h.namespace,
-			}, daemonSet)
-			if err != nil {
-				return false, err
-			}
-			return daemonSet.Status.NumberReady == daemonSet.Status.DesiredNumberScheduled, nil
+			case WorkloadTypeDaemonSet:
+				daemonSet := &appsv1.DaemonSet{}
+				err := h.client.Get(context.TODO(), types.NamespacedName{
+					Name:      workloadName,
+					Namespace: h.namespace,
+				}, daemonSet)
+				if err != nil {
+					return false, err
+				}
+				return daemonSet.Status.NumberReady == daemonSet.Status.DesiredNumberScheduled, nil
 
-		default:
-			return false, fmt.Errorf("unsupported workload type: %s", workloadType)
-		}
-	})
+			default:
+				return false, fmt.Errorf("unsupported workload type: %s", workloadType)
+			}
+		})
 }
 
 // GetWorkloadAnnotations retrieves OptipPod annotations from a workload
-func (h *WorkloadHelper) GetWorkloadAnnotations(workloadName string, workloadType WorkloadType) (map[string]string, error) {
+func (h *WorkloadHelper) GetWorkloadAnnotations(
+	workloadName string, workloadType WorkloadType,
+) (map[string]string, error) {
 	var annotations map[string]string
 
 	switch workloadType {

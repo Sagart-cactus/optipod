@@ -219,8 +219,8 @@ func (cv *CoverageValidator) findPropertyTest(testFile, propertyID string) strin
 		return ""
 	}
 
-	// Look for property references in test comments
-	propertyPattern := fmt.Sprintf(`(?i)property.*?%s`, regexp.QuoteMeta(propertyID))
+	// Look for property references in test comments - use word boundaries for exact match
+	propertyPattern := fmt.Sprintf(`(?i)property\s+%s\b`, regexp.QuoteMeta(propertyID))
 	if matched, _ := regexp.MatchString(propertyPattern, string(content)); matched {
 		// Extract test function name
 		fset := token.NewFileSet()
@@ -238,6 +238,11 @@ func (cv *CoverageValidator) findPropertyTest(testFile, propertyID string) strin
 					if start < len(content) && end <= len(content) {
 						fnContent := string(content[start:end])
 						if matched, _ := regexp.MatchString(propertyPattern, fnContent); matched {
+							// Check if it's marked as not implemented
+							notImplementedPattern := `(?i)(not implemented|todo|placeholder|not.*yet)`
+							if matched, _ := regexp.MatchString(notImplementedPattern, fnContent); matched {
+								return "" // Not actually implemented
+							}
 							return fn.Name.Name
 						}
 					}

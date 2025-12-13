@@ -656,14 +656,9 @@ func (e *Engine) getGVR(kind string) (schema.GroupVersionResource, error) {
 	}
 }
 
-// getAPIVersionAndKind returns the API version and kind for a workload type
-func (e *Engine) getAPIVersionAndKind(workloadKind string) (string, string) {
-	switch workloadKind {
-	case kindDeployment, kindStatefulSet, kindDaemonSet:
-		return "apps/v1", workloadKind
-	default:
-		return "apps/v1", workloadKind
-	}
+// getKind returns the kind for a workload type (API version is always apps/v1)
+func (e *Engine) getKind(workloadKind string) string {
+	return workloadKind
 }
 
 // buildSSAPatch constructs a Server-Side Apply patch containing only resource fields
@@ -673,8 +668,8 @@ func (e *Engine) buildSSAPatch(
 	rec *recommendation.Recommendation,
 	policy *optipodv1alpha1.OptimizationPolicy,
 ) ([]byte, error) {
-	// Determine API version and kind
-	apiVersion, kind := e.getAPIVersionAndKind(workload.Kind)
+	// Determine kind (API version is always apps/v1 for workloads)
+	kind := e.getKind(workload.Kind)
 
 	// Build resources map
 	resources := map[string]interface{}{
@@ -695,7 +690,7 @@ func (e *Engine) buildSSAPatch(
 
 	// Build minimal patch with only resource fields
 	patch := map[string]interface{}{
-		"apiVersion": apiVersion,
+		"apiVersion": "apps/v1",
 		"kind":       kind,
 		"metadata": map[string]interface{}{
 			"name":      workload.Name,

@@ -1,6 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<testsuite name="failure-handling" tests="1" failures="0" errors="0" time="0.0" timestamp="2025-12-12T21:11:45+07:00">
-  <testcase name="failure-handling" classname="e2e.artifact.generation" time="0.0">
-    <system-out>Test scenario: failure-handling</system-out>
-  </testcase>
-</testsuite>

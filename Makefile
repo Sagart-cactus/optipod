@@ -94,14 +94,12 @@ test-e2e-enhanced: setup-test-e2e manifests generate fmt vet ## Run enhanced e2e
 		-ginkgo.focus="$(E2E_TEST_FOCUS)" \
 		-ginkgo.junit-report="$(GINKGO_JUNIT_REPORT_FILE)" \
 		-ginkgo.json-report="$(GINKGO_JSON_REPORT_FILE)" \
-		-ginkgo.procs=$(E2E_PARALLEL_NODES) \
 		-timeout=$(E2E_TEST_TIMEOUT)
 
 .PHONY: test-e2e-parallel
 test-e2e-parallel: setup-test-e2e manifests generate fmt vet ## Run e2e tests in parallel with specified number of nodes.
 	KIND=$(KIND) KIND_CLUSTER=$(KIND_CLUSTER) go test -tags=e2e ./test/e2e/ \
 		-v -ginkgo.v \
-		-ginkgo.procs=$(or $(E2E_PARALLEL_NODES),4) \
 		-timeout=$(or $(E2E_TEST_TIMEOUT),30m)
 	$(MAKE) cleanup-test-e2e
 

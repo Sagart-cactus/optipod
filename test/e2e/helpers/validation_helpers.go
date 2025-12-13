@@ -158,7 +158,7 @@ func (h *ValidationHelper) ValidateWorkloadUpdate(workloadName, namespace string
 	case v1alpha1.ModeDisabled:
 		// In Disabled mode, we expect no workload processing
 		if targetPolicy.Status.WorkloadsDiscovered > 0 || targetPolicy.Status.WorkloadsProcessed > 0 {
-			return fmt.Errorf("Disabled mode policy should not process any workloads")
+			return fmt.Errorf("disabled mode policy should not process any workloads")
 		}
 	}
 
@@ -191,7 +191,9 @@ func (h *ValidationHelper) ValidateMetrics(expectedMetrics []string) error {
 }
 
 // ValidatePolicyModeConsistency validates that policy mode behavior is consistent
-func (h *ValidationHelper) ValidatePolicyModeConsistency(policyName, namespace string, expectedMode v1alpha1.PolicyMode) error {
+func (h *ValidationHelper) ValidatePolicyModeConsistency(
+	policyName, namespace string, expectedMode v1alpha1.PolicyMode,
+) error {
 	policy := &v1alpha1.OptimizationPolicy{}
 	err := h.client.Get(context.TODO(), types.NamespacedName{
 		Name:      policyName,
@@ -210,7 +212,7 @@ func (h *ValidationHelper) ValidatePolicyModeConsistency(policyName, namespace s
 	case v1alpha1.ModeAuto:
 		// Auto mode should process workloads
 		if policy.Status.WorkloadsProcessed == 0 && policy.Status.WorkloadsDiscovered > 0 {
-			return fmt.Errorf("Auto mode should process discovered workloads")
+			return fmt.Errorf("auto mode should process discovered workloads")
 		}
 
 	case v1alpha1.ModeRecommend:
@@ -220,7 +222,7 @@ func (h *ValidationHelper) ValidatePolicyModeConsistency(policyName, namespace s
 	case v1alpha1.ModeDisabled:
 		// Disabled mode should not process any workloads
 		if policy.Status.WorkloadsDiscovered > 0 || policy.Status.WorkloadsProcessed > 0 {
-			return fmt.Errorf("Disabled mode should not process any workloads")
+			return fmt.Errorf("disabled mode should not process any workloads")
 		}
 	}
 
@@ -461,7 +463,9 @@ func (h *ValidationHelper) ValidateGracefulDegradation(policyName, namespace str
 }
 
 // ValidateMemorySafety validates that memory decrease safety measures are in place
-func (h *ValidationHelper) ValidateMemorySafety(workloadName, namespace string, originalMemory, currentMemory string) error {
+func (h *ValidationHelper) ValidateMemorySafety(
+	workloadName, namespace string, originalMemory, currentMemory string,
+) error {
 	originalQuantity, err := resource.ParseQuantity(originalMemory)
 	if err != nil {
 		return fmt.Errorf("failed to parse original memory %s: %w", originalMemory, err)

@@ -64,11 +64,13 @@ func TestCoverageValidatorUnit(t *testing.T) {
 ## Correctness Properties
 
 Property 1: Policy mode behavior consistency
-*For any* optimization policy configuration and workload, the policy mode should consistently determine whether recommendations are generated
+*For any* optimization policy configuration and workload, the policy mode should consistently
+determine whether recommendations are generated
 **Validates: Requirements 1.1, 1.2, 1.3**
 
 Property 2: Resource bounds enforcement
-*For any* optimization policy with resource bounds and any workload, recommendations should always respect the configured limits
+*For any* optimization policy with resource bounds and any workload, recommendations should
+always respect the configured limits
 **Validates: Requirements 2.2, 2.3, 2.4**
 `
 		err := os.WriteFile(validator.DesignFile, []byte(designContent), 0644)

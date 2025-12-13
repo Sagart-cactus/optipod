@@ -124,24 +124,26 @@ func (h *PolicyHelper) CreateOptimizationPolicy(config PolicyConfig) (*v1alpha1.
 
 // WaitForPolicyReady waits for the OptimizationPolicy to reach Ready condition
 func (h *PolicyHelper) WaitForPolicyReady(policyName string, timeout time.Duration) error {
-	return wait.PollImmediate(5*time.Second, timeout, func() (bool, error) {
-		policy := &v1alpha1.OptimizationPolicy{}
-		err := h.client.Get(context.TODO(), types.NamespacedName{
-			Name:      policyName,
-			Namespace: h.namespace,
-		}, policy)
-		if err != nil {
-			return false, err
-		}
-
-		// Check if Ready condition is True
-		for _, condition := range policy.Status.Conditions {
-			if condition.Type == "Ready" && condition.Status == metav1.ConditionTrue {
-				return true, nil
+	return wait.PollUntilContextTimeout(
+		context.TODO(), 5*time.Second, timeout, true,
+		func(ctx context.Context) (bool, error) {
+			policy := &v1alpha1.OptimizationPolicy{}
+			err := h.client.Get(context.TODO(), types.NamespacedName{
+				Name:      policyName,
+				Namespace: h.namespace,
+			}, policy)
+			if err != nil {
+				return false, err
 			}
-		}
-		return false, nil
-	})
+
+			// Check if Ready condition is True
+			for _, condition := range policy.Status.Conditions {
+				if condition.Type == "Ready" && condition.Status == metav1.ConditionTrue {
+					return true, nil
+				}
+			}
+			return false, nil
+		})
 }
 
 // ValidatePolicyBehavior validates that the policy behaves according to its mode

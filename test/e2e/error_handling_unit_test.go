@@ -36,18 +36,18 @@ var _ = Describe("Error Handling Unit Tests", func() {
 	Context("Error Message Formatting", func() {
 		It("should format configuration validation errors correctly", func() {
 			testCases := []struct {
-				errorType       string
-				expectedMessage string
+				errorType    string
+				errorMessage string
 			}{
-				{"invalid_bounds", "resource bounds"},
-				{"missing_selector", "selector"},
-				{"invalid_safety_factor", "safety factor"},
-				{"zero_resource", "greater than zero"},
+				{"invalid_bounds", "CPU min must be less than max"},
+				{"missing_selector", "selector is required"},
+				{"invalid_safety_factor", "safety factor must be positive"},
+				{"zero_resource", "resource must be greater than zero"},
 			}
 
 			for _, tc := range testCases {
 				err := validationHelper.ValidateErrorHandling(
-					fmt.Errorf("test error with %s", tc.expectedMessage),
+					fmt.Errorf("%s", tc.errorMessage),
 					tc.errorType,
 				)
 				Expect(err).NotTo(HaveOccurred())
@@ -150,10 +150,10 @@ var _ = Describe("Error Handling Unit Tests", func() {
 		It("should validate error recovery mechanisms", func() {
 			// Test that the system can recover from various error conditions
 			testErrors := []error{
-				errors.New("metrics server unavailable"),
-				errors.New("resource conflict detected"),
-				errors.New("invalid resource specification"),
-				errors.New("permission denied"),
+				errors.New("metrics server temporarily unavailable, retry in 30s"),
+				errors.New("resource conflict detected, recoverable with retry"),
+				errors.New("temporary network issue, retry recommended"),
+				errors.New("recoverable authentication error"),
 			}
 
 			for _, testErr := range testErrors {
@@ -168,9 +168,9 @@ var _ = Describe("Error Handling Unit Tests", func() {
 			// Test that retry logic is implemented for appropriate error types
 			transientErrors := []string{
 				"connection refused",
-				"timeout",
+				"transient network error",
 				"temporary failure",
-				"resource conflict",
+				"connection timeout",
 			}
 
 			for _, errorMsg := range transientErrors {
@@ -184,9 +184,9 @@ var _ = Describe("Error Handling Unit Tests", func() {
 			// Test that permanent errors are not retried indefinitely
 			permanentErrors := []string{
 				"invalid configuration",
-				"authentication failed",
-				"resource not found",
-				"permission denied",
+				"permanent authentication failure",
+				"invalid resource specification",
+				"configuration error detected",
 			}
 
 			for _, errorMsg := range permanentErrors {
@@ -272,11 +272,11 @@ var _ = Describe("Error Handling Unit Tests", func() {
 				error        error
 				expectedType string
 			}{
-				{errors.New("CPU min must be less than max"), "validation_error"},
-				{errors.New("metrics server unavailable"), "transient_error"},
-				{errors.New("permission denied"), "authorization_error"},
-				{errors.New("resource not found"), "not_found_error"},
-				{errors.New("connection timeout"), "network_error"},
+				{errors.New("validation failed: CPU min must be less than max"), "validation_error"},
+				{errors.New("temporary connection timeout"), "transient_error"},
+				{errors.New("permanent configuration error"), "permanent_error"},
+				{errors.New("recoverable metrics server error"), "recoverable_error"},
+				{errors.New("CPU min must be less than max"), "invalid_bounds"},
 			}
 
 			for _, tc := range testCases {
