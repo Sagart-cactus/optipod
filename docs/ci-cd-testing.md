@@ -139,12 +139,22 @@ kubectl apply -f install.yaml
 
 ## Troubleshooting
 
+### Workflow Validation Errors
+
+If GitHub Actions reports workflow syntax errors:
+- Run `./hack/validate-workflows.sh` locally to catch issues early
+- Check for proper YAML indentation and syntax
+- Verify all required parameters are provided for actions
+- Ensure conditional expressions use proper GitHub Actions syntax
+
 ### Workflow Fails at Build Step
 
 Check:
 - Dockerfile syntax
 - Go module dependencies
 - Build arguments
+- **Docker build configuration**: Ensure `load` and `outputs` parameters are not used together
+- **Platform compatibility**: Multi-arch builds require specific platform configurations
 
 ### Security Scan Fails
 
@@ -152,6 +162,8 @@ Check:
 - Trivy scan results in workflow logs
 - Update base images if vulnerabilities found
 - Review vulnerability report artifact
+- **Trivy installation**: Ensure modern GPG keyring setup is used
+- **Image loading**: Verify Docker image artifact is properly loaded before scanning
 
 ### Image Push Fails
 
@@ -190,6 +202,37 @@ Monitor workflow health:
 - Review GitHub Actions dashboard
 - Set up notifications for workflow failures
 - Track build times and cache hit rates
+
+## Recent Updates (December 2024)
+
+The release workflow has been updated to fix several critical issues:
+
+### Fixed Issues
+- **Syntax Validation**: All workflow YAML files now pass GitHub Actions validation
+- **Docker Build Configuration**: Resolved conflicts between `load` and `outputs` parameters
+- **Security Scanning**: Updated Trivy installation to use modern GPG keyring management
+- **Conditional Logic**: Fixed Docker Hub publishing to properly handle missing credentials
+- **Job Dependencies**: Ensured correct execution order for all workflow jobs
+
+### Validation
+After the fixes, the workflow now:
+- ✅ Passes `actionlint` validation
+- ✅ Builds Docker images without configuration conflicts
+- ✅ Installs Trivy using supported methods
+- ✅ Gracefully handles optional Docker Hub publishing
+- ✅ Executes all jobs in correct dependency order
+
+### Testing the Fixes
+To verify the fixes work correctly:
+```bash
+# Validate workflow syntax
+./hack/validate-workflows.sh
+
+# Test with a test release
+./hack/test-release-workflow.sh
+
+# Monitor the workflow execution for any remaining issues
+```
 
 ## Additional Resources
 

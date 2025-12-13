@@ -22,21 +22,27 @@ This guide provides detailed instructions for installing and configuring OptiPod
 
 ### Method 1: Using kubectl (Recommended)
 
-#### Step 1: Install CRDs
+#### Step 1: Install from Latest Release (Recommended)
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/yourusername/optipod/main/config/crd/bases/optipod.optipod.io_optimizationpolicies.yaml
+kubectl apply -f https://github.com/Sagart-cactus/optipod/releases/latest/download/install.yaml
 ```
 
-Verify CRD installation:
+Or install a specific version:
 ```bash
-kubectl get crd optimizationpolicies.optipod.optipod.io
+kubectl apply -f https://github.com/Sagart-cactus/optipod/releases/download/v1.0.0/install.yaml
 ```
 
-#### Step 2: Deploy the Operator
+#### Alternative: Install from Source
+
+If you need to install from the main branch:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/yourusername/optipod/main/dist/install.yaml
+# Install CRDs
+kubectl apply -f https://raw.githubusercontent.com/Sagart-cactus/optipod/main/config/crd/bases/optipod.optipod.io_optimizationpolicies.yaml
+
+# Deploy the operator
+kubectl apply -f https://raw.githubusercontent.com/Sagart-cactus/optipod/main/config/default
 ```
 
 This creates:
@@ -46,7 +52,12 @@ This creates:
 - ConfigMap for configuration
 - Service for metrics
 
-#### Step 3: Verify Installation
+> **Security Note**: All release images are signed with cosign and include SBOMs. You can verify signatures using:
+> ```bash
+> cosign verify ghcr.io/sagart-cactus/optipod:v1.0.0
+> ```
+
+#### Step 2: Verify Installation
 
 Check that the operator is running:
 ```bash
@@ -271,11 +282,11 @@ kubectl describe optimizationpolicy test-policy
 ### Upgrade Operator
 
 ```bash
-# Update CRDs (if changed)
-kubectl apply -f https://raw.githubusercontent.com/yourusername/optipod/main/config/crd/bases/optipod.optipod.io_optimizationpolicies.yaml
+# Upgrade to latest release
+kubectl apply -f https://github.com/Sagart-cactus/optipod/releases/latest/download/install.yaml
 
-# Update operator
-kubectl apply -f https://raw.githubusercontent.com/yourusername/optipod/main/dist/install.yaml
+# Or upgrade to specific version
+kubectl apply -f https://github.com/Sagart-cactus/optipod/releases/download/v1.1.0/install.yaml
 
 # Verify upgrade
 kubectl rollout status deployment/optipod-controller-manager -n optipod-system
@@ -296,7 +307,11 @@ kubectl rollout status deployment/optipod-controller-manager -n optipod-system
 ### Remove Operator
 
 ```bash
-kubectl delete -f https://raw.githubusercontent.com/yourusername/optipod/main/dist/install.yaml
+# Remove using the same version you installed
+kubectl delete -f https://github.com/Sagart-cactus/optipod/releases/download/v1.0.0/install.yaml
+
+# Or remove latest
+kubectl delete -f https://github.com/Sagart-cactus/optipod/releases/latest/download/install.yaml
 ```
 
 ### Remove CRDs

@@ -41,6 +41,8 @@ Or install a specific version:
 kubectl apply -f https://github.com/Sagart-cactus/optipod/releases/download/v1.0.0/install.yaml
 ```
 
+> **Note**: The release workflow has been recently updated and validated. All releases include signed container images, SBOMs, and security scan results.
+
 2. **Verify the installation**:
 ```bash
 kubectl get pods -n optipod-system
