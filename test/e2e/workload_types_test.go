@@ -2998,3 +2998,21 @@ var _ = Describe("Workload Types and Update Strategies", Ordered, func() {
 		})
 	})
 })
+
+// isCRDAvailable checks if the OptimizationPolicy CRD is available in the cluster
+func isCRDAvailable(ctx context.Context, k8sClient client.Client) bool {
+	// Try to list OptimizationPolicies to check if the CRD is available
+	policyList := &v1alpha1.OptimizationPolicyList{}
+	err := k8sClient.List(ctx, policyList)
+	if err != nil {
+		// If we get a "no matches for kind" error, the CRD is not available
+		if errors.IsNotFound(err) || 
+		   (err != nil && (errors.ReasonForError(err) == metav1.StatusReasonNotFound || 
+		                   errors.IsMethodNotSupported(err))) {
+			return false
+		}
+		// For other errors, we assume the CRD is available but there might be other issues
+		return true
+	}
+	return true
+}

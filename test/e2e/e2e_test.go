@@ -68,6 +68,13 @@ var _ = Describe("Manager", Ordered, func() {
 		_, err = utils.Run(cmd)
 		Expect(err).NotTo(HaveOccurred(), "Failed to install CRDs")
 
+		By("waiting for CRDs to be available")
+		Eventually(func() error {
+			cmd := exec.Command("kubectl", "get", "crd", "optimizationpolicies.optipod.optipod.io")
+			_, err := utils.Run(cmd)
+			return err
+		}, 60*time.Second, 2*time.Second).Should(Succeed(), "CRD should be available")
+
 		By("deploying the controller-manager")
 		cmd = exec.Command("make", "deploy", fmt.Sprintf("IMG=%s", projectImage))
 		_, err = utils.Run(cmd)
