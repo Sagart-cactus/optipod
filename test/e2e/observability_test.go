@@ -50,6 +50,13 @@ var _ = Describe("Observability and Metrics", Ordered, func() {
 	BeforeAll(func() {
 		// Initialize test helpers
 		k8sClient = getK8sClient()
+		
+		// Wait for CRDs to be available
+		By("waiting for OptimizationPolicy CRD to be available")
+		Eventually(func() bool {
+			return isCRDAvailable(context.Background(), k8sClient)
+		}, 120*time.Second, 5*time.Second).Should(BeTrue(), "OptimizationPolicy CRD should be available")
+		
 		policyHelper = helpers.NewPolicyHelper(k8sClient, namespace)
 		workloadHelper = helpers.NewWorkloadHelper(k8sClient, testNamespace)
 		cleanupHelper = helpers.NewCleanupHelper(k8sClient)

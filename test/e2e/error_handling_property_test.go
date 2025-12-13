@@ -62,6 +62,12 @@ var _ = Describe("Error Handling Property Tests", Ordered, func() {
 
 		k8sClient, err = client.New(cfg, client.Options{Scheme: s})
 		Expect(err).NotTo(HaveOccurred())
+
+		// Wait for CRDs to be available
+		By("waiting for OptimizationPolicy CRD to be available")
+		Eventually(func() bool {
+			return isCRDAvailable(context.Background(), k8sClient)
+		}, 120*time.Second, 5*time.Second).Should(BeTrue(), "OptimizationPolicy CRD should be available")
 	})
 
 	// Property 6: Error handling robustness
