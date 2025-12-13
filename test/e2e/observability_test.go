@@ -1371,9 +1371,11 @@ func getControllerLogs() (string, error) {
 
 // getK8sClient returns a Kubernetes client for testing
 func getK8sClient() client.Client {
-	// This would typically be initialized from the test suite
-	// For now, we'll return nil and implement this based on the existing test patterns
-	return nil
+	k8sClient, err := utils.GetK8sClient()
+	if err != nil {
+		Fail(fmt.Sprintf("Failed to get k8s client: %v", err))
+	}
+	return k8sClient
 }
 
 // MetricsCollector provides utilities for collecting and validating metrics
