@@ -137,7 +137,7 @@ jobs:
             image=moby/buildkit:latest
 
       - name: Build multi-architecture images
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           platforms: linux/amd64
@@ -425,7 +425,7 @@ jobs:
           echo "patch=${MAJOR}.${MINOR}.${PATCH}" >> $GITHUB_OUTPUT
 
       - name: Build and push multi-platform image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           platforms: ${{ env.PLATFORMS }}
@@ -505,7 +505,7 @@ jobs:
 
       - name: Build and push to Docker Hub
         if: steps.check_dockerhub.outputs.has_credentials == 'true'
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           platforms: ${{ env.PLATFORMS }}
