@@ -57,7 +57,7 @@ func (h *CleanupHelper) TrackDeployment(name, namespace string) {
 	h.TrackResource(ResourceRef{
 		Name:      name,
 		Namespace: namespace,
-		Kind:      "Deployment",
+		Kind:      string(WorkloadTypeDeployment),
 		Object:    &appsv1.Deployment{},
 	})
 }
@@ -67,7 +67,7 @@ func (h *CleanupHelper) TrackStatefulSet(name, namespace string) {
 	h.TrackResource(ResourceRef{
 		Name:      name,
 		Namespace: namespace,
-		Kind:      "StatefulSet",
+		Kind:      string(WorkloadTypeStatefulSet),
 		Object:    &appsv1.StatefulSet{},
 	})
 }
@@ -77,7 +77,7 @@ func (h *CleanupHelper) TrackDaemonSet(name, namespace string) {
 	h.TrackResource(ResourceRef{
 		Name:      name,
 		Namespace: namespace,
-		Kind:      "DaemonSet",
+		Kind:      string(WorkloadTypeDaemonSet),
 		Object:    &appsv1.DaemonSet{},
 	})
 }
@@ -229,7 +229,7 @@ func (h *CleanupHelper) deleteResource(resource ResourceRef) error {
 	switch resource.Kind {
 	case "Namespace":
 		return h.waitForNamespaceDeletion(resource.Name)
-	case "Deployment", "StatefulSet", "DaemonSet":
+	case string(WorkloadTypeDeployment), string(WorkloadTypeStatefulSet), string(WorkloadTypeDaemonSet):
 		return h.waitForWorkloadDeletion(resource.Name, resource.Namespace, resource.Kind)
 	}
 
@@ -239,11 +239,11 @@ func (h *CleanupHelper) deleteResource(resource ResourceRef) error {
 // createObjectByKind creates an empty object of the specified kind
 func (h *CleanupHelper) createObjectByKind(kind string) client.Object {
 	switch kind {
-	case "Deployment":
+	case string(WorkloadTypeDeployment):
 		return &appsv1.Deployment{}
-	case "StatefulSet":
+	case string(WorkloadTypeStatefulSet):
 		return &appsv1.StatefulSet{}
-	case "DaemonSet":
+	case string(WorkloadTypeDaemonSet):
 		return &appsv1.DaemonSet{}
 	case "Pod":
 		return &corev1.Pod{}
@@ -287,11 +287,11 @@ func (h *CleanupHelper) waitForWorkloadDeletion(name, namespace, kind string) er
 			var obj client.Object
 
 			switch kind {
-			case "Deployment":
+			case string(WorkloadTypeDeployment):
 				obj = &appsv1.Deployment{}
-			case "StatefulSet":
+			case string(WorkloadTypeStatefulSet):
 				obj = &appsv1.StatefulSet{}
-			case "DaemonSet":
+			case string(WorkloadTypeDaemonSet):
 				obj = &appsv1.DaemonSet{}
 			default:
 				return true, nil // Skip waiting for unknown types

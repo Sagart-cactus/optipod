@@ -18,6 +18,8 @@ import (
 const (
 	// DefaultNginxImage is the default nginx image used in tests
 	DefaultNginxImage = "nginx:1.25-alpine"
+	// AppsV1APIVersion is the API version for apps/v1 resources
+	AppsV1APIVersion = "apps/v1"
 )
 
 // WorkloadHelper provides utilities for managing workload resources in tests
@@ -78,8 +80,8 @@ type ResourceList struct {
 func (h *WorkloadHelper) CreateDeployment(config WorkloadConfig) (*appsv1.Deployment, error) {
 	deployment := &appsv1.Deployment{
 		TypeMeta: metav1.TypeMeta{
-			Kind:       "Deployment",
-			APIVersion: "apps/v1",
+			Kind:       string(WorkloadTypeDeployment),
+			APIVersion: AppsV1APIVersion,
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      config.Name,
@@ -120,8 +122,8 @@ func (h *WorkloadHelper) CreateDeployment(config WorkloadConfig) (*appsv1.Deploy
 	}
 
 	// Restore TypeMeta fields that may be cleared by the client
-	deployment.Kind = "Deployment"
-	deployment.APIVersion = "apps/v1"
+	deployment.Kind = string(WorkloadTypeDeployment)
+	deployment.APIVersion = AppsV1APIVersion
 
 	return deployment, nil
 }
@@ -130,8 +132,8 @@ func (h *WorkloadHelper) CreateDeployment(config WorkloadConfig) (*appsv1.Deploy
 func (h *WorkloadHelper) CreateStatefulSet(config WorkloadConfig) (*appsv1.StatefulSet, error) {
 	statefulSet := &appsv1.StatefulSet{
 		TypeMeta: metav1.TypeMeta{
-			Kind:       "StatefulSet",
-			APIVersion: "apps/v1",
+			Kind:       string(WorkloadTypeStatefulSet),
+			APIVersion: AppsV1APIVersion,
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      config.Name,
@@ -179,8 +181,8 @@ func (h *WorkloadHelper) CreateStatefulSet(config WorkloadConfig) (*appsv1.State
 	}
 
 	// Restore TypeMeta fields that may be cleared by the client
-	statefulSet.Kind = "StatefulSet"
-	statefulSet.APIVersion = "apps/v1"
+	statefulSet.Kind = string(WorkloadTypeStatefulSet)
+	statefulSet.APIVersion = AppsV1APIVersion
 
 	return statefulSet, nil
 }
@@ -189,8 +191,8 @@ func (h *WorkloadHelper) CreateStatefulSet(config WorkloadConfig) (*appsv1.State
 func (h *WorkloadHelper) CreateDaemonSet(config WorkloadConfig) (*appsv1.DaemonSet, error) {
 	daemonSet := &appsv1.DaemonSet{
 		TypeMeta: metav1.TypeMeta{
-			Kind:       "DaemonSet",
-			APIVersion: "apps/v1",
+			Kind:       string(WorkloadTypeDaemonSet),
+			APIVersion: AppsV1APIVersion,
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      config.Name,
@@ -240,8 +242,8 @@ func (h *WorkloadHelper) CreateDaemonSet(config WorkloadConfig) (*appsv1.DaemonS
 	}
 
 	// Restore TypeMeta fields that may be cleared by the client
-	daemonSet.Kind = "DaemonSet"
-	daemonSet.APIVersion = "apps/v1"
+	daemonSet.Kind = string(WorkloadTypeDaemonSet)
+	daemonSet.APIVersion = AppsV1APIVersion
 
 	return daemonSet, nil
 }
