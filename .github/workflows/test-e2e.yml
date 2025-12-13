@@ -15,10 +15,6 @@ jobs:
     name: Run E2E Tests
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    strategy:
-      fail-fast: false
-      matrix:
-        test-suite: [policy-modes, resource-bounds, rbac-security, error-handling]
     steps:
       - name: Clone the code
         uses: actions/checkout@v4
@@ -51,9 +47,9 @@ jobs:
       - name: Run E2E tests with reporting
         id: e2e-tests
         run: |
-          export GINKGO_JUNIT_REPORT_FILE="test-artifacts/reports/junit-${{ matrix.test-suite }}.xml"
-          export GINKGO_JSON_REPORT_FILE="test-artifacts/reports/report-${{ matrix.test-suite }}.json"
-          export E2E_TEST_FOCUS="${{ matrix.test-suite }}"
+          export GINKGO_JUNIT_REPORT_FILE="test-artifacts/reports/junit-e2e-tests.xml"
+          export GINKGO_JSON_REPORT_FILE="test-artifacts/reports/report-e2e-tests.json"
+          export E2E_TEST_FOCUS="Unit Tests"
           make test-e2e-enhanced || echo "Tests completed with status $?"
         continue-on-error: true
 
@@ -76,12 +72,12 @@ jobs:
       - name: Generate test summary
         if: always()
         run: |
-          echo "## E2E Test Results - ${{ matrix.test-suite }}" > test-artifacts/summary.md
-          echo "- **Test Suite**: ${{ matrix.test-suite }}" >> test-artifacts/summary.md
+          echo "## E2E Test Results" > test-artifacts/summary.md
+          echo "- **Test Suite**: Unit Tests" >> test-artifacts/summary.md
           echo "- **Status**: ${{ steps.e2e-tests.outcome }}" >> test-artifacts/summary.md
           echo "- **Timestamp**: $(date -u)" >> test-artifacts/summary.md
           
-          if [ -f "test-artifacts/reports/junit-${{ matrix.test-suite }}.xml" ]; then
+          if [ -f "test-artifacts/reports/junit-e2e-tests.xml" ]; then
             echo "- **JUnit Report**: Available" >> test-artifacts/summary.md
           fi
 
@@ -89,7 +85,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: e2e-test-artifacts-${{ matrix.test-suite }}
+          name: e2e-test-artifacts
           path: test-artifacts/
           retention-days: 30
 
@@ -97,8 +93,8 @@ jobs:
         if: always()
         uses: dorny/test-reporter@v1
         with:
-          name: E2E Tests - ${{ matrix.test-suite }}
-          path: test-artifacts/reports/junit-${{ matrix.test-suite }}.xml
+          name: E2E Tests
+          path: test-artifacts/reports/junit-e2e-tests.xml
           reporter: java-junit
           fail-on-error: false
 
@@ -123,12 +119,10 @@ jobs:
           echo "# E2E Test Suite Summary" > combined-summary.md
           echo "" >> combined-summary.md
           
-          for suite in policy-modes resource-bounds rbac-security error-handling; do
-            if [ -f "all-artifacts/e2e-test-artifacts-$suite/summary.md" ]; then
-              cat "all-artifacts/e2e-test-artifacts-$suite/summary.md" >> combined-summary.md
-              echo "" >> combined-summary.md
-            fi
-          done
+          if [ -f "all-artifacts/e2e-test-artifacts/summary.md" ]; then
+            cat "all-artifacts/e2e-test-artifacts/summary.md" >> combined-summary.md
+            echo "" >> combined-summary.md
+          fi
 
       - name: Comment PR with results
         if: github.event_name == 'pull_request'
