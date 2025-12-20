@@ -30,11 +30,17 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.get_version.outputs.version }}
+      image_name_lower: ${{ steps.lowercase_repo.outputs.image_name_lower }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Convert repository name to lowercase
+        id: lowercase_repo
+        run: |
+          echo "image_name_lower=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
 
       - name: Get version from tag or input
         id: get_version
@@ -166,7 +172,7 @@ jobs:
           push: false
           load: true
           tags: |
-            ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME }}:${{ needs.setup.outputs.version }}
+            ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ needs.setup.outputs.version }}
           build-args: |
             VERSION=${{ needs.setup.outputs.version }}
             COMMIT=${{ github.sha }}
@@ -177,12 +183,12 @@ jobs:
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.licenses=Apache-2.0
             org.opencontainers.image.created=${{ github.event.repository.updated_at }}
-          cache-from: type=registry,ref=${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME }}:buildcache
-          cache-to: type=registry,ref=${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME }}:buildcache,mode=max
+          cache-from: type=registry,ref=${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:buildcache
+          cache-to: type=registry,ref=${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:buildcache,mode=max
 
       - name: Save image to tar
         run: |
-          docker save ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME }}:${{ needs.setup.outputs.version }} -o /tmp/image.tar
+          docker save ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ needs.setup.outputs.version }} -o /tmp/image.tar
 
       - name: Upload image artifact
         uses: actions/upload-artifact@v4
@@ -223,7 +229,7 @@ jobs:
             --format sarif \
             --output trivy-results.sarif \
             --severity CRITICAL,HIGH,MEDIUM,LOW \
-            ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME }}:${{ needs.setup.outputs.version }}
+            ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ needs.setup.outputs.version }}
 
       - name: Generate JSON report
         run: |
@@ -231,14 +237,14 @@ jobs:
             --format json \
             --output trivy-results.json \
             --severity CRITICAL,HIGH,MEDIUM,LOW \
-            ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME }}:${{ needs.setup.outputs.version }}
+            ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ needs.setup.outputs.version }}
 
       - name: Generate table report
         run: |
           trivy image \
             --format table \
             --severity CRITICAL,HIGH,MEDIUM,LOW \
-            ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME }}:${{ needs.setup.outputs.version }}
+            ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ needs.setup.outputs.version }}
 
       - name: Upload SARIF to GitHub Security
         uses: github/codeql-action/upload-sarif@v3
@@ -295,7 +301,7 @@ jobs:
 
       - name: Generate SBOM in SPDX JSON format
         run: |
-          syft ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME }}:${{ needs.setup.outputs.version }} \
+          syft ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ needs.setup.outputs.version }} \
             -o spdx-json=sbom.json
 
       - name: Upload SBOM as artifact
@@ -340,14 +346,14 @@ jobs:
 
       - name: Push image to GHCR (temporary for signing)
         run: |
-          docker push ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME }}:${{ needs.setup.outputs.version }}
+          docker push ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ needs.setup.outputs.version }}
 
       - name: Sign container image with keyless signing
         env:
           COSIGN_EXPERIMENTAL: 1
         run: |
           cosign sign --yes \
-            ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME }}:${{ needs.setup.outputs.version }}
+            ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ needs.setup.outputs.version }}
 
       - name: Generate provenance attestation
         env:
@@ -390,7 +396,7 @@ jobs:
           cosign attest --yes \
             --predicate provenance.json \
             --type slsaprovenance \
-            ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME }}:${{ needs.setup.outputs.version }}
+            ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ needs.setup.outputs.version }}
 
       - name: Attach SBOM as attestation
         env:
@@ -399,14 +405,14 @@ jobs:
           cosign attest --yes \
             --predicate /tmp/sbom.json \
             --type spdx \
-            ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME }}:${{ needs.setup.outputs.version }}
+            ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ needs.setup.outputs.version }}
 
       - name: Verify signature
         env:
           COSIGN_EXPERIMENTAL: 1
         run: |
           cosign verify \
-            ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME }}:${{ needs.setup.outputs.version }} | jq .
+            ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ needs.setup.outputs.version }} | jq .
 
   publish-ghcr:
     name: Publish to GitHub Container Registry
@@ -453,10 +459,10 @@ jobs:
           platforms: ${{ env.PLATFORMS }}
           push: true
           tags: |
-            ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.full }}
-            ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.minor }}
-            ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.major }}
-            ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME }}:latest
+            ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ steps.version.outputs.full }}
+            ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ steps.version.outputs.minor }}
+            ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ steps.version.outputs.major }}
+            ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:latest
           build-args: |
             VERSION=${{ needs.setup.outputs.version }}
             COMMIT=${{ github.sha }}
@@ -467,13 +473,13 @@ jobs:
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.licenses=Apache-2.0
             org.opencontainers.image.created=${{ github.event.repository.updated_at }}
-          cache-from: type=registry,ref=${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME }}:buildcache
-          cache-to: type=registry,ref=${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME }}:buildcache,mode=max
+          cache-from: type=registry,ref=${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:buildcache
+          cache-to: type=registry,ref=${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:buildcache,mode=max
 
       - name: Verify image is pullable
         run: |
-          docker pull ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.full }}
-          docker pull ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME }}:latest
+          docker pull ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ steps.version.outputs.full }}
+          docker pull ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:latest
 
   publish-dockerhub:
     name: Publish to Docker Hub (Optional)
@@ -547,7 +553,7 @@ jobs:
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.licenses=Apache-2.0
             org.opencontainers.image.created=${{ github.event.repository.updated_at }}
-          cache-from: type=registry,ref=${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME }}:buildcache
+          cache-from: type=registry,ref=${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:buildcache
 
       - name: Verify Docker Hub image
         if: steps.check_dockerhub.outputs.has_credentials == 'true'
@@ -573,7 +579,7 @@ jobs:
       - name: Update image reference in kustomization
         run: |
           cd config/manager
-          kustomize edit set image controller=${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME }}:${{ needs.setup.outputs.version }}
+          kustomize edit set image controller=${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ needs.setup.outputs.version }}
 
       - name: Build consolidated manifest
         run: |
