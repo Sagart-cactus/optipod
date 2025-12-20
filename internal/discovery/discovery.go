@@ -39,9 +39,13 @@ type Workload struct {
 
 // DiscoverWorkloads discovers workloads matching the policy selectors
 // It queries Deployments, StatefulSets, and DaemonSets matching label selectors,
-// filters by namespace selectors, and applies allow/deny namespace lists with deny precedence.
+// filters by namespace selectors, applies allow/deny namespace lists with deny precedence,
+// and filters by workload types based on include/exclude filters.
 func DiscoverWorkloads(ctx context.Context, c client.Client, policy *optipodv1alpha1.OptimizationPolicy) ([]Workload, error) {
 	var allWorkloads []Workload
+
+	// Get effective workload types based on include/exclude filters
+	activeTypes := optipodv1alpha1.GetActiveWorkloadTypes(policy.Spec.Selector.WorkloadTypes)
 
 	// Get all namespaces that match the policy
 	namespaces, err := getMatchingNamespaces(ctx, c, policy)
@@ -49,28 +53,34 @@ func DiscoverWorkloads(ctx context.Context, c client.Client, policy *optipodv1al
 		return nil, err
 	}
 
-	// For each namespace, discover workloads
+	// For each namespace, discover workloads only for active types
 	for _, ns := range namespaces {
-		// Discover Deployments
-		deployments, err := discoverDeployments(ctx, c, ns, policy)
-		if err != nil {
-			return nil, err
+		// Discover Deployments only if active
+		if activeTypes.Contains(optipodv1alpha1.WorkloadTypeDeployment) {
+			deployments, err := discoverDeployments(ctx, c, ns, policy)
+			if err != nil {
+				return nil, err
+			}
+			allWorkloads = append(allWorkloads, deployments...)
 		}
-		allWorkloads = append(allWorkloads, deployments...)
 
-		// Discover StatefulSets
-		statefulSets, err := discoverStatefulSets(ctx, c, ns, policy)
-		if err != nil {
-			return nil, err
+		// Discover StatefulSets only if active
+		if activeTypes.Contains(optipodv1alpha1.WorkloadTypeStatefulSet) {
+			statefulSets, err := discoverStatefulSets(ctx, c, ns, policy)
+			if err != nil {
+				return nil, err
+			}
+			allWorkloads = append(allWorkloads, statefulSets...)
 		}
-		allWorkloads = append(allWorkloads, statefulSets...)
 
-		// Discover DaemonSets
-		daemonSets, err := discoverDaemonSets(ctx, c, ns, policy)
-		if err != nil {
-			return nil, err
+		// Discover DaemonSets only if active
+		if activeTypes.Contains(optipodv1alpha1.WorkloadTypeDaemonSet) {
+			daemonSets, err := discoverDaemonSets(ctx, c, ns, policy)
+			if err != nil {
+				return nil, err
+			}
+			allWorkloads = append(allWorkloads, daemonSets...)
 		}
-		allWorkloads = append(allWorkloads, daemonSets...)
 	}
 
 	return allWorkloads, nil

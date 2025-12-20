@@ -12,14 +12,22 @@ OptiPod is an open-source, Kubernetes-native operator that automatically rightsi
 
 ## Features
 
+### ✅ Production-Ready Features
+
 - **Automatic Resource Optimization**: Continuously monitors workload resource usage and adjusts CPU and memory requests based on actual consumption
 - **Server-Side Apply (SSA)**: Field-level ownership tracking prevents conflicts with GitOps tools like ArgoCD - OptiPod owns only resource requests/limits while other tools manage different fields
 - **Multiple Operational Modes**: Choose between Auto (automatic application), Recommend (review before applying), or Disabled modes
 - **Safety-First Approach**: Configurable safety factors, min/max bounds, and intelligent handling of in-place resize vs pod recreation
-- **Pluggable Metrics Backends**: Support for Prometheus, metrics-server, and custom metrics providers
 - **Multi-Tenant Ready**: Namespace and label-based workload selection with allow/deny lists
 - **Comprehensive Observability**: Prometheus metrics, Kubernetes events, and detailed status reporting
 - **Property-Based Tested**: Extensive test coverage including property-based tests for correctness guarantees
+
+### 🚧 Work in Progress
+
+- **Metrics Backends**: Basic support for metrics-server implemented; Prometheus integration in active development
+- **Custom Metrics Providers**: Plugin architecture designed, implementation in progress
+
+> **📋 See [ROADMAP.md](ROADMAP.md) for complete implementation status and future plans**
 
 ## Quick Start
 
@@ -27,7 +35,7 @@ OptiPod is an open-source, Kubernetes-native operator that automatically rightsi
 
 - Kubernetes cluster (1.29+)
 - kubectl configured to access your cluster
-- Metrics source (Prometheus or metrics-server)
+- Metrics source (metrics-server recommended; Prometheus support in development)
 
 ### Installation
 
@@ -68,7 +76,7 @@ spec:
         optimize: "true"
   
   metricsConfig:
-    provider: prometheus
+    provider: metrics-server  # Currently supported; Prometheus in development
     rollingWindow: 24h
     percentile: P90
     safetyFactor: 1.2
@@ -109,6 +117,7 @@ kubectl describe optimizationpolicy production-workloads
 - [Installation Guide](docs/INSTALLATION.md) - Detailed installation instructions
 - [CRD Reference](docs/CRD_REFERENCE.md) - Complete OptimizationPolicy field documentation
 - [Example Policies](docs/EXAMPLES.md) - Common use case examples
+- [Roadmap](ROADMAP.md) - Implementation status and future plans
 - [ArgoCD Integration](docs/ARGOCD_INTEGRATION.md) - GitOps compatibility guide
 - [CI/CD Testing Guide](docs/ci-cd-testing.md) - How to test and validate workflows
 - [CI/CD Implementation](docs/ci-cd-implementation-summary.md) - CI/CD pipeline details

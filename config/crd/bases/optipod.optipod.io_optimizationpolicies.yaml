@@ -264,6 +264,35 @@ spec:
                         type: object
                     type: object
                     x-kubernetes-map-type: atomic
+                  workloadTypes:
+                    description: WorkloadTypes defines include/exclude filters for
+                      workload types
+                    properties:
+                      exclude:
+                        description: Exclude specifies workload types to exclude (takes
+                          precedence over Include)
+                        items:
+                          description: WorkloadType represents supported Kubernetes
+                            workload types
+                          enum:
+                          - Deployment
+                          - StatefulSet
+                          - DaemonSet
+                          type: string
+                        type: array
+                      include:
+                        description: Include specifies workload types to include (if
+                          empty, includes all)
+                        items:
+                          description: WorkloadType represents supported Kubernetes
+                            workload types
+                          enum:
+                          - Deployment
+                          - StatefulSet
+                          - DaemonSet
+                          type: string
+                        type: array
+                    type: object
                 type: object
               updateStrategy:
                 description: UpdateStrategy defines how resource updates are applied
@@ -396,6 +425,19 @@ spec:
                 description: LastReconciliation is the timestamp of the last reconciliation
                 format: date-time
                 type: string
+              workloadsByType:
+                description: WorkloadsByType provides breakdown of workloads by type
+                properties:
+                  daemonSets:
+                    description: DaemonSets is the count of DaemonSet workloads
+                    type: integer
+                  deployments:
+                    description: Deployments is the count of Deployment workloads
+                    type: integer
+                  statefulSets:
+                    description: StatefulSets is the count of StatefulSet workloads
+                    type: integer
+                type: object
               workloadsDiscovered:
                 description: WorkloadsDiscovered is the count of workloads matching
                   this policy

@@ -100,6 +100,69 @@ selector:
     - kube-public
 ```
 
+#### selector.workloadTypes
+
+**Type**: `object`  
+**Optional**: Yes  
+**Description**: Include/exclude filters for workload types (Deployment, StatefulSet, DaemonSet)
+
+**Fields**:
+- `include` ([]WorkloadType): List of workload types to include (if empty, includes all)
+- `exclude` ([]WorkloadType): List of workload types to exclude (takes precedence over include)
+
+**WorkloadType Values**: `Deployment`, `StatefulSet`, `DaemonSet`
+
+**Precedence Rules**:
+- If both `include` and `exclude` are specified, `exclude` takes precedence
+- If a workload type appears in both lists, it will be excluded
+- If `include` is empty or not specified, all workload types are included (backward compatibility)
+- If filtering results in no valid workload types, the policy discovers no workloads
+
+**Use Cases**:
+- **Gradual Adoption**: Start with low-risk workloads like Deployments before expanding to StatefulSets
+- **Risk Management**: Exclude critical stateful workloads (databases, caches) from optimization
+- **Team Separation**: Different teams manage different workload types with different policies
+- **Testing**: Test optimization on specific workload types before broader rollout
+
+**Examples**:
+
+Include only Deployments (gradual adoption):
+```yaml
+selector:
+  workloadTypes:
+    include:
+      - Deployment
+```
+
+Exclude StatefulSets (protect stateful workloads):
+```yaml
+selector:
+  workloadTypes:
+    exclude:
+      - StatefulSet
+```
+
+Include multiple types:
+```yaml
+selector:
+  workloadTypes:
+    include:
+      - Deployment
+      - DaemonSet
+```
+
+Exclude precedence (only StatefulSets and DaemonSets will be optimized):
+```yaml
+selector:
+  workloadTypes:
+    include:
+      - Deployment
+      - StatefulSet
+      - DaemonSet
+    exclude:
+      - Deployment  # Exclude takes precedence
+```
+
 **Note**: At least one of `namespaceSelector`, `workloadSelector`, or `namespaces` must be specified.
 
 ### metricsConfig (required)
@@ -110,13 +173,18 @@ selector:
 #### metricsConfig.provider (required)
 
 **Type**: `string`  
-**Enum**: `prometheus`, `metrics-server`, `custom`  
+**Enum**: `metrics-server`, `prometheus`, `custom`  
 **Description**: Metrics backend to use
+
+**Current Status**:
+- `metrics-server`: ✅ Fully supported and recommended
+- `prometheus`: 🚧 In development (basic support available)
+- `custom`: 📋 Planned for future release
 
 **Example**:
 ```yaml
 metricsConfig:
-  provider: prometheus
+  provider: metrics-server  # Recommended for current version
 ```
 
 #### metricsConfig.rollingWindow
@@ -329,6 +397,45 @@ status:
     message: "Policy is active and processing workloads"
 ```
 
+### workloadsDiscovered
+
+**Type**: `integer`  
+**Description**: Total count of workloads matching this policy's selectors
+
+### workloadsProcessed
+
+**Type**: `integer`  
+**Description**: Count of workloads successfully processed by this policy
+
+### workloadsByType
+
+**Type**: `object`  
+**Optional**: Yes  
+**Description**: Breakdown of discovered workloads by type
+
+**Fields**:
+- `deployments` (integer): Count of Deployment workloads
+- `statefulSets` (integer): Count of StatefulSet workloads  
+- `daemonSets` (integer): Count of DaemonSet workloads
+
+This field is populated when workload type filtering is used and provides visibility into which workload types are being discovered and processed.
+
+**Example**:
+```yaml
+status:
+  workloadsDiscovered: 15
+  workloadsProcessed: 12
+  workloadsByType:
+    deployments: 8
+    statefulSets: 4
+    daemonSets: 3
+```
+
+### lastReconciliation
+
+**Type**: `Time`  
+**Description**: Timestamp of the last policy reconciliation
+
 ### workloads
 
 **Type**: `[]WorkloadStatus`  
@@ -404,10 +511,15 @@ spec:
       deny:
       - kube-system
       - kube-public
+    
+    # Workload type filtering - exclude StatefulSets for safety
+    workloadTypes:
+      exclude:
+        - StatefulSet
   
   # Metrics configuration
   metricsConfig:
-    provider: prometheus
+    provider: metrics-server  # Recommended for current version
     rollingWindow: 24h
     percentile: P90
     safetyFactor: 1.2
@@ -579,6 +691,9 @@ kubectl describe optimizationpolicy <name>
 # Check policy conditions
 kubectl get optimizationpolicy <name> -o jsonpath='{.status.conditions}'
 
+# Check workload type breakdown
+kubectl get optimizationpolicy <name> -o jsonpath='{.status.workloadsByType}'
+
 # Verify workload labels
 kubectl get deployment <name> --show-labels
 ```
@@ -587,8 +702,9 @@ kubectl get deployment <name> --show-labels
 
 1. **Selector mismatch**: Workload labels don't match policy selectors
 2. **Namespace filtering**: Workload namespace is in deny list or not in allow list
-3. **Policy mode**: Policy is in Disabled mode
-4. **RBAC issues**: OptiPod lacks permissions to access workloads
+3. **Workload type filtering**: Workload type is excluded or not included in workloadTypes filter
+4. **Policy mode**: Policy is in Disabled mode
+5. **RBAC issues**: OptiPod lacks permissions to access workloads
 
 #### Solutions
 
@@ -605,9 +721,88 @@ selector:
     - <namespace>
 ```
 
-3. Ensure policy is in Auto or Recommend mode:
+3. Verify workload type is included:
+```yaml
+selector:
+  workloadTypes:
+    include:
+    - Deployment  # Ensure workload type is included
+    # exclude: []  # Ensure workload type is not excluded
+```
+
+4. Check for workload type filtering conflicts:
+```bash
+# If a Deployment is not being processed, check if it's excluded
+kubectl get optimizationpolicy <name> -o jsonpath='{.spec.selector.workloadTypes.exclude}'
+```
+
+5. Ensure policy is in Auto or Recommend mode:
 ```bash
 kubectl patch optimizationpolicy <name> --type=merge -p '{"spec":{"mode":"Auto"}}'
+```
+
+### Workload Type Filtering Issues
+
+#### Symptoms
+
+- Expected workload types not being discovered
+- `workloadsByType` status shows unexpected counts
+- Policy processes some workload types but not others
+
+#### Diagnosis
+
+```bash
+# Check workload type filter configuration
+kubectl get optimizationpolicy <name> -o jsonpath='{.spec.selector.workloadTypes}'
+
+# Check workload type breakdown in status
+kubectl get optimizationpolicy <name> -o jsonpath='{.status.workloadsByType}'
+
+# List all workloads in target namespaces
+kubectl get deployments,statefulsets,daemonsets -n <namespace> --show-labels
+```
+
+#### Common Causes
+
+1. **Exclude precedence**: Workload type is in both include and exclude lists (exclude wins)
+2. **Empty result set**: Include/exclude combination results in no valid workload types
+3. **Case sensitivity**: Workload type names must match exactly (Deployment, StatefulSet, DaemonSet)
+4. **Validation errors**: Invalid workload type names in configuration
+
+#### Solutions
+
+1. **Check exclude precedence**:
+```yaml
+# This will exclude Deployments even though they're in include
+selector:
+  workloadTypes:
+    include: [Deployment, StatefulSet]
+    exclude: [Deployment]  # Remove this or move to include only
+```
+
+2. **Verify workload type names**:
+```yaml
+# Correct (case-sensitive)
+selector:
+  workloadTypes:
+    include:
+    - Deployment      # ✓ Correct
+    - StatefulSet     # ✓ Correct  
+    - DaemonSet       # ✓ Correct
+    # - deployment    # ✗ Wrong case
+    # - statefulset   # ✗ Wrong case
+```
+
+3. **Check for empty result sets**:
+```bash
+# This policy will discover no workloads (all types excluded)
+kubectl get optimizationpolicy <name> -o yaml | grep -A 10 workloadTypes
+```
+
+4. **Validate configuration**:
+```bash
+# Check for validation errors
+kubectl describe optimizationpolicy <name> | grep -A 5 "Events:"
 ```
 
 ### Recommendations Not Applied
@@ -666,6 +861,55 @@ resourceBounds:
 8. **Enable SSA**: Use Server-Side Apply for GitOps compatibility (default)
 9. **Monitor Field Ownership**: Regularly check managedFields to ensure proper ownership
 10. **Use Labels Consistently**: Apply clear, consistent labels for workload selection
+
+### Workload Type Filtering Best Practices
+
+11. **Start with Deployments**: Begin optimization with stateless Deployments before expanding to StatefulSets
+12. **Protect Critical Workloads**: Use exclude filters to protect databases, caches, and other critical stateful workloads
+13. **Use Multiple Policies**: Create separate policies for different workload types with appropriate settings:
+    - **Deployments**: More aggressive optimization (lower safety factors, allow recreation)
+    - **StatefulSets**: Conservative optimization (higher safety factors, recommend mode)
+    - **DaemonSets**: Careful optimization (consider node resource constraints)
+14. **Monitor Workload Type Breakdown**: Check `workloadsByType` status to verify expected workload discovery
+15. **Understand Exclude Precedence**: Remember that exclude always takes precedence over include
+16. **Test Filter Combinations**: Verify that include/exclude combinations produce expected results
+17. **Document Policy Intent**: Use clear naming and annotations to document which workload types each policy targets
+
+### Example Multi-Policy Strategy
+
+```yaml
+# Policy 1: Aggressive optimization for stateless workloads
+apiVersion: optipod.optipod.io/v1alpha1
+kind: OptimizationPolicy
+metadata:
+  name: stateless-aggressive
+spec:
+  mode: Auto
+  selector:
+    workloadTypes:
+      include: [Deployment]
+  metricsConfig:
+    safetyFactor: 1.1  # Lower safety factor
+  updateStrategy:
+    allowRecreate: true  # Allow pod recreation
+
+---
+# Policy 2: Conservative optimization for stateful workloads  
+apiVersion: optipod.optipod.io/v1alpha1
+kind: OptimizationPolicy
+metadata:
+  name: stateful-conservative
+spec:
+  mode: Recommend  # Only recommend, don't auto-apply
+  selector:
+    workloadTypes:
+      include: [StatefulSet]
+  metricsConfig:
+    safetyFactor: 1.3  # Higher safety factor
+    rollingWindow: 48h  # Longer observation window
+  updateStrategy:
+    allowRecreate: false  # Never recreate stateful pods
+```
 
 ## See Also
 

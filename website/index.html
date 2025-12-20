@@ -1,0 +1,883 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>OptiPod — GitOps-Safe Kubernetes Resource Optimization</title>
+    <meta
+      name="description"
+      content="OptiPod is a Kubernetes-native operator that right-sizes CPU and memory using real workload usage — GitOps-safe, explainable, and safety-first."
+    />
+    <style>
+      :root {
+        --ink: #0b0f14;
+        --ink-muted: #1f2937;
+        --paper: #f7f3ee;
+        --paper-2: #efe8df;
+        --accent: #f97316;
+        --accent-2: #0ea5a4;
+        --accent-3: #0f172a;
+        --border: rgba(15, 23, 42, 0.12);
+        --shadow: 0 20px 50px rgba(15, 23, 42, 0.12);
+        --max: 1120px;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        font-family: "Space Grotesk", "Satoshi", "Avenir", "Helvetica Neue",
+          sans-serif;
+        color: var(--ink);
+        background: linear-gradient(145deg, #faf7f2, #f4efe8 60%, #efe6db);
+      }
+
+      a {
+        color: inherit;
+        text-decoration: none;
+      }
+
+      img {
+        max-width: 100%;
+        display: block;
+      }
+
+      .page {
+        overflow: hidden;
+      }
+
+      .container {
+        max-width: var(--max);
+        margin: 0 auto;
+        padding: 0 24px;
+      }
+
+      .nav {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 28px 0 16px;
+      }
+
+      .logo {
+        font-family: "Fraunces", "Cormorant Garamond", "Georgia", serif;
+        font-size: 1.3rem;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+
+      .nav-links {
+        display: flex;
+        gap: 18px;
+        font-size: 0.95rem;
+        color: var(--ink-muted);
+      }
+
+      .hero {
+        position: relative;
+        padding: 60px 0 80px;
+      }
+
+      .hero-grid {
+        display: grid;
+        grid-template-columns: 1.2fr 0.8fr;
+        gap: 48px;
+        align-items: center;
+      }
+
+      .hero h1 {
+        font-family: "Fraunces", "Cormorant Garamond", "Georgia", serif;
+        font-size: clamp(2.6rem, 4vw, 4rem);
+        line-height: 1.05;
+        margin: 0 0 18px;
+      }
+
+      .hero p {
+        font-size: 1.1rem;
+        color: var(--ink-muted);
+        line-height: 1.6;
+        margin: 0 0 26px;
+      }
+
+      .tag {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 14px;
+        border-radius: 999px;
+        background: rgba(15, 23, 42, 0.08);
+        color: var(--ink-muted);
+        font-size: 0.85rem;
+        letter-spacing: 0.02em;
+        margin-bottom: 20px;
+      }
+
+      .cta-row {
+        display: flex;
+        gap: 16px;
+        flex-wrap: wrap;
+      }
+
+      .btn {
+        padding: 14px 20px;
+        border-radius: 12px;
+        border: 1px solid var(--ink);
+        font-weight: 600;
+        font-size: 0.95rem;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        transition: transform 0.2s ease, box-shadow 0.2s ease,
+          border-color 0.2s ease;
+      }
+
+      .btn-primary {
+        background: var(--accent);
+        color: #1f1304;
+        border-color: var(--accent);
+        box-shadow: 0 12px 24px rgba(249, 115, 22, 0.25);
+      }
+
+      .btn-secondary {
+        background: transparent;
+        color: var(--ink);
+        border-color: rgba(15, 23, 42, 0.35);
+      }
+
+      .btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 14px 24px rgba(15, 23, 42, 0.16);
+      }
+
+      .trust {
+        margin-top: 16px;
+        font-size: 0.9rem;
+        color: var(--ink-muted);
+      }
+
+      .hero-card {
+        background: rgba(255, 255, 255, 0.7);
+        border-radius: 24px;
+        border: 1px solid var(--border);
+        padding: 24px;
+        box-shadow: var(--shadow);
+        backdrop-filter: blur(6px);
+      }
+
+      .hero-card h3 {
+        margin: 0 0 12px;
+        font-size: 1.1rem;
+      }
+
+      .hero-card ul {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+        display: grid;
+        gap: 10px;
+        color: var(--ink-muted);
+        font-size: 0.95rem;
+      }
+
+      .hero-card li::before {
+        content: "•";
+        color: var(--ink-muted);
+        margin-right: 10px;
+      }
+
+      section {
+        padding: 70px 0;
+      }
+
+      .section-title {
+        font-family: "Fraunces", "Cormorant Garamond", "Georgia", serif;
+        font-size: clamp(1.8rem, 2.8vw, 2.6rem);
+        margin: 0 0 12px;
+      }
+
+      .section-subtitle {
+        color: var(--ink-muted);
+        max-width: 740px;
+        line-height: 1.6;
+        margin: 0 0 28px;
+      }
+
+      .split {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 32px;
+      }
+
+      .problem-list,
+      .why-list,
+      .how-list {
+        background: rgba(255, 255, 255, 0.75);
+        border-radius: 20px;
+        padding: 24px;
+        border: 1px solid var(--border);
+        box-shadow: var(--shadow);
+      }
+
+      .problem-list h4,
+      .why-list h4,
+      .how-list h4 {
+        margin: 0 0 12px;
+        font-size: 1.1rem;
+      }
+
+      .problem-list ul,
+      .why-list ul,
+      .how-list ol {
+        margin: 0;
+        padding-left: 18px;
+        color: var(--ink-muted);
+        line-height: 1.7;
+      }
+
+      .feature-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 24px;
+      }
+
+      .feature {
+        background: #fff;
+        border-radius: 18px;
+        padding: 22px;
+        border: 1px solid var(--border);
+        box-shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
+        min-height: 180px;
+      }
+
+      .feature h5 {
+        margin: 0 0 10px;
+        font-size: 1.02rem;
+      }
+
+      .feature p {
+        margin: 0;
+        color: var(--ink-muted);
+        line-height: 1.65;
+        font-size: 0.95rem;
+      }
+
+      .compare {
+        border-radius: 20px;
+        overflow: hidden;
+        border: 1px solid var(--border);
+        background: #fff;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+
+      th,
+      td {
+        padding: 14px 18px;
+        text-align: left;
+        border-bottom: 1px solid var(--border);
+        font-size: 0.95rem;
+        line-height: 1.6;
+      }
+
+      .icon {
+        width: 16px;
+        height: 16px;
+        vertical-align: -2px;
+      }
+
+      .icon-yes {
+        fill: var(--ink);
+      }
+
+      .icon-no {
+        fill: var(--ink-muted);
+      }
+
+      .icon-warn {
+        fill: var(--ink-muted);
+        opacity: 0.75;
+      }
+
+      .table-note {
+        margin: 12px 0 0;
+        font-size: 0.85rem;
+        color: var(--ink-muted);
+        line-height: 1.5;
+      }
+
+      th {
+        background: var(--paper-2);
+        font-weight: 600;
+      }
+
+      .audience {
+        background: linear-gradient(135deg, #111827, #0f172a);
+        color: #fff;
+        border-radius: 26px;
+        padding: 32px;
+      }
+
+      .audience ul {
+        margin: 12px 0 0;
+        padding-left: 18px;
+        color: rgba(255, 255, 255, 0.8);
+        line-height: 1.7;
+      }
+
+      .quickstart {
+        display: grid;
+        grid-template-columns: 1.05fr 0.95fr;
+        gap: 28px;
+        align-items: start;
+      }
+
+      .code-block {
+        background: #0f172a;
+        color: #e2e8f0;
+        border-radius: 18px;
+        padding: 22px;
+        font-family: "JetBrains Mono", "Fira Code", "SFMono-Regular", monospace;
+        font-size: 0.9rem;
+        line-height: 1.6;
+        overflow-x: auto;
+      }
+
+      .open-source {
+        background: #fff;
+        border-radius: 20px;
+        padding: 24px;
+        border: 1px solid var(--border);
+      }
+
+      .future {
+        background: #fff;
+        border-radius: 20px;
+        padding: 24px;
+        border: 1px solid rgba(14, 165, 164, 0.25);
+      }
+
+      .trust-box {
+        background: rgba(15, 23, 42, 0.04);
+        border-radius: 18px;
+        padding: 22px;
+        border: 1px solid rgba(14, 165, 164, 0.3);
+      }
+
+      .final-cta {
+        background: linear-gradient(135deg, #f59b52, #f2b66e);
+        color: #1f1304;
+        border-radius: 28px;
+        padding: 36px;
+        text-align: center;
+        box-shadow: var(--shadow);
+      }
+
+      .final-cta h2 {
+        margin: 0 0 14px;
+        font-family: "Fraunces", "Cormorant Garamond", "Georgia", serif;
+        font-size: clamp(2rem, 3vw, 2.8rem);
+      }
+
+      .footer {
+        padding: 40px 0 60px;
+        color: var(--ink-muted);
+        font-size: 0.9rem;
+        text-align: center;
+      }
+
+      .reveal {
+        opacity: 0;
+        transform: translateY(20px);
+        animation: rise 0.8s ease forwards;
+      }
+
+      .delay-1 {
+        animation-delay: 0.1s;
+      }
+
+      .delay-2 {
+        animation-delay: 0.2s;
+      }
+
+      .delay-3 {
+        animation-delay: 0.3s;
+      }
+
+      @keyframes rise {
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      @media (max-width: 900px) {
+        .hero-grid,
+        .split,
+        .feature-grid,
+        .quickstart {
+          grid-template-columns: 1fr;
+        }
+
+        .nav {
+          flex-direction: column;
+          align-items: flex-start;
+          gap: 12px;
+        }
+
+        .nav-links {
+          flex-wrap: wrap;
+        }
+      }
+
+      @media (max-width: 640px) {
+        .cta-row {
+          flex-direction: column;
+          align-items: stretch;
+        }
+
+        .btn {
+          justify-content: center;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .reveal {
+          animation: none;
+          opacity: 1;
+          transform: none;
+        }
+
+        .btn {
+          transition: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <header class="container nav">
+        <div class="logo">OptiPod</div>
+        <nav class="nav-links">
+          <a href="#problem">Problem</a>
+          <a href="#why">Why OptiPod</a>
+          <a href="#features">Features</a>
+          <a href="#quickstart">Quick Start</a>
+          <a href="#opensource">Open Source</a>
+        </nav>
+      </header>
+
+      <section class="hero container">
+        <div class="hero-grid">
+          <div>
+            <span class="tag">Kubernetes Operator · GitOps-safe by design</span>
+            <h1 class="reveal">Safe, GitOps-friendly Kubernetes resource optimization</h1>
+            <p class="reveal delay-1">
+              OptiPod is a Kubernetes-native operator that right-sizes CPU and
+              memory requests and limits using real workload usage — without
+              breaking GitOps or risking production stability.
+            </p>
+            <div class="cta-row reveal delay-2">
+              <a class="btn btn-primary" href="https://github.com/" target="_blank"
+                >View on GitHub</a
+              >
+              <a class="btn btn-secondary" href="#principles"
+                >Read the Design Principles</a
+              >
+            </div>
+            <div class="trust reveal delay-3">
+              Recommend-only by default. No black-box automation.
+            </div>
+          </div>
+          <aside class="hero-card reveal delay-2">
+            <h3>Why teams adopt OptiPod</h3>
+            <ul>
+              <li>Field-level ownership keeps GitOps workflows intact.</li>
+              <li>Every recommendation is explainable and auditable.</li>
+              <li>Safety constraints prevent disruptive resizes.</li>
+              <li>Start in observe or recommend mode — no surprises.</li>
+            </ul>
+          </aside>
+        </div>
+      </section>
+
+      <section id="problem">
+        <div class="container">
+          <h2 class="section-title">Kubernetes resource optimization is broken</h2>
+          <p class="section-subtitle">
+            Most clusters suffer from guesswork, automation fear, and GitOps
+            conflicts. The result is indefinite over-provisioning or disabled
+            optimization entirely.
+          </p>
+          <div class="split">
+            <div class="problem-list">
+              <h4>Most clusters suffer from</h4>
+              <ul>
+                <li>CPU and memory requests guessed once and never revisited.</li>
+                <li>VPA conflicting with GitOps workflows.</li>
+                <li>Fear of memory tuning due to OOMKills and restarts.</li>
+                <li>Lack of explainability and auditability in tools.</li>
+              </ul>
+            </div>
+            <div class="problem-list">
+              <h4>So teams respond by</h4>
+              <ul>
+                <li>Over-provisioning indefinitely to stay safe.</li>
+                <li>Disabling automation entirely to avoid surprises.</li>
+                <li>Accepting waste as the cost of stability.</li>
+                <li>Choosing manual tuning that never scales.</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="why">
+        <div class="container">
+          <h2 class="section-title">Designed for trust, not surprises</h2>
+          <p class="section-subtitle">
+            OptiPod takes a fundamentally different approach to resource
+            optimization, focused on safety, explainability, and GitOps-first
+            workflows.
+          </p>
+          <div class="split">
+            <div class="why-list">
+              <h4>GitOps-safe by design</h4>
+              <ul>
+                <li>
+                  Uses Kubernetes Server-Side Apply with field-level ownership.
+                </li>
+                <li>Manages only CPU and memory requests/limits — nothing else.</li>
+              </ul>
+            </div>
+            <div class="why-list">
+              <h4>Explainable decisions</h4>
+              <ul>
+                <li>Every recommendation includes usage data and margins.</li>
+                <li>Rationale is visible before any action is taken.</li>
+              </ul>
+            </div>
+            <div class="why-list">
+              <h4>Safety-first automation</h4>
+              <ul>
+                <li>Conservative defaults and configurable bounds.</li>
+                <li>Controlled change rates prevent disruptive updates.</li>
+              </ul>
+            </div>
+            <div class="why-list">
+              <h4>Adopt gradually</h4>
+              <ul>
+                <li>Start in observe or recommend mode.</li>
+                <li>Enable automatic application only when you’re ready.</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <div class="container">
+          <div class="trust-box">
+            <h2 class="section-title">What OptiPod Will Not Do</h2>
+            <ul style="margin: 0; padding-left: 18px; color: var(--ink-muted); line-height: 1.7">
+              <li>OptiPod will never mutate workloads without explicit configuration.</li>
+              <li>OptiPod will never override GitOps ownership.</li>
+              <li>OptiPod will never blindly reduce memory.</li>
+              <li>All changes are observable, auditable, and reversible.</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <div class="container">
+          <h2 class="section-title">A Kubernetes-native control loop</h2>
+          <p class="section-subtitle">
+            OptiPod runs entirely inside your cluster, evaluates real usage, and
+            makes reversible, auditable changes when you allow it.
+          </p>
+          <div class="how-list">
+            <h4>How it works</h4>
+            <ol>
+              <li>Collects real-time and historical resource usage.</li>
+              <li>Evaluates usage using strategies like p95, p99, headroom.</li>
+              <li>Generates recommendations with safety constraints applied.</li>
+              <li>Optionally applies changes using Server-Side Apply.</li>
+              <li>Every action is observable, auditable, and reversible.</li>
+            </ol>
+            <p class="section-subtitle" style="margin-top: 16px">
+              No external SaaS dependency. All enforcement happens inside your
+              cluster.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section id="features">
+        <div class="container">
+          <h2 class="section-title">Core capabilities</h2>
+          <p class="section-subtitle">
+            A toolkit built for platform teams who need precision, control, and
+            trust in every optimization.
+          </p>
+          <div class="feature-grid">
+            <div class="feature">
+              <h5>Automatic Resource Optimization</h5>
+              <p>
+                Continuously right-sizes CPU and memory requests/limits based on
+                observed usage patterns.
+              </p>
+            </div>
+            <div class="feature">
+              <h5>GitOps-Safe Server-Side Apply</h5>
+              <p>
+                Field-level ownership avoids conflicts with ArgoCD, Flux, and
+                other GitOps tools.
+              </p>
+            </div>
+            <div class="feature">
+              <h5>Multiple Operational Modes</h5>
+              <p>Observe, Recommend, or Auto — adopt automation at your pace.</p>
+            </div>
+            <div class="feature">
+              <h5>Safety-First Resource Management</h5>
+              <p>
+                Min/max bounds, safety margins, change-rate limits, and
+                intelligent resize handling.
+              </p>
+            </div>
+            <div class="feature">
+              <h5>Pluggable Metrics Backends</h5>
+              <p>Prometheus, metrics-server, or custom providers.</p>
+            </div>
+            <div class="feature">
+              <h5>Multi-Tenant Ready</h5>
+              <p>Namespace and label-based workload selection with allow/deny lists.</p>
+            </div>
+            <div class="feature">
+              <h5>Comprehensive Observability</h5>
+              <p>Prometheus metrics, Kubernetes events, and per-workload status.</p>
+            </div>
+            <div class="feature">
+              <h5>Correctness by Design</h5>
+              <p>Extensive unit, integration, and property-based testing.</p>
+            </div>
+            <div class="feature">
+              <h5>Explainable Recommendations</h5>
+              <p>Clear rationale for every change, with data visibility.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <div class="container">
+          <h2 class="section-title">OptiPod vs VPA</h2>
+          <p class="section-subtitle">
+            A quick comparison of safety and GitOps compatibility.
+          </p>
+          <div class="compare">
+            <table>
+              <thead>
+                <tr>
+                  <th>Capability</th>
+                  <th>OptiPod</th>
+                  <th>Kubernetes VPA</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>GitOps-safe</td>
+                  <td>
+                    <svg class="icon icon-yes" viewBox="0 0 20 20" aria-label="Yes" role="img">
+                      <path d="M7.8 14.2L3.6 10l1.4-1.4 2.8 2.8 6.8-6.8 1.4 1.4z" />
+                    </svg>
+                  </td>
+                  <td>
+                    <svg class="icon icon-no" viewBox="0 0 20 20" aria-label="No" role="img">
+                      <path d="M5 5l10 10m0-10L5 15" stroke="currentColor" stroke-width="2" fill="none" />
+                    </svg>
+                  </td>
+                </tr>
+                <tr>
+                  <td>SSA field ownership</td>
+                  <td>
+                    <svg class="icon icon-yes" viewBox="0 0 20 20" aria-label="Yes" role="img">
+                      <path d="M7.8 14.2L3.6 10l1.4-1.4 2.8 2.8 6.8-6.8 1.4 1.4z" />
+                    </svg>
+                  </td>
+                  <td>
+                    <svg class="icon icon-no" viewBox="0 0 20 20" aria-label="No" role="img">
+                      <path d="M5 5l10 10m0-10L5 15" stroke="currentColor" stroke-width="2" fill="none" />
+                    </svg>
+                  </td>
+                </tr>
+                <tr>
+                  <td>Recommend-only mode</td>
+                  <td>
+                    <svg class="icon icon-yes" viewBox="0 0 20 20" aria-label="Yes" role="img">
+                      <path d="M7.8 14.2L3.6 10l1.4-1.4 2.8 2.8 6.8-6.8 1.4 1.4z" />
+                    </svg>
+                  </td>
+                  <td>
+                    <svg class="icon icon-warn" viewBox="0 0 20 20" aria-label="Partial" role="img" title="Recommendations only, no GitOps-safe ownership">
+                      <path d="M10 3l8 14H2l8-14zm0 4v5m0 3v2" stroke="currentColor" stroke-width="1.6" fill="none" />
+                    </svg>
+                  </td>
+                </tr>
+                <tr>
+                  <td>Explainable decisions</td>
+                  <td>
+                    <svg class="icon icon-yes" viewBox="0 0 20 20" aria-label="Yes" role="img">
+                      <path d="M7.8 14.2L3.6 10l1.4-1.4 2.8 2.8 6.8-6.8 1.4 1.4z" />
+                    </svg>
+                  </td>
+                  <td>
+                    <svg class="icon icon-no" viewBox="0 0 20 20" aria-label="No" role="img">
+                      <path d="M5 5l10 10m0-10L5 15" stroke="currentColor" stroke-width="2" fill="none" />
+                    </svg>
+                  </td>
+                </tr>
+                <tr>
+                  <td>Policy-driven safety</td>
+                  <td>
+                    <svg class="icon icon-yes" viewBox="0 0 20 20" aria-label="Yes" role="img">
+                      <path d="M7.8 14.2L3.6 10l1.4-1.4 2.8 2.8 6.8-6.8 1.4 1.4z" />
+                    </svg>
+                  </td>
+                  <td>
+                    <svg class="icon icon-no" viewBox="0 0 20 20" aria-label="No" role="img">
+                      <path d="M5 5l10 10m0-10L5 15" stroke="currentColor" stroke-width="2" fill="none" />
+                    </svg>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="table-note">
+            ⚠️ VPA supports recommendations but lacks clear separation from mutation and GitOps-safe ownership.
+          </p>
+          <p class="table-note">
+            OptiPod is designed to coexist with GitOps and human decision-making, not override them.
+          </p>
+        </div>
+      </section>
+
+      <section>
+        <div class="container">
+          <div class="audience">
+            <h2 class="section-title">Built for platform teams</h2>
+            <p class="section-subtitle" style="color: rgba(255, 255, 255, 0.8)">
+              OptiPod is designed for teams who care about stability,
+              auditability, and control.
+            </p>
+            <ul>
+              <li>Platform Engineering teams</li>
+              <li>Site Reliability Engineers (SRE)</li>
+              <li>FinOps and cloud cost governance teams</li>
+              <li>Organizations running GitOps-managed Kubernetes clusters</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section id="quickstart">
+        <div class="container">
+          <h2 class="section-title">Start safely in recommend mode</h2>
+          <p class="section-subtitle">
+            No mutations are applied until you explicitly allow them.
+          </p>
+          <div class="quickstart">
+            <div>
+              <h4>Create a policy</h4>
+              <div class="code-block">
+                <pre><code>apiVersion: optipod.io/v1alpha1
+kind: OptiPodPolicy
+spec:
+  mode: Recommend
+  cpu:
+    strategy: p95
+    maxChangePercent: 20
+  memory:
+    strategy: p99
+    headroom: 25%</code></pre>
+              </div>
+            </div>
+            <div>
+              <h4>Install OptiPod</h4>
+              <div class="code-block">
+                <pre><code>kubectl apply -f https://optipod.io/install.yaml</code></pre>
+              </div>
+              <p class="section-subtitle" style="margin-top: 16px">
+                OptiPod runs entirely inside your cluster, with no external
+                SaaS dependency.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="opensource">
+        <div class="container split">
+          <div class="open-source" id="principles">
+            <h2 class="section-title">Open source first</h2>
+            <p class="section-subtitle">
+              Transparent. Auditable. Extensible. OptiPod is open source and
+              Kubernetes-native with a clear roadmap and contribution model.
+            </p>
+            <div class="cta-row">
+              <a class="btn btn-primary" href="https://github.com/" target="_blank"
+                >GitHub →</a
+              >
+              <a class="btn btn-secondary" href="#quickstart"
+                >See the quick start</a
+              >
+            </div>
+          </div>
+          <div class="future">
+            <h2 class="section-title">Future direction</h2>
+            <p class="section-subtitle">
+              We are exploring an optional OptiPod control plane to provide:
+            </p>
+            <ul style="color: var(--ink-muted); line-height: 1.7">
+              <li>Fleet-wide visibility across clusters</li>
+              <li>Optimization simulations and cost impact analysis</li>
+              <li>Centralized policy management</li>
+              <li>Audit and compliance reporting</li>
+            </ul>
+            <p class="section-subtitle" style="margin-top: 12px">
+              The core operator will always remain fully functional without SaaS.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section id="final">
+        <div class="container">
+          <div class="final-cta">
+            <h2>Ready to optimize Kubernetes resources without breaking trust?</h2>
+            <div class="cta-row" style="justify-content: center">
+              <a class="btn btn-primary" href="https://github.com/" target="_blank"
+                >View the project on GitHub</a
+              >
+              <a class="btn btn-secondary" href="#quickstart"
+                >Try it in recommend mode</a
+              >
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <footer class="footer container">
+        OptiPod is a Kubernetes-native operator focused on safe, explainable
+        resource optimization.
+      </footer>
+    </div>
+  </body>
+</html>

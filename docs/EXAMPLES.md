@@ -2,6 +2,8 @@
 
 This document provides example OptimizationPolicy configurations for common use cases.
 
+> **📋 Metrics Provider Status**: Examples use `metrics-server` as the recommended provider. Prometheus support is in development. See [ROADMAP.md](../ROADMAP.md) for current implementation status.
+
 ## Table of Contents
 
 - [Basic Examples](#basic-examples)
@@ -32,7 +34,7 @@ spec:
       - default
   
   metricsConfig:
-    provider: prometheus
+    provider: metrics-server  # Recommended for current version
   
   resourceBounds:
     cpu:

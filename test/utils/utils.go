@@ -19,12 +19,14 @@ package utils
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"strings"
 
 	. "github.com/onsi/ginkgo/v2" // nolint:revive,staticcheck
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
@@ -343,4 +345,40 @@ func getKubeConfig() (*rest.Config, error) {
 	}
 
 	return config, nil
+}
+
+// Additional helper functions for workload type selector tests
+
+var globalClient client.Client
+
+// GetClient returns the global Kubernetes client for testing
+func GetClient() client.Client {
+	if globalClient == nil {
+		var err error
+		globalClient, err = GetK8sClient()
+		if err != nil {
+			panic(fmt.Sprintf("failed to get Kubernetes client: %v", err))
+		}
+	}
+	return globalClient
+}
+
+// CreateResource creates a Kubernetes resource
+func CreateResource(ctx context.Context, obj client.Object) error {
+	return GetClient().Create(ctx, obj)
+}
+
+// DeleteResource deletes a Kubernetes resource
+func DeleteResource(ctx context.Context, obj client.Object) error {
+	return GetClient().Delete(ctx, obj)
+}
+
+// GetResource gets a Kubernetes resource
+func GetResource(ctx context.Context, key types.NamespacedName, obj client.Object) error {
+	return GetClient().Get(ctx, key, obj)
+}
+
+// UpdateResource updates a Kubernetes resource
+func UpdateResource(ctx context.Context, obj client.Object) error {
+	return GetClient().Update(ctx, obj)
 }

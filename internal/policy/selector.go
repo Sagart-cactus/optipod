@@ -32,6 +32,17 @@ import (
 	"github.com/optipod/optipod/internal/discovery"
 )
 
+// workloadTypeMatches checks if a workload type matches the policy's workload type filter
+func workloadTypeMatches(filter *optipodv1alpha1.WorkloadTypeFilter, workloadKind string) bool {
+	if filter == nil {
+		return true // No filter = all types match (backward compatibility)
+	}
+
+	workloadType := optipodv1alpha1.WorkloadType(workloadKind)
+	activeTypes := optipodv1alpha1.GetActiveWorkloadTypes(filter)
+	return activeTypes.Contains(workloadType)
+}
+
 // PolicySelector handles selection of the best policy for a workload when multiple policies match
 type PolicySelector struct {
 	client client.Client
@@ -121,6 +132,11 @@ func (ps *PolicySelector) SelectBestPolicy(ctx context.Context, workload *discov
 
 // policyMatchesWorkload checks if a policy's selectors match a workload
 func (ps *PolicySelector) policyMatchesWorkload(ctx context.Context, policy *optipodv1alpha1.OptimizationPolicy, workload *discovery.Workload) bool {
+	// Check workload type filter first (new)
+	if !workloadTypeMatches(policy.Spec.Selector.WorkloadTypes, workload.Kind) {
+		return false
+	}
+
 	// Use the same logic as discovery.DiscoverWorkloads but for a single workload
 	// This ensures consistency with the existing workload discovery logic
 

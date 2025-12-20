@@ -106,6 +106,10 @@ type WorkloadSelector struct {
 	// Namespaces defines allow/deny lists for namespace filtering
 	// +optional
 	Namespaces *NamespaceFilter `json:"namespaces,omitempty"`
+
+	// WorkloadTypes defines include/exclude filters for workload types
+	// +optional
+	WorkloadTypes *WorkloadTypeFilter `json:"workloadTypes,omitempty"`
 }
 
 // NamespaceFilter defines allow and deny lists for namespaces
@@ -118,6 +122,27 @@ type NamespaceFilter struct {
 	// +optional
 	Deny []string `json:"deny,omitempty"`
 }
+
+// WorkloadTypeFilter defines include/exclude filters for workload types
+type WorkloadTypeFilter struct {
+	// Include specifies workload types to include (if empty, includes all)
+	// +optional
+	Include []WorkloadType `json:"include,omitempty"`
+
+	// Exclude specifies workload types to exclude (takes precedence over Include)
+	// +optional
+	Exclude []WorkloadType `json:"exclude,omitempty"`
+}
+
+// WorkloadType represents supported Kubernetes workload types
+// +kubebuilder:validation:Enum=Deployment;StatefulSet;DaemonSet
+type WorkloadType string
+
+const (
+	WorkloadTypeDeployment  WorkloadType = "Deployment"
+	WorkloadTypeStatefulSet WorkloadType = "StatefulSet"
+	WorkloadTypeDaemonSet   WorkloadType = "DaemonSet"
+)
 
 // MetricsConfig defines metrics collection and processing configuration
 type MetricsConfig struct {
@@ -233,6 +258,25 @@ type OptimizationPolicyStatus struct {
 	// LastReconciliation is the timestamp of the last reconciliation
 	// +optional
 	LastReconciliation *metav1.Time `json:"lastReconciliation,omitempty"`
+
+	// WorkloadsByType provides breakdown of workloads by type
+	// +optional
+	WorkloadsByType *WorkloadTypeStatus `json:"workloadsByType,omitempty"`
+}
+
+// WorkloadTypeStatus provides breakdown by workload type
+type WorkloadTypeStatus struct {
+	// Deployments is the count of Deployment workloads
+	// +optional
+	Deployments int `json:"deployments,omitempty"`
+
+	// StatefulSets is the count of StatefulSet workloads
+	// +optional
+	StatefulSets int `json:"statefulSets,omitempty"`
+
+	// DaemonSets is the count of DaemonSet workloads
+	// +optional
+	DaemonSets int `json:"daemonSets,omitempty"`
 }
 
 // WorkloadStatus represents the optimization status for a single workload
@@ -338,6 +382,70 @@ func (r *OptimizationPolicy) GetWeight() int32 {
 	return 100 // Default weight
 }
 
+// InitializeWorkloadTypeStatus initializes the WorkloadsByType field if it's nil
+func (r *OptimizationPolicy) InitializeWorkloadTypeStatus() {
+	if r.Status.WorkloadsByType == nil {
+		r.Status.WorkloadsByType = &WorkloadTypeStatus{}
+	}
+}
+
+// UpdateWorkloadTypeCount updates the count for a specific workload type
+func (r *OptimizationPolicy) UpdateWorkloadTypeCount(workloadType WorkloadType, count int) {
+	r.InitializeWorkloadTypeStatus()
+
+	switch workloadType {
+	case WorkloadTypeDeployment:
+		r.Status.WorkloadsByType.Deployments = count
+	case WorkloadTypeStatefulSet:
+		r.Status.WorkloadsByType.StatefulSets = count
+	case WorkloadTypeDaemonSet:
+		r.Status.WorkloadsByType.DaemonSets = count
+	}
+}
+
+// IncrementWorkloadTypeCount increments the count for a specific workload type
+func (r *OptimizationPolicy) IncrementWorkloadTypeCount(workloadType WorkloadType) {
+	r.InitializeWorkloadTypeStatus()
+
+	switch workloadType {
+	case WorkloadTypeDeployment:
+		r.Status.WorkloadsByType.Deployments++
+	case WorkloadTypeStatefulSet:
+		r.Status.WorkloadsByType.StatefulSets++
+	case WorkloadTypeDaemonSet:
+		r.Status.WorkloadsByType.DaemonSets++
+	}
+}
+
+// GetWorkloadTypeCount returns the count for a specific workload type
+func (r *OptimizationPolicy) GetWorkloadTypeCount(workloadType WorkloadType) int {
+	if r.Status.WorkloadsByType == nil {
+		return 0
+	}
+
+	switch workloadType {
+	case WorkloadTypeDeployment:
+		return r.Status.WorkloadsByType.Deployments
+	case WorkloadTypeStatefulSet:
+		return r.Status.WorkloadsByType.StatefulSets
+	case WorkloadTypeDaemonSet:
+		return r.Status.WorkloadsByType.DaemonSets
+	default:
+		return 0
+	}
+}
+
+// GetTotalWorkloadsByType returns the total count of all workload types
+func (r *OptimizationPolicy) GetTotalWorkloadsByType() int {
+	if r.Status.WorkloadsByType == nil {
+		return 0
+	}
+
+	return r.Status.WorkloadsByType.Deployments +
+		r.Status.WorkloadsByType.StatefulSets +
+		r.Status.WorkloadsByType.DaemonSets
+}
+
 func init() {
 	SchemeBuilder.Register(&OptimizationPolicy{}, &OptimizationPolicyList{})
 }
@@ -386,6 +494,13 @@ func (r *OptimizationPolicy) validateOptimizationPolicy() error {
 
 	if r.Spec.Selector.WorkloadSelector != nil {
 		if err := validateLabelSelector(r.Spec.Selector.WorkloadSelector, "workloadSelector"); err != nil {
+			return err
+		}
+	}
+
+	// Validate workload types if provided
+	if r.Spec.Selector.WorkloadTypes != nil {
+		if err := validateWorkloadTypes(r.Spec.Selector.WorkloadTypes); err != nil {
 			return err
 		}
 	}
@@ -477,4 +592,114 @@ func validateLabelSelector(selector *metav1.LabelSelector, fieldName string) err
 	}
 
 	return nil
+}
+
+// validateWorkloadTypes validates workload type filters
+func validateWorkloadTypes(filter *WorkloadTypeFilter) error {
+	if filter == nil {
+		return nil
+	}
+
+	// Validate include list
+	for i, workloadType := range filter.Include {
+		if err := validateWorkloadType(workloadType, fmt.Sprintf("workloadTypes.include[%d]", i)); err != nil {
+			return err
+		}
+	}
+
+	// Validate exclude list
+	for i, workloadType := range filter.Exclude {
+		if err := validateWorkloadType(workloadType, fmt.Sprintf("workloadTypes.exclude[%d]", i)); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// validateWorkloadType validates a single workload type value
+func validateWorkloadType(workloadType WorkloadType, fieldName string) error {
+	validTypes := map[WorkloadType]bool{
+		WorkloadTypeDeployment:  true,
+		WorkloadTypeStatefulSet: true,
+		WorkloadTypeDaemonSet:   true,
+	}
+
+	if !validTypes[workloadType] {
+		return fmt.Errorf("invalid workload type %q in %s, must be one of: Deployment, StatefulSet, DaemonSet", workloadType, fieldName)
+	}
+
+	return nil
+}
+
+// WorkloadTypeSet represents a set of workload types for efficient operations
+type WorkloadTypeSet map[WorkloadType]struct{}
+
+// NewWorkloadTypeSet creates a new WorkloadTypeSet with the given workload types
+func NewWorkloadTypeSet(types ...WorkloadType) WorkloadTypeSet {
+	set := make(WorkloadTypeSet)
+	for _, t := range types {
+		set[t] = struct{}{}
+	}
+	return set
+}
+
+// Contains checks if the set contains the given workload type
+func (s WorkloadTypeSet) Contains(workloadType WorkloadType) bool {
+	_, exists := s[workloadType]
+	return exists
+}
+
+// Add adds a workload type to the set
+func (s WorkloadTypeSet) Add(workloadType WorkloadType) {
+	s[workloadType] = struct{}{}
+}
+
+// Remove removes a workload type from the set
+func (s WorkloadTypeSet) Remove(workloadType WorkloadType) {
+	delete(s, workloadType)
+}
+
+// ToSlice returns the workload types as a slice
+func (s WorkloadTypeSet) ToSlice() []WorkloadType {
+	types := make([]WorkloadType, 0, len(s))
+	for t := range s {
+		types = append(types, t)
+	}
+	return types
+}
+
+// IsEmpty returns true if the set is empty
+func (s WorkloadTypeSet) IsEmpty() bool {
+	return len(s) == 0
+}
+
+// Size returns the number of workload types in the set
+func (s WorkloadTypeSet) Size() int {
+	return len(s)
+}
+
+// GetActiveWorkloadTypes determines which workload types are active based on include/exclude filters
+func GetActiveWorkloadTypes(filter *WorkloadTypeFilter) WorkloadTypeSet {
+	allTypes := NewWorkloadTypeSet(WorkloadTypeDeployment, WorkloadTypeStatefulSet, WorkloadTypeDaemonSet)
+
+	if filter == nil {
+		return allTypes // No filter = all types active (backward compatibility)
+	}
+
+	var activeTypes WorkloadTypeSet
+
+	// Start with include list (or all types if include is empty)
+	if len(filter.Include) > 0 {
+		activeTypes = NewWorkloadTypeSet(filter.Include...)
+	} else {
+		activeTypes = allTypes
+	}
+
+	// Apply exclude list (takes precedence)
+	for _, excludeType := range filter.Exclude {
+		activeTypes.Remove(excludeType)
+	}
+
+	return activeTypes
 }

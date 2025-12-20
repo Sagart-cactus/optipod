@@ -309,6 +309,98 @@ func (r *OptimizationPolicyReconciler) updatePolicySummary(ctx context.Context, 
 	return fmt.Errorf("failed to update policy summary after %d attempts, last error: %w", maxRetries, lastErr)
 }
 
+// updateWorkloadTypeCounts updates the workload type counts in the policy status
+// Uses retry logic to handle concurrent modification conflicts
+func (r *OptimizationPolicyReconciler) updateWorkloadTypeCounts(ctx context.Context, pol *optipodv1alpha1.OptimizationPolicy, typeCounts map[optipodv1alpha1.WorkloadType]int) error {
+	log := logf.FromContext(ctx)
+
+	// Retry configuration for workload type count updates
+	const maxRetries = 3
+	const baseDelay = 50 * time.Millisecond
+
+	var lastErr error
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		// Fetch the latest version to avoid conflicts
+		latest := &optipodv1alpha1.OptimizationPolicy{}
+		if err := r.Get(ctx, client.ObjectKeyFromObject(pol), latest); err != nil {
+			if apierrors.IsNotFound(err) {
+				// Policy was deleted
+				log.Info("Policy was deleted during workload type count update", "policy", pol.Name)
+				return nil
+			}
+			return err
+		}
+
+		// Initialize workload type status if needed
+		latest.InitializeWorkloadTypeStatus()
+
+		// Check if update is needed
+		needsUpdate := false
+		for workloadType, count := range typeCounts {
+			if latest.GetWorkloadTypeCount(workloadType) != count {
+				needsUpdate = true
+				break
+			}
+		}
+
+		// Also check if we need to reset counts for types not in the current discovery
+		allTypes := []optipodv1alpha1.WorkloadType{
+			optipodv1alpha1.WorkloadTypeDeployment,
+			optipodv1alpha1.WorkloadTypeStatefulSet,
+			optipodv1alpha1.WorkloadTypeDaemonSet,
+		}
+		for _, workloadType := range allTypes {
+			expectedCount := typeCounts[workloadType] // 0 if not in map
+			if latest.GetWorkloadTypeCount(workloadType) != expectedCount {
+				needsUpdate = true
+				break
+			}
+		}
+
+		if !needsUpdate {
+			// No update needed
+			return nil
+		}
+
+		// Update workload type counts
+		for _, workloadType := range allTypes {
+			count := typeCounts[workloadType] // 0 if not in map
+			latest.UpdateWorkloadTypeCount(workloadType, count)
+		}
+
+		// Attempt to update the status
+		if err := r.Status().Update(ctx, latest); err != nil {
+			if apierrors.IsConflict(err) {
+				// Conflict - retry with exponential backoff
+				lastErr = err
+				delay := time.Duration(float64(baseDelay) * math.Pow(2, float64(attempt)))
+				if delay > time.Second {
+					delay = time.Second
+				}
+				log.V(1).Info("Conflict updating workload type counts, retrying",
+					"policy", pol.Name,
+					"attempt", attempt+1,
+					"delay", delay)
+				time.Sleep(delay)
+				continue
+			}
+			// Non-retryable error
+			return err
+		}
+
+		// Success
+		log.V(1).Info("Updated workload type counts",
+			"policy", pol.Name,
+			"deployments", typeCounts[optipodv1alpha1.WorkloadTypeDeployment],
+			"statefulSets", typeCounts[optipodv1alpha1.WorkloadTypeStatefulSet],
+			"daemonSets", typeCounts[optipodv1alpha1.WorkloadTypeDaemonSet])
+		return nil
+	}
+
+	// All retries exhausted
+	return fmt.Errorf("failed to update workload type counts after %d attempts, last error: %w", maxRetries, lastErr)
+}
+
 // calculateRequeueInterval calculates an adaptive requeue interval based on workload stability
 func (r *OptimizationPolicyReconciler) calculateRequeueInterval(policyObj *optipodv1alpha1.OptimizationPolicy, discovered, processed int) time.Duration {
 	// Base interval from policy
@@ -364,6 +456,19 @@ func (r *OptimizationPolicyReconciler) processWorkloadsWithPolicySelection(ctx c
 	}
 
 	log.Info("Discovered workloads", "policy", triggeringPolicy.Name, "count", len(workloads))
+
+	// Count workloads by type for status reporting
+	workloadTypeCounts := make(map[optipodv1alpha1.WorkloadType]int)
+	for _, workload := range workloads {
+		workloadType := optipodv1alpha1.WorkloadType(workload.Kind)
+		workloadTypeCounts[workloadType]++
+	}
+
+	// Update workload type counts in policy status
+	if err := r.updateWorkloadTypeCounts(ctx, triggeringPolicy, workloadTypeCounts); err != nil {
+		log.Error(err, "Failed to update workload type counts", "policy", triggeringPolicy.Name)
+		// Don't fail the reconciliation for status update errors
+	}
 
 	// Track workloads monitored
 	observability.WorkloadsMonitored.WithLabelValues(triggeringPolicy.Namespace, triggeringPolicy.Name).Set(float64(len(workloads)))

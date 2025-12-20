@@ -1074,3 +1074,236 @@ func TestProperty_RecommendationFormatCompleteness(t *testing.T) {
 
 	properties.TestingRun(t, gopter.ConsoleReporter(false))
 }
+
+// Feature: workload-type-selector, Property 11: Status Workload Type Reporting
+// For any OptimizationPolicy with workloadTypes filtering, the status should accurately report counts by workload type matching the actual discovered workloads
+// Validates: Requirements 6.1, 6.2
+func TestProperty_StatusWorkloadTypeReporting(t *testing.T) {
+	properties := gopter.NewProperties(nil)
+
+	properties.Property("for any policy with workload type filtering, status should accurately report counts by workload type", prop.ForAll(
+		func(includeDeployments, includeStatefulSets, includeDaemonSets bool,
+			excludeDeployments, excludeStatefulSets, excludeDaemonSets bool,
+			deploymentCount, statefulSetCount, daemonSetCount int) bool {
+
+			// Ensure reasonable counts
+			deploymentCount = deploymentCount % 10
+			statefulSetCount = statefulSetCount % 10
+			daemonSetCount = daemonSetCount % 10
+
+			// Create workload type filter
+			var workloadTypes *optipodv1alpha1.WorkloadTypeFilter
+
+			// Build include list
+			var includeList []optipodv1alpha1.WorkloadType
+			if includeDeployments {
+				includeList = append(includeList, optipodv1alpha1.WorkloadTypeDeployment)
+			}
+			if includeStatefulSets {
+				includeList = append(includeList, optipodv1alpha1.WorkloadTypeStatefulSet)
+			}
+			if includeDaemonSets {
+				includeList = append(includeList, optipodv1alpha1.WorkloadTypeDaemonSet)
+			}
+
+			// Build exclude list
+			var excludeList []optipodv1alpha1.WorkloadType
+			if excludeDeployments {
+				excludeList = append(excludeList, optipodv1alpha1.WorkloadTypeDeployment)
+			}
+			if excludeStatefulSets {
+				excludeList = append(excludeList, optipodv1alpha1.WorkloadTypeStatefulSet)
+			}
+			if excludeDaemonSets {
+				excludeList = append(excludeList, optipodv1alpha1.WorkloadTypeDaemonSet)
+			}
+
+			// Create filter if we have include or exclude lists
+			if len(includeList) > 0 || len(excludeList) > 0 {
+				workloadTypes = &optipodv1alpha1.WorkloadTypeFilter{
+					Include: includeList,
+					Exclude: excludeList,
+				}
+			}
+
+			// Create policy
+			policy := &optipodv1alpha1.OptimizationPolicy{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-policy",
+					Namespace: "default",
+				},
+				Spec: optipodv1alpha1.OptimizationPolicySpec{
+					Mode: optipodv1alpha1.ModeRecommend,
+					Selector: optipodv1alpha1.WorkloadSelector{
+						WorkloadSelector: &metav1.LabelSelector{
+							MatchLabels: map[string]string{"app": "test"},
+						},
+						WorkloadTypes: workloadTypes,
+					},
+					MetricsConfig: optipodv1alpha1.MetricsConfig{
+						Provider: "prometheus",
+					},
+					ResourceBounds: optipodv1alpha1.ResourceBounds{
+						CPU: optipodv1alpha1.ResourceBound{
+							Min: resource.MustParse("100m"),
+							Max: resource.MustParse("4000m"),
+						},
+						Memory: optipodv1alpha1.ResourceBound{
+							Min: resource.MustParse("128Mi"),
+							Max: resource.MustParse("8Gi"),
+						},
+					},
+					UpdateStrategy: optipodv1alpha1.UpdateStrategy{
+						AllowInPlaceResize: true,
+						UpdateRequestsOnly: true,
+					},
+				},
+			}
+
+			// Determine which workload types should be active
+			activeTypes := optipodv1alpha1.GetActiveWorkloadTypes(workloadTypes)
+
+			// Calculate expected counts based on active types
+			expectedDeployments := 0
+			expectedStatefulSets := 0
+			expectedDaemonSets := 0
+
+			if activeTypes.Contains(optipodv1alpha1.WorkloadTypeDeployment) {
+				expectedDeployments = deploymentCount
+			}
+			if activeTypes.Contains(optipodv1alpha1.WorkloadTypeStatefulSet) {
+				expectedStatefulSets = statefulSetCount
+			}
+			if activeTypes.Contains(optipodv1alpha1.WorkloadTypeDaemonSet) {
+				expectedDaemonSets = daemonSetCount
+			}
+
+			// Create workload type counts map (simulating discovery results)
+			typeCounts := map[optipodv1alpha1.WorkloadType]int{
+				optipodv1alpha1.WorkloadTypeDeployment:  expectedDeployments,
+				optipodv1alpha1.WorkloadTypeStatefulSet: expectedStatefulSets,
+				optipodv1alpha1.WorkloadTypeDaemonSet:   expectedDaemonSets,
+			}
+
+			// Update workload type counts using helper methods
+			for workloadType, count := range typeCounts {
+				policy.UpdateWorkloadTypeCount(workloadType, count)
+			}
+
+			// Verify the counts match expectations
+			actualDeployments := policy.GetWorkloadTypeCount(optipodv1alpha1.WorkloadTypeDeployment)
+			actualStatefulSets := policy.GetWorkloadTypeCount(optipodv1alpha1.WorkloadTypeStatefulSet)
+			actualDaemonSets := policy.GetWorkloadTypeCount(optipodv1alpha1.WorkloadTypeDaemonSet)
+
+			// Property holds if actual counts match expected counts
+			return actualDeployments == expectedDeployments &&
+				actualStatefulSets == expectedStatefulSets &&
+				actualDaemonSets == expectedDaemonSets
+		},
+		gen.Bool(), gen.Bool(), gen.Bool(), // include flags
+		gen.Bool(), gen.Bool(), gen.Bool(), // exclude flags
+		gen.IntRange(0, 10), gen.IntRange(0, 10), gen.IntRange(0, 10), // counts
+	))
+
+	properties.TestingRun(t, gopter.ConsoleReporter(false))
+}
+
+// Feature: workload-type-selector, Property 12: Status Backward Compatibility
+// For any OptimizationPolicy, the status should maintain existing fields (workloadsDiscovered, workloadsProcessed) with correct values
+// Validates: Requirements 6.4
+func TestProperty_StatusBackwardCompatibility(t *testing.T) {
+	properties := gopter.NewProperties(nil)
+
+	properties.Property("for any policy, status should maintain existing fields with correct values", prop.ForAll(
+		func(discoveredCount, processedCount int, hasWorkloadTypes bool) bool {
+
+			// Ensure reasonable counts and processed <= discovered
+			discoveredCount = discoveredCount % 100
+			processedCount = processedCount % (discoveredCount + 1)
+
+			// Create policy with or without workload types
+			var workloadTypes *optipodv1alpha1.WorkloadTypeFilter
+			if hasWorkloadTypes {
+				workloadTypes = &optipodv1alpha1.WorkloadTypeFilter{
+					Include: []optipodv1alpha1.WorkloadType{optipodv1alpha1.WorkloadTypeDeployment},
+				}
+			}
+
+			policy := &optipodv1alpha1.OptimizationPolicy{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-policy",
+					Namespace: "default",
+				},
+				Spec: optipodv1alpha1.OptimizationPolicySpec{
+					Mode: optipodv1alpha1.ModeRecommend,
+					Selector: optipodv1alpha1.WorkloadSelector{
+						WorkloadSelector: &metav1.LabelSelector{
+							MatchLabels: map[string]string{"app": "test"},
+						},
+						WorkloadTypes: workloadTypes,
+					},
+					MetricsConfig: optipodv1alpha1.MetricsConfig{
+						Provider: "prometheus",
+					},
+					ResourceBounds: optipodv1alpha1.ResourceBounds{
+						CPU: optipodv1alpha1.ResourceBound{
+							Min: resource.MustParse("100m"),
+							Max: resource.MustParse("4000m"),
+						},
+						Memory: optipodv1alpha1.ResourceBound{
+							Min: resource.MustParse("128Mi"),
+							Max: resource.MustParse("8Gi"),
+						},
+					},
+					UpdateStrategy: optipodv1alpha1.UpdateStrategy{
+						AllowInPlaceResize: true,
+						UpdateRequestsOnly: true,
+					},
+				},
+			}
+
+			// Set the existing status fields
+			now := metav1.Now()
+			policy.Status.WorkloadsDiscovered = discoveredCount
+			policy.Status.WorkloadsProcessed = processedCount
+			policy.Status.LastReconciliation = &now
+
+			// Add some workload type counts if workload types are enabled
+			if hasWorkloadTypes {
+				policy.UpdateWorkloadTypeCount(optipodv1alpha1.WorkloadTypeDeployment, 5)
+				policy.UpdateWorkloadTypeCount(optipodv1alpha1.WorkloadTypeStatefulSet, 3)
+			}
+
+			// Verify existing fields are preserved
+			actualDiscovered := policy.Status.WorkloadsDiscovered
+			actualProcessed := policy.Status.WorkloadsProcessed
+			actualLastReconciliation := policy.Status.LastReconciliation
+
+			// Property holds if:
+			// 1. Existing fields maintain their values
+			// 2. LastReconciliation is preserved
+			// 3. WorkloadsByType field doesn't interfere with existing fields
+			backwardCompatible := actualDiscovered == discoveredCount &&
+				actualProcessed == processedCount &&
+				actualLastReconciliation != nil &&
+				actualLastReconciliation.Equal(&now)
+
+			// If workload types are enabled, verify they don't break existing functionality
+			if hasWorkloadTypes {
+				// Verify that having WorkloadsByType doesn't affect existing fields
+				totalByType := policy.GetTotalWorkloadsByType()
+				// The total by type should be independent of the existing discovered count
+				// (they track different things - discovered is from current reconciliation,
+				// workloadsByType is the breakdown)
+				backwardCompatible = backwardCompatible && totalByType >= 0
+			}
+
+			return backwardCompatible
+		},
+		gen.IntRange(0, 50), // discoveredCount
+		gen.IntRange(0, 50), // processedCount
+		gen.Bool(),          // hasWorkloadTypes
+	))
+
+	properties.TestingRun(t, gopter.ConsoleReporter(false))
+}

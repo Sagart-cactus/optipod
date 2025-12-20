@@ -9,9 +9,9 @@ This guide provides detailed instructions for installing and configuring OptiPod
 - **Kubernetes Cluster**: Version 1.29 or higher
 - **kubectl**: Configured to access your cluster
 - **Metrics Provider**: One of the following:
-  - Prometheus (recommended for production)
-  - Kubernetes metrics-server
-  - Custom metrics provider
+  - Kubernetes metrics-server (recommended)
+  - Prometheus (basic support, in development)
+  - Custom metrics provider (planned)
 
 ### Optional
 
@@ -131,7 +131,7 @@ data:
   dry-run: "false"
   
   # Default metrics provider
-  metrics-provider: "prometheus"
+  metrics-provider: "metrics-server"
   
   # Prometheus URL (if using Prometheus)
   prometheus-url: "http://prometheus-k8s.monitoring.svc:9090"
@@ -158,8 +158,8 @@ Available flags (set in deployment args):
 | `--leader-elect` | `true` | Enable leader election |
 | `--metrics-bind-address` | `:8080` | Metrics endpoint address |
 | `--health-probe-bind-address` | `:8081` | Health probe address |
-| `--metrics-provider` | `prometheus` | Metrics backend (prometheus, metrics-server, custom) |
-| `--prometheus-url` | `http://prometheus-k8s.monitoring.svc:9090` | Prometheus URL |
+| `--metrics-provider` | `metrics-server` | Metrics backend (metrics-server, prometheus, custom) |
+| `--prometheus-url` | `http://prometheus-k8s.monitoring.svc:9090` | Prometheus URL (when using Prometheus) |
 | `--dry-run` | `false` | Global dry-run mode |
 | `--reconciliation-interval` | `5m` | Default reconciliation interval |
 
@@ -253,7 +253,7 @@ spec:
       matchLabels:
         app: test
   metricsConfig:
-    provider: prometheus
+    provider: metrics-server  # Recommended
     rollingWindow: 1h
     percentile: P90
     safetyFactor: 1.2
