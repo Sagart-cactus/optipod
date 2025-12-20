@@ -1,7 +1,7 @@
 apiVersion: optipod.optipod.io/v1alpha1
 kind: OptimizationPolicy
 metadata:
-  name: boundary-limits-test
+  name: invalid-bounds-test
   namespace: optipod-system
 spec:
   mode: Recommend  # Use Recommend mode to avoid actual modifications
@@ -12,7 +12,7 @@ spec:
     workloadSelector:
       matchLabels:
         optimize: "true"
-        bounds-test: "boundary"
+        bounds-test: "invalid"
   metricsConfig:
     provider: metrics-server
     rollingWindow: 5m
@@ -20,11 +20,11 @@ spec:
     safetyFactor: 1.0
   resourceBounds:
     cpu:
-      min: "100m"    # 0.1 CPU cores
-      max: "1500m"   # 1.5 CPU cores
+      min: "1000m"   # Invalid: min > max
+      max: "500m"
     memory:
-      min: "128Mi"   # 128 Mebibytes
-      max: "3Gi"     # 3 Gibibytes
+      min: "2Gi"     # Invalid: min > max
+      max: "1Gi"
   updateStrategy:
     allowInPlaceResize: true
     allowRecreate: false

@@ -4,7 +4,7 @@ metadata:
   name: bounds-above-max-test
   namespace: optipod-system
 spec:
-  mode: Recommend
+  mode: Recommend  # Use Recommend mode to avoid actual modifications
   selector:
     namespaceSelector:
       matchLabels:
@@ -17,16 +17,20 @@ spec:
     provider: metrics-server
     rollingWindow: 5m
     percentile: P90
-    safetyFactor: 1.0  # No safety factor to get predictable values
+    safetyFactor: 1.0
   resourceBounds:
     cpu:
-      min: "50m"       # 50 millicores
-      max: "200m"      # 200 millicores - low maximum to force clamping
+      min: "100m"
+      max: "800m"
     memory:
-      min: "32Mi"      # 32 MiB
-      max: "128Mi"     # 128 MiB - low maximum to force clamping
+      min: "128Mi"
+      max: "1Gi"
   updateStrategy:
     allowInPlaceResize: true
     allowRecreate: false
-    updateRequestsOnly: true
+    updateRequestsOnly: false
+    useServerSideApply: true
+    limitConfig:
+      cpuLimitMultiplier: 1.0
+      memoryLimitMultiplier: 1.0
   reconciliationInterval: 1m

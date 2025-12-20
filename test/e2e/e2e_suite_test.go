@@ -1,158 +1,372 @@
-//go:build e2e
-
-/*
-Copyright 2025.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
-
 package e2e
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 	"testing"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/optipod/optipod/test/utils"
 )
 
 var (
-	// Optional Environment Variables:
-	// - CERT_MANAGER_INSTALL_SKIP=true: Skips CertManager installation during test setup.
-	// - METRICS_SERVER_INSTALL_SKIP=true: Skips MetricsServer installation during test setup.
-	// - E2E_PARALLEL_NODES: Number of parallel nodes for test execution (default: 4)
-	// - E2E_TIMEOUT_MULTIPLIER: Multiplier for test timeouts in parallel execution (default: 1.0)
-	// These variables are useful if CertManager/MetricsServer is already installed, avoiding
-	// re-installation and conflicts.
-	skipCertManagerInstall   = os.Getenv("CERT_MANAGER_INSTALL_SKIP") == "true"
-	skipMetricsServerInstall = os.Getenv("METRICS_SERVER_INSTALL_SKIP") == "true"
-	// isCertManagerAlreadyInstalled will be set true when CertManager CRDs be found on the cluster
-	isCertManagerAlreadyInstalled = false
-	// isMetricsServerAlreadyInstalled will be set true when MetricsServer is found on the cluster
-	isMetricsServerAlreadyInstalled = false
-
-	// projectImage is the name of the image which will be build and loaded
-	// with the code source changes to be tested.
-	projectImage = "example.com/optipod:v0.0.1"
-
-	// k8sClient is the Kubernetes client for test operations
-	k8sClient client.Client
+	clusterName      = "optipod-e2e-test"
+	optipodNamespace = "optipod-system"
+	testNamespace    = "optipod-workloads"
 )
 
-// TestE2E runs the end-to-end (e2e) test suite for the project. These tests execute in an isolated,
-// temporary environment to validate project changes with the purpose of being used in CI jobs.
-// The default setup requires Kind, builds/loads the Manager Docker image locally, and installs
-// CertManager.
 func TestE2E(t *testing.T) {
 	RegisterFailHandler(Fail)
-	_, _ = fmt.Fprintf(GinkgoWriter, "Starting optipod integration test suite\n")
-	RunSpecs(t, "e2e suite")
+	RunSpecs(t, "OptipPod E2E Test Suite")
 }
 
 var _ = BeforeSuite(func() {
-	By("initializing Kubernetes client")
-	var err error
-	k8sClient, err = utils.GetK8sClient()
-	ExpectWithOffset(1, err).NotTo(HaveOccurred(), "Failed to initialize Kubernetes client")
-
-	By("initializing parallel test execution")
-	InitializeParallelExecution(k8sClient)
-
-	By("initializing performance configuration")
-	InitializePerformanceConfig()
-
-	// Only build and load image once for the entire suite (not per parallel node)
-	if GinkgoParallelProcess() == 1 {
-		By("building the manager(Operator) image")
-		cmd := exec.Command("make", "docker-build", fmt.Sprintf("IMG=%s", projectImage))
-		_, err := utils.Run(cmd)
-		ExpectWithOffset(1, err).NotTo(HaveOccurred(), "Failed to build the manager(Operator) image")
-
-		// TODO(user): If you want to change the e2e test vendor from Kind, ensure the image is
-		// built and available before running the tests. Also, remove the following block.
-		By("loading the manager(Operator) image on Kind")
-		err = utils.LoadImageToKindClusterWithName(projectImage)
-		ExpectWithOffset(1, err).NotTo(HaveOccurred(), "Failed to load the manager(Operator) image into Kind")
-
-		// The tests-e2e are intended to run on a temporary cluster that is created and destroyed for testing.
-		// To prevent errors when tests run in environments with CertManager already installed,
-		// we check for its presence before execution.
-		// Setup CertManager before the suite if not skipped and if not already installed
-		if !skipCertManagerInstall {
-			By("checking if cert manager is installed already")
-			isCertManagerAlreadyInstalled = utils.IsCertManagerCRDsInstalled()
-			if !isCertManagerAlreadyInstalled {
-				_, _ = fmt.Fprintf(GinkgoWriter, "Installing CertManager...\n")
-				Expect(utils.InstallCertManager()).To(Succeed(), "Failed to install CertManager")
-			} else {
-				_, _ = fmt.Fprintf(GinkgoWriter, "WARNING: CertManager is already installed. Skipping installation...\n")
-			}
-		}
-
-		// Setup MetricsServer before the suite if not skipped and if not already installed
-		if !skipMetricsServerInstall {
-			By("checking if metrics-server is installed already")
-			isMetricsServerAlreadyInstalled = utils.IsMetricsServerInstalled()
-			if !isMetricsServerAlreadyInstalled {
-				_, _ = fmt.Fprintf(GinkgoWriter, "Installing MetricsServer...\n")
-				Expect(utils.InstallMetricsServer()).To(Succeed(), "Failed to install MetricsServer")
-			} else {
-				_, _ = fmt.Fprintf(GinkgoWriter, "WARNING: MetricsServer is already installed. Skipping installation...\n")
-			}
-		}
-	} else {
-		// For parallel nodes, wait for the first node to complete setup
-		By("waiting for suite setup to complete")
-		time.Sleep(30 * time.Second) // Give first node time to complete setup
-	}
-
-	By("waiting for parallel test stability")
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-	defer cancel()
-	err = WaitForTestStability(ctx)
-	ExpectWithOffset(1, err).NotTo(HaveOccurred(), "Failed to achieve test stability")
+	By("Setting up E2E test environment")
+	
+	// Step 1: Create Kind Cluster
+	By("Creating Kind cluster")
+	createKindCluster()
+	
+	// Step 2: Install Prerequisites
+	By("Installing prerequisites")
+	installMetricsServer()
+	
+	// Step 3: Create OptipPod namespace
+	By("Creating OptipPod namespace")
+	createOptipodNamespace()
+	
+	// Step 4: Install OptipPod CRDs
+	By("Installing OptipPod CRDs")
+	installOptipodCRDs()
+	
+	// Step 5: Label default namespace for testing
+	By("Labeling default namespace")
+	labelDefaultNamespace()
+	
+	// Step 6: Install OptipPod Controller
+	By("Installing OptipPod Controller")
+	installOptipodController()
+	
+	// Step 7: Setup RBAC Permissions
+	By("Setting up RBAC permissions")
+	setupRBACPermissions()
+	
+	// Step 8: Verify Everything is Ready
+	By("Verifying cluster readiness")
+	verifyBasicClusterReadiness()
 })
 
 var _ = AfterSuite(func() {
-	By("cleaning up parallel test resources")
-	if parallelTestManager != nil {
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-		defer cancel()
-		err := parallelTestManager.CleanupIsolatedNamespace(ctx)
-		if err != nil {
-			_, _ = fmt.Fprintf(GinkgoWriter, "WARNING: Failed to cleanup isolated namespace: %v\n", err)
-		}
-	}
-
-	// Only cleanup shared resources from the first parallel node
-	if GinkgoParallelProcess() == 1 {
-		// Teardown MetricsServer after the suite if not skipped and if it was not already installed
-		if !skipMetricsServerInstall && !isMetricsServerAlreadyInstalled {
-			_, _ = fmt.Fprintf(GinkgoWriter, "Uninstalling MetricsServer...\n")
-			utils.UninstallMetricsServer()
-		}
-
-		// Teardown CertManager after the suite if not skipped and if it was not already installed
-		if !skipCertManagerInstall && !isCertManagerAlreadyInstalled {
-			_, _ = fmt.Fprintf(GinkgoWriter, "Uninstalling CertManager...\n")
-			utils.UninstallCertManager()
-		}
+	By("Cleaning up E2E test environment")
+	
+	// Clean up test resources
+	cleanupTestResources()
+	
+	// Optionally delete the Kind cluster
+	if os.Getenv("KEEP_CLUSTER") != "true" {
+		deleteKindCluster()
 	}
 })
+
+func createKindCluster() {
+	// Check if cluster already exists
+	cmd := exec.Command("kind", "get", "clusters")
+	output, _ := utils.Run(cmd)
+	
+	if !contains(output, clusterName) {
+		GinkgoWriter.Printf("Creating Kind cluster: %s\n", clusterName)
+		
+		kindConfig := `
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+- role: control-plane
+- role: worker
+- role: worker
+`
+		
+		cmd := exec.Command("kind", "create", "cluster", "--name", clusterName, "--config", "-")
+		cmd.Stdin = strings.NewReader(kindConfig)
+		_, err := utils.Run(cmd)
+		Expect(err).NotTo(HaveOccurred())
+	} else {
+		GinkgoWriter.Printf("Kind cluster %s already exists\n", clusterName)
+	}
+	
+	// Set kubectl context
+	cmd = exec.Command("kubectl", "config", "use-context", fmt.Sprintf("kind-%s", clusterName))
+	_, err := utils.Run(cmd)
+	Expect(err).NotTo(HaveOccurred())
+}
+
+func installMetricsServer() {
+	GinkgoWriter.Println("Installing metrics-server...")
+	
+	// Install metrics-server
+	cmd := exec.Command("kubectl", "apply", "-f", "https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml")
+	_, err := utils.Run(cmd)
+	Expect(err).NotTo(HaveOccurred())
+	
+	// Patch for Kind compatibility
+	patch := `[
+		{
+			"op": "add",
+			"path": "/spec/template/spec/containers/0/args/-",
+			"value": "--kubelet-insecure-tls"
+		},
+		{
+			"op": "add",
+			"path": "/spec/template/spec/containers/0/args/-",
+			"value": "--kubelet-preferred-address-types=InternalIP"
+		},
+		{
+			"op": "add",
+			"path": "/spec/template/spec/containers/0/args/-",
+			"value": "--metric-resolution=15s"
+		}
+	]`
+	
+	cmd = exec.Command("kubectl", "patch", "deployment", "metrics-server", "-n", "kube-system", "--type=json", "-p", patch)
+	_, err = utils.Run(cmd)
+	Expect(err).NotTo(HaveOccurred())
+	
+	// Wait for metrics-server to be ready
+	Eventually(func() error {
+		cmd := exec.Command("kubectl", "wait", "--for=condition=available", "--timeout=120s", "deployment/metrics-server", "-n", "kube-system")
+		_, err := utils.Run(cmd)
+		return err
+	}, 3*time.Minute, 10*time.Second).Should(Succeed())
+}
+
+func createOptipodNamespace() {
+	GinkgoWriter.Println("Creating OptipPod namespace...")
+	cmd := exec.Command("kubectl", "create", "namespace", optipodNamespace)
+	_, err := utils.Run(cmd)
+	if err != nil && !strings.Contains(err.Error(), "already exists") {
+		Expect(err).NotTo(HaveOccurred())
+	}
+}
+
+func labelDefaultNamespace() {
+	GinkgoWriter.Println("Labeling default namespace...")
+	cmd := exec.Command("kubectl", "label", "namespace", "default", "environment=development", "--overwrite")
+	_, err := utils.Run(cmd)
+	Expect(err).NotTo(HaveOccurred())
+}
+
+func installOptipodCRDs() {
+	GinkgoWriter.Println("Installing OptipPod CRDs...")
+	
+	// Install CRDs directly instead of using make install
+	cmd := exec.Command("kubectl", "apply", "-f", "config/crd/bases/optipod.optipod.io_optimizationpolicies.yaml", "--validate=false")
+	_, err := utils.Run(cmd)
+	Expect(err).NotTo(HaveOccurred())
+	
+	// Verify CRDs are installed
+	Eventually(func() error {
+		cmd := exec.Command("kubectl", "get", "crd", "optimizationpolicies.optipod.optipod.io")
+		_, err := utils.Run(cmd)
+		return err
+	}, 1*time.Minute, 5*time.Second).Should(Succeed())
+}
+
+func verifyBasicClusterReadiness() {
+	GinkgoWriter.Println("Verifying basic cluster readiness...")
+	
+	// Verify CRDs are available
+	Eventually(func() error {
+		cmd := exec.Command("kubectl", "get", "crd", "optimizationpolicies.optipod.optipod.io")
+		_, err := utils.Run(cmd)
+		return err
+	}, 1*time.Minute, 5*time.Second).Should(Succeed())
+	
+	// Verify namespaces exist
+	Eventually(func() error {
+		cmd := exec.Command("kubectl", "get", "namespace", optipodNamespace)
+		_, err := utils.Run(cmd)
+		return err
+	}, 30*time.Second, 5*time.Second).Should(Succeed())
+}
+
+func installOptipodController() {
+	GinkgoWriter.Println("Installing OptipPod Controller...")
+	
+	// Build the controller binary first
+	GinkgoWriter.Println("Building OptipPod controller binary...")
+	cmd := exec.Command("go", "build", "-o", "bin/manager", "cmd/main.go")
+	_, err := utils.Run(cmd)
+	Expect(err).NotTo(HaveOccurred())
+	
+	// Build the controller Docker image
+	GinkgoWriter.Println("Building OptipPod controller Docker image...")
+	cmd = exec.Command("docker", "build", "-t", "optipod-controller:e2e", ".")
+	_, err = utils.Run(cmd)
+	Expect(err).NotTo(HaveOccurred())
+	
+	// Load the image into Kind cluster
+	GinkgoWriter.Println("Loading controller image into Kind cluster...")
+	cmd = exec.Command("kind", "load", "docker-image", "optipod-controller:e2e", "--name", clusterName)
+	_, err = utils.Run(cmd)
+	Expect(err).NotTo(HaveOccurred())
+	
+	// Install controller-gen if not available
+	GinkgoWriter.Println("Ensuring controller-gen is available...")
+	cmd = exec.Command("go", "install", "sigs.k8s.io/controller-tools/cmd/controller-gen@latest")
+	_, err = utils.Run(cmd)
+	Expect(err).NotTo(HaveOccurred())
+	
+	// Install kustomize if not available
+	GinkgoWriter.Println("Ensuring kustomize is available...")
+	cmd = exec.Command("go", "install", "sigs.k8s.io/kustomize/kustomize/v5@latest")
+	_, err = utils.Run(cmd)
+	Expect(err).NotTo(HaveOccurred())
+	
+	// Generate manifests
+	GinkgoWriter.Println("Generating controller manifests...")
+	goPath := os.Getenv("GOPATH")
+	if goPath == "" {
+		goPath = os.Getenv("HOME") + "/go"
+	}
+	controllerGenPath := goPath + "/bin/controller-gen"
+	cmd = exec.Command(controllerGenPath, "rbac:roleName=manager-role", "crd:allowDangerousTypes=true", "webhook", "paths=./...", "output:crd:artifacts:config=config/crd/bases")
+	_, err = utils.Run(cmd)
+	Expect(err).NotTo(HaveOccurred())
+	
+	// Deploy using kustomize
+	GinkgoWriter.Println("Deploying OptipPod controller...")
+	kustomizePath := goPath + "/bin/kustomize"
+	
+	// Update the image in the kustomization
+	cmd = exec.Command("bash", "-c", fmt.Sprintf("cd config/manager && %s edit set image controller=optipod-controller:e2e", kustomizePath))
+	_, err = utils.Run(cmd)
+	Expect(err).NotTo(HaveOccurred())
+	
+	// Build and apply manifests
+	cmd = exec.Command(kustomizePath, "build", "config/default")
+	manifestsOutput, err := utils.Run(cmd)
+	Expect(err).NotTo(HaveOccurred())
+	
+	cmd = exec.Command("kubectl", "apply", "-f", "-")
+	cmd.Stdin = strings.NewReader(manifestsOutput)
+	_, err = utils.Run(cmd)
+	Expect(err).NotTo(HaveOccurred())
+	
+	// Wait for controller deployment to be ready
+	GinkgoWriter.Println("Waiting for controller to be ready...")
+	Eventually(func() error {
+		cmd := exec.Command("kubectl", "wait", "--for=condition=available", "--timeout=120s", "deployment/optipod-controller-manager", "-n", optipodNamespace)
+		_, err := utils.Run(cmd)
+		return err
+	}, 5*time.Minute, 15*time.Second).Should(Succeed())
+	
+	// Verify controller pods are running
+	Eventually(func() string {
+		cmd := exec.Command("kubectl", "get", "pods", "-n", optipodNamespace, "-l", "control-plane=controller-manager", "-o", "jsonpath={.items[0].status.phase}")
+		output, _ := utils.Run(cmd)
+		return strings.TrimSpace(output)
+	}, 3*time.Minute, 10*time.Second).Should(Equal("Running"))
+	
+	GinkgoWriter.Println("OptipPod controller installed and running successfully")
+}
+
+func setupRBACPermissions() {
+	GinkgoWriter.Println("Setting up RBAC permissions...")
+	
+	// Create ClusterRoleBinding for metrics access (needed for observability tests)
+	metricsRoleBinding := `
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: optipod-metrics-reader
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: optipod-metrics-reader
+subjects:
+- kind: ServiceAccount
+  name: default
+  namespace: ` + optipodNamespace + `
+`
+	
+	cmd := exec.Command("kubectl", "apply", "-f", "-")
+	cmd.Stdin = strings.NewReader(metricsRoleBinding)
+	_, err := utils.Run(cmd)
+	Expect(err).NotTo(HaveOccurred())
+}
+
+func installTestWorkloads() {
+	GinkgoWriter.Println("Installing test workloads...")
+	
+	// Create test namespace
+	cmd := exec.Command("kubectl", "create", "namespace", testNamespace, "--dry-run=client", "-o", "yaml")
+	output, err := utils.Run(cmd)
+	Expect(err).NotTo(HaveOccurred())
+	
+	cmd = exec.Command("kubectl", "apply", "-f", "-")
+	cmd.Stdin = strings.NewReader(output)
+	_, err = utils.Run(cmd)
+	Expect(err).NotTo(HaveOccurred())
+	
+	// Label namespace for testing
+	cmd = exec.Command("kubectl", "label", "namespace", testNamespace, "environment=development", "--overwrite")
+	_, err = utils.Run(cmd)
+	Expect(err).NotTo(HaveOccurred())
+	
+	// Install sample workloads using the setup script
+	cmd = exec.Command("bash", "hack/setup-dev-cluster.sh")
+	_, err = utils.Run(cmd)
+	Expect(err).NotTo(HaveOccurred())
+}
+
+func verifyClusterReadiness() {
+	GinkgoWriter.Println("Verifying cluster readiness...")
+	
+	// Verify OptipPod controller is running
+	Eventually(func() string {
+		cmd := exec.Command("kubectl", "get", "deployment", "optipod-controller-manager", "-n", optipodNamespace, "-o", "jsonpath={.status.conditions[?(@.type=='Available')].status}")
+		output, _ := utils.Run(cmd)
+		return output
+	}, 2*time.Minute, 5*time.Second).Should(Equal("True"))
+	
+	// Verify metrics-server is working
+	Eventually(func() error {
+		cmd := exec.Command("kubectl", "top", "nodes")
+		_, err := utils.Run(cmd)
+		return err
+	}, 2*time.Minute, 10*time.Second).Should(Succeed())
+	
+	// Verify test workloads are ready
+	Eventually(func() error {
+		cmd := exec.Command("kubectl", "wait", "--for=condition=available", "--timeout=60s", "deployment/nginx-web", "-n", testNamespace)
+		_, err := utils.Run(cmd)
+		return err
+	}, 2*time.Minute, 5*time.Second).Should(Succeed())
+}
+
+func cleanupTestResources() {
+	GinkgoWriter.Println("Cleaning up test resources...")
+	
+	// Delete test policies
+	cmd := exec.Command("kubectl", "delete", "optimizationpolicy", "--all", "-n", optipodNamespace, "--ignore-not-found=true")
+	utils.Run(cmd)
+	
+	// Delete test workloads
+	cmd = exec.Command("kubectl", "delete", "namespace", testNamespace, "--ignore-not-found=true")
+	utils.Run(cmd)
+}
+
+func deleteKindCluster() {
+	GinkgoWriter.Printf("Deleting Kind cluster: %s\n", clusterName)
+	
+	cmd := exec.Command("kind", "delete", "cluster", "--name", clusterName)
+	utils.Run(cmd)
+}
+
+func contains(s, substr string) bool {
+	return strings.Contains(s, substr)
+}

@@ -37,7 +37,7 @@ all: build
 
 .PHONY: help
 help: ## Display this help.
-	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make \033[36m<target>\033[0m\n"} /^[a-zA-Z_0-9-]+:.*?##/ { printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2 } /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
+	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make \033[36m<target>\033[0m\n"} /^[a-zA-Z_0-9-]+:.*?##/ { printf "  \033[36m%-15s\033[0m %s\n", $1, $2 } /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($0, 5) } ' $(MAKEFILE_LIST)
 
 ##@ Development
 
@@ -59,63 +59,7 @@ vet: ## Run go vet against code.
 
 .PHONY: test
 test: manifests generate fmt vet setup-envtest ## Run tests.
-	KUBEBUILDER_ASSETS="$(shell "$(ENVTEST)" use $(ENVTEST_K8S_VERSION) --bin-dir "$(LOCALBIN)" -p path)" go test $$(go list ./... | grep -v /e2e) -coverprofile cover.out
-
-# TODO(user): To use a different vendor for e2e tests, modify the setup under 'tests/e2e'.
-# The default setup assumes Kind is pre-installed and builds/loads the Manager Docker image locally.
-# CertManager is installed by default; skip with:
-# - CERT_MANAGER_INSTALL_SKIP=true
-KIND_CLUSTER ?= optipod-test-e2e
-
-.PHONY: setup-test-e2e
-setup-test-e2e: ## Set up a Kind cluster for e2e tests if it does not exist
-	@command -v $(KIND) >/dev/null 2>&1 || { \
-		echo "Kind is not installed. Please install Kind manually."; \
-		exit 1; \
-	}
-	@case "$$($(KIND) get clusters)" in \
-		*"$(KIND_CLUSTER)"*) \
-			echo "Kind cluster '$(KIND_CLUSTER)' already exists. Skipping creation." ;; \
-		*) \
-			echo "Creating Kind cluster '$(KIND_CLUSTER)'..."; \
-			$(KIND) create cluster --name $(KIND_CLUSTER) ;; \
-	esac
-
-.PHONY: test-e2e
-test-e2e: setup-test-e2e manifests generate fmt vet ## Run the e2e tests. Expected an isolated environment using Kind.
-	KIND=$(KIND) KIND_CLUSTER=$(KIND_CLUSTER) go test -tags=e2e ./test/e2e/ -v -ginkgo.v
-	$(MAKE) cleanup-test-e2e
-
-.PHONY: test-e2e-enhanced
-test-e2e-enhanced: setup-test-e2e manifests generate fmt vet ## Run enhanced e2e tests with reporting and parallel execution.
-	@echo "Running enhanced e2e tests with focus: $(E2E_TEST_FOCUS)"
-	KIND=$(KIND) KIND_CLUSTER=$(KIND_CLUSTER) go test -tags=e2e ./test/e2e/ \
-		-v -ginkgo.v \
-		-ginkgo.focus="$(E2E_TEST_FOCUS)" \
-		-ginkgo.junit-report="$(GINKGO_JUNIT_REPORT_FILE)" \
-		-ginkgo.json-report="$(GINKGO_JSON_REPORT_FILE)" \
-		-timeout=$(E2E_TEST_TIMEOUT)
-
-.PHONY: test-e2e-parallel
-test-e2e-parallel: setup-test-e2e manifests generate fmt vet ## Run e2e tests in parallel with specified number of nodes.
-	KIND=$(KIND) KIND_CLUSTER=$(KIND_CLUSTER) go test -tags=e2e ./test/e2e/ \
-		-v -ginkgo.v \
-		-timeout=$(or $(E2E_TEST_TIMEOUT),30m)
-	$(MAKE) cleanup-test-e2e
-
-.PHONY: test-e2e-with-reports
-test-e2e-with-reports: setup-test-e2e manifests generate fmt vet ## Run e2e tests with comprehensive reporting.
-	@mkdir -p test-artifacts/reports test-artifacts/logs
-	KIND=$(KIND) KIND_CLUSTER=$(KIND_CLUSTER) go test -tags=e2e ./test/e2e/ \
-		-v -ginkgo.v \
-		-ginkgo.junit-report="test-artifacts/reports/junit-e2e.xml" \
-		-ginkgo.json-report="test-artifacts/reports/report-e2e.json" \
-		-coverprofile=test-artifacts/reports/coverage-e2e.out
-	$(MAKE) cleanup-test-e2e
-
-.PHONY: cleanup-test-e2e
-cleanup-test-e2e: ## Tear down the Kind cluster used for e2e tests
-	@$(KIND) delete cluster --name $(KIND_CLUSTER)
+	KUBEBUILDER_ASSETS="$(shell "$(ENVTEST)" use $(ENVTEST_K8S_VERSION) --bin-dir "$(LOCALBIN)" -p path)" go test $(go list ./... | grep -v /e2e) -coverprofile cover.out
 
 .PHONY: lint
 lint: golangci-lint ## Run golangci-lint linter
@@ -160,7 +104,7 @@ PLATFORMS ?= linux/arm64,linux/amd64,linux/s390x,linux/ppc64le
 .PHONY: docker-buildx
 docker-buildx: ## Build and push docker image for the manager for cross-platform support
 	# copy existing Dockerfile and insert --platform=${BUILDPLATFORM} into Dockerfile.cross, and preserve the original Dockerfile
-	sed -e '1 s/\(^FROM\)/FROM --platform=\$$\{BUILDPLATFORM\}/; t' -e ' 1,// s//FROM --platform=\$$\{BUILDPLATFORM\}/' Dockerfile > Dockerfile.cross
+	sed -e '1 s/\(^FROM\)/FROM --platform=\$\{BUILDPLATFORM\}/; t' -e ' 1,// s//FROM --platform=\$\{BUILDPLATFORM\}/' Dockerfile > Dockerfile.cross
 	- $(CONTAINER_TOOL) buildx create --name optipod-builder
 	$(CONTAINER_TOOL) buildx use optipod-builder
 	- $(CONTAINER_TOOL) buildx build --push --platform=$(PLATFORMS) --tag ${IMG} -f Dockerfile.cross .
@@ -181,13 +125,13 @@ endif
 
 .PHONY: install
 install: manifests kustomize ## Install CRDs into the K8s cluster specified in ~/.kube/config.
-	@out="$$( "$(KUSTOMIZE)" build config/crd 2>/dev/null || true )"; \
-	if [ -n "$$out" ]; then echo "$$out" | "$(KUBECTL)" apply -f -; else echo "No CRDs to install; skipping."; fi
+	@out="$( "$(KUSTOMIZE)" build config/crd 2>/dev/null || true )"; \
+	if [ -n "$out" ]; then echo "$out" | "$(KUBECTL)" apply -f -; else echo "No CRDs to install; skipping."; fi
 
 .PHONY: uninstall
 uninstall: manifests kustomize ## Uninstall CRDs from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
-	@out="$$( "$(KUSTOMIZE)" build config/crd 2>/dev/null || true )"; \
-	if [ -n "$$out" ]; then echo "$$out" | "$(KUBECTL)" delete --ignore-not-found=$(ignore-not-found) -f -; else echo "No CRDs to delete; skipping."; fi
+	@out="$( "$(KUSTOMIZE)" build config/crd 2>/dev/null || true )"; \
+	if [ -n "$out" ]; then echo "$out" | "$(KUBECTL)" delete --ignore-not-found=$(ignore-not-found) -f -; else echo "No CRDs to delete; skipping."; fi
 
 .PHONY: deploy
 deploy: manifests kustomize ## Deploy controller to the K8s cluster specified in ~/.kube/config.
@@ -197,6 +141,37 @@ deploy: manifests kustomize ## Deploy controller to the K8s cluster specified in
 .PHONY: undeploy
 undeploy: kustomize ## Undeploy controller from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
 	"$(KUSTOMIZE)" build config/default | "$(KUBECTL)" delete --ignore-not-found=$(ignore-not-found) -f -
+
+##@ E2E Tests
+
+.PHONY: setup-e2e
+setup-e2e: ## Set up Kind cluster for e2e tests
+	@echo "Setting up e2e test environment..."
+	@command -v kind >/dev/null 2>&1 || { \
+		echo "Kind is not installed. Please install Kind manually."; \
+		exit 1; \
+	}
+	@if ! kind get clusters | grep -q "optipod-e2e-test"; then \
+		echo "Creating Kind cluster for e2e tests..."; \
+		kind create cluster --name optipod-e2e-test; \
+	else \
+		echo "Kind cluster optipod-e2e-test already exists"; \
+	fi
+
+.PHONY: test-e2e
+test-e2e: setup-e2e manifests generate fmt vet ## Run e2e tests
+	@echo "Running comprehensive e2e tests..."
+	KIND_CLUSTER_NAME=optipod-e2e-test go test ./test/e2e/... -v -ginkgo.v -timeout=30m
+
+.PHONY: test-e2e-focus
+test-e2e-focus: setup-e2e manifests generate fmt vet ## Run focused e2e tests
+	@echo "Running focused e2e tests..."
+	KIND_CLUSTER_NAME=optipod-e2e-test go test ./test/e2e/... -v -ginkgo.v -ginkgo.focus="$(FOCUS)" -timeout=30m
+
+.PHONY: cleanup-e2e
+cleanup-e2e: ## Clean up e2e test environment
+	@echo "Cleaning up e2e test environment..."
+	@kind delete cluster --name optipod-e2e-test || true
 
 ##@ Dependencies
 
@@ -219,13 +194,13 @@ CONTROLLER_TOOLS_VERSION ?= v0.19.0
 
 #ENVTEST_VERSION is the version of controller-runtime release branch to fetch the envtest setup script (i.e. release-0.20)
 ENVTEST_VERSION ?= $(shell v='$(call gomodver,sigs.k8s.io/controller-runtime)'; \
-  [ -n "$$v" ] || { echo "Set ENVTEST_VERSION manually (controller-runtime replace has no tag)" >&2; exit 1; }; \
-  printf '%s\n' "$$v" | sed -E 's/^v?([0-9]+)\.([0-9]+).*/release-\1.\2/')
+  [ -n "$v" ] || { echo "Set ENVTEST_VERSION manually (controller-runtime replace has no tag)" >&2; exit 1; }; \
+  printf '%s\n' "$v" | sed -E 's/^v?([0-9]+)\.([0-9]+).*/release-\1.\2/')
 
 #ENVTEST_K8S_VERSION is the version of Kubernetes to use for setting up ENVTEST binaries (i.e. 1.31)
 ENVTEST_K8S_VERSION ?= $(shell v='$(call gomodver,k8s.io/api)'; \
-  [ -n "$$v" ] || { echo "Set ENVTEST_K8S_VERSION manually (k8s.io/api replace has no tag)" >&2; exit 1; }; \
-  printf '%s\n' "$$v" | sed -E 's/^v?[0-9]+\.([0-9]+).*/1.\1/')
+  [ -n "$v" ] || { echo "Set ENVTEST_K8S_VERSION manually (k8s.io/api replace has no tag)" >&2; exit 1; }; \
+  printf '%s\n' "$v" | sed -E 's/^v?[0-9]+\.([0-9]+).*/1.\1/')
 
 GOLANGCI_LINT_VERSION ?= v2.5.0
 .PHONY: kustomize
@@ -261,15 +236,15 @@ $(GOLANGCI_LINT): $(LOCALBIN)
 # $2 - package url which can be installed
 # $3 - specific version of package
 define go-install-tool
-@[ -f "$(1)-$(3)" ] && [ "$$(readlink -- "$(1)" 2>/dev/null)" = "$(1)-$(3)" ] || { \
+@[ -f "$(1)-$(3)" ] && [ "$(readlink -- "$(1)" 2>/dev/null)" = "$(1)-$(3)" ] || { \
 set -e; \
 package=$(2)@$(3) ;\
-echo "Downloading $${package}" ;\
+echo "Downloading ${package}" ;\
 rm -f "$(1)" ;\
-GOBIN="$(LOCALBIN)" go install $${package} ;\
-mv "$(LOCALBIN)/$$(basename "$(1)")" "$(1)-$(3)" ;\
+GOBIN="$(LOCALBIN)" go install ${package} ;\
+mv "$(LOCALBIN)/$(basename "$(1)")" "$(1)-$(3)" ;\
 } ;\
-ln -sf "$$(realpath "$(1)-$(3)")" "$(1)"
+ln -sf "$(realpath "$(1)-$(3)")" "$(1)"
 endef
 
 define gomodver

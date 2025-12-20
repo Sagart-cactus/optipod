@@ -23,10 +23,10 @@ spec:
         image: nginx:alpine
         resources:
           requests:
-            cpu: "50m"      # Very low - should be clamped to min (500m)
-            memory: "32Mi"  # Very low - should be clamped to min (512Mi)
+            cpu: "50m"     # Below minimum (200m)
+            memory: "128Mi" # Below minimum (256Mi)
           limits:
             cpu: "100m"
-            memory: "64Mi"
+            memory: "256Mi"
         ports:
         - containerPort: 80

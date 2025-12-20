@@ -1,10 +1,10 @@
 apiVersion: optipod.optipod.io/v1alpha1
 kind: OptimizationPolicy
 metadata:
-  name: boundary-limits-test
+  name: memory-safety-test
   namespace: optipod-system
 spec:
-  mode: Recommend  # Use Recommend mode to avoid actual modifications
+  mode: Recommend
   selector:
     namespaceSelector:
       matchLabels:
@@ -12,19 +12,19 @@ spec:
     workloadSelector:
       matchLabels:
         optimize: "true"
-        bounds-test: "boundary"
+        error-test: "memory-safety"
   metricsConfig:
     provider: metrics-server
     rollingWindow: 5m
     percentile: P90
-    safetyFactor: 1.0
+    safetyFactor: 1.2  # Higher safety factor for memory safety
   resourceBounds:
     cpu:
-      min: "100m"    # 0.1 CPU cores
-      max: "1500m"   # 1.5 CPU cores
+      min: "100m"
+      max: "2000m"
     memory:
-      min: "128Mi"   # 128 Mebibytes
-      max: "3Gi"     # 3 Gibibytes
+      min: "512Mi"  # Minimum to prevent unsafe decreases
+      max: "4Gi"
   updateStrategy:
     allowInPlaceResize: true
     allowRecreate: false

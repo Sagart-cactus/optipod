@@ -23,10 +23,10 @@ spec:
         image: nginx:alpine
         resources:
           requests:
-            cpu: "300m"     # Should result in recommendation within bounds (100m-1000m)
-            memory: "256Mi" # Should result in recommendation within bounds (128Mi-1Gi)
+            cpu: "500m"    # Within bounds (100m-1000m)
+            memory: "512Mi" # Within bounds (128Mi-2Gi)
           limits:
-            cpu: "500m"
-            memory: "512Mi"
+            cpu: "800m"
+            memory: "1Gi"
         ports:
         - containerPort: 80

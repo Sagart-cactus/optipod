@@ -1,32 +1,32 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: invalid-resources-test
+  name: memory-safety-test
   namespace: default
   labels:
     optimize: "true"
-    error-test: "invalid-resources"
+    error-test: "memory-safety"
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: invalid-resources-test
+      app: memory-safety-test
   template:
     metadata:
       labels:
-        app: invalid-resources-test
+        app: memory-safety-test
         optimize: "true"
-        error-test: "invalid-resources"
+        error-test: "memory-safety"
     spec:
       containers:
       - name: app
         image: nginx:alpine
         resources:
           requests:
-            cpu: "invalid-cpu"     # Invalid CPU format
-            memory: "not-memory"   # Invalid memory format
+            cpu: "500m"
+            memory: "2Gi"    # High memory that could be unsafe to decrease
           limits:
-            cpu: "also-invalid"
-            memory: "bad-format"
+            cpu: "1000m"
+            memory: "4Gi"
         ports:
         - containerPort: 80

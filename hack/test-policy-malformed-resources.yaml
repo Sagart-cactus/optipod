@@ -1,10 +1,10 @@
 apiVersion: optipod.optipod.io/v1alpha1
 kind: OptimizationPolicy
 metadata:
-  name: boundary-limits-test
+  name: malformed-resources-test
   namespace: optipod-system
 spec:
-  mode: Recommend  # Use Recommend mode to avoid actual modifications
+  mode: Recommend
   selector:
     namespaceSelector:
       matchLabels:
@@ -12,7 +12,7 @@ spec:
     workloadSelector:
       matchLabels:
         optimize: "true"
-        bounds-test: "boundary"
+        error-test: "malformed"
   metricsConfig:
     provider: metrics-server
     rollingWindow: 5m
@@ -20,11 +20,11 @@ spec:
     safetyFactor: 1.0
   resourceBounds:
     cpu:
-      min: "100m"    # 0.1 CPU cores
-      max: "1500m"   # 1.5 CPU cores
+      min: "invalid-cpu-value"  # Invalid CPU format
+      max: "1000m"
     memory:
-      min: "128Mi"   # 128 Mebibytes
-      max: "3Gi"     # 3 Gibibytes
+      min: "128Mi"
+      max: "not-a-memory-value"  # Invalid memory format
   updateStrategy:
     allowInPlaceResize: true
     allowRecreate: false
