@@ -241,14 +241,10 @@ KUSTOMIZE_VERSION ?= v5.7.1
 CONTROLLER_TOOLS_VERSION ?= v0.19.0
 
 #ENVTEST_VERSION is the version of controller-runtime release branch to fetch the envtest setup script (i.e. release-0.20)
-ENVTEST_VERSION ?= $(shell v='$(call gomodver,sigs.k8s.io/controller-runtime)'; \
-  [ -n "$v" ] || { echo "Set ENVTEST_VERSION manually (controller-runtime replace has no tag)" >&2; exit 1; }; \
-  printf '%s\n' "$v" | sed -E 's/^v?([0-9]+)\.([0-9]+).*/release-\1.\2/')
+ENVTEST_VERSION ?= release-0.22
 
 #ENVTEST_K8S_VERSION is the version of Kubernetes to use for setting up ENVTEST binaries (i.e. 1.31)
-ENVTEST_K8S_VERSION ?= $(shell v='$(call gomodver,k8s.io/api)'; \
-  [ -n "$v" ] || { echo "Set ENVTEST_K8S_VERSION manually (k8s.io/api replace has no tag)" >&2; exit 1; }; \
-  printf '%s\n' "$v" | sed -E 's/^v?[0-9]+\.([0-9]+).*/1.\1/')
+ENVTEST_K8S_VERSION ?= 1.34
 
 GOLANGCI_LINT_VERSION ?= v2.5.0
 .PHONY: kustomize
@@ -284,15 +280,16 @@ $(GOLANGCI_LINT): $(LOCALBIN)
 # $2 - package url which can be installed
 # $3 - specific version of package
 define go-install-tool
-@[ -f "$(1)-$(3)" ] && [ "$(readlink -- "$(1)" 2>/dev/null)" = "$(1)-$(3)" ] || { \
+@[ -f "$(1)" ] || { \
 set -e; \
-package=$(2)@$(3) ;\
-echo "Downloading ${package}" ;\
-rm -f "$(1)" ;\
-GOBIN="$(LOCALBIN)" go install ${package} ;\
-mv "$(LOCALBIN)/$(basename "$(1)")" "$(1)-$(3)" ;\
-} ;\
-ln -sf "$(realpath "$(1)-$(3)")" "$(1)"
+TMP_DIR=$$(mktemp -d); \
+echo "Downloading $(2)@$(3)" ;\
+cd $$TMP_DIR ;\
+go mod init tmp ;\
+go install $(2)@$(3) ;\
+cp "$$(go env GOPATH)/bin/$$(basename $(1))" $(1) ;\
+rm -rf $$TMP_DIR ;\
+}
 endef
 
 define gomodver
