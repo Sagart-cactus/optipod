@@ -14,7 +14,7 @@ var _ = Describe("Simple Unit Tests", func() {
 		It("should handle basic string operations", func() {
 			testString := "optipod-test"
 			Expect(testString).To(ContainSubstring("optipod"))
-			Expect(len(testString)).To(Equal(12))
+			Expect(testString).To(HaveLen(12))
 		})
 
 		It("should handle basic math operations", func() {

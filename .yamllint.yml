@@ -1,0 +1,41 @@
+# YAML linting configuration for OptipPod
+extends: relaxed
+
+rules:
+  # Allow longer lines for Kubernetes manifests
+  line-length:
+    max: 120
+    level: warning
+
+  # Allow multiple documents in single file (common in Kubernetes)
+  document-start: disable
+
+  # Allow truthy values (on/off, yes/no) in YAML
+  truthy:
+    allowed-values: ['true', 'false', 'on', 'off', 'yes', 'no']
+    check-keys: false
+
+  # Allow empty values in YAML
+  empty-values:
+    forbid-in-block-mappings: false
+    forbid-in-flow-mappings: false
+
+  # Indentation rules
+  indentation:
+    spaces: 2
+    indent-sequences: true
+    check-multi-line-strings: false
+
+  # Comments
+  comments:
+    min-spaces-from-content: 1
+
+  # Brackets
+  brackets:
+    min-spaces-inside: 0
+    max-spaces-inside: 1
+
+  # Braces
+  braces:
+    min-spaces-inside: 0
+    max-spaces-inside: 1

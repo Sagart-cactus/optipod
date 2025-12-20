@@ -39,6 +39,54 @@ all: build
 help: ## Display this help.
 	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make \033[36m<target>\033[0m\n"} /^[a-zA-Z_0-9-]+:.*?##/ { printf "  \033[36m%-15s\033[0m %s\n", $1, $2 } /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($0, 5) } ' $(MAKEFILE_LIST)
 
+##@ Code Quality
+
+.PHONY: setup-pre-commit
+setup-pre-commit: ## Set up pre-commit hooks
+	@echo "Setting up pre-commit hooks..."
+	@./scripts/setup-pre-commit.sh
+
+.PHONY: pre-commit-run
+pre-commit-run: ## Run pre-commit hooks on all files
+	@echo "Running pre-commit hooks on all files..."
+	@if command -v pre-commit >/dev/null 2>&1; then \
+		pre-commit run --all-files; \
+	elif [ -f "$$HOME/.local/bin/pre-commit" ]; then \
+		$$HOME/.local/bin/pre-commit run --all-files; \
+	elif [ -f "$$HOME/Library/Python/3.9/bin/pre-commit" ]; then \
+		$$HOME/Library/Python/3.9/bin/pre-commit run --all-files; \
+	elif [ -f "$$HOME/Library/Python/3.11/bin/pre-commit" ]; then \
+		$$HOME/Library/Python/3.11/bin/pre-commit run --all-files; \
+	else \
+		echo "pre-commit not found. Please run 'make setup-pre-commit' first."; \
+		exit 1; \
+	fi
+
+.PHONY: pre-commit-update
+pre-commit-update: ## Update pre-commit hook versions
+	@echo "Updating pre-commit hooks..."
+	@if command -v pre-commit >/dev/null 2>&1; then \
+		pre-commit autoupdate; \
+	elif [ -f "$$HOME/.local/bin/pre-commit" ]; then \
+		$$HOME/.local/bin/pre-commit autoupdate; \
+	elif [ -f "$$HOME/Library/Python/3.9/bin/pre-commit" ]; then \
+		$$HOME/Library/Python/3.9/bin/pre-commit autoupdate; \
+	elif [ -f "$$HOME/Library/Python/3.11/bin/pre-commit" ]; then \
+		$$HOME/Library/Python/3.11/bin/pre-commit autoupdate; \
+	else \
+		echo "pre-commit not found. Please run 'make setup-pre-commit' first."; \
+		exit 1; \
+	fi
+
+.PHONY: format
+format: ## Format code using gofmt and goimports
+	@echo "Formatting Go code..."
+	@gofmt -w .
+	@goimports -w .
+
+.PHONY: lint-all
+lint-all: lint ## Run all linting checks (alias for lint)
+
 ##@ Development
 
 .PHONY: manifests

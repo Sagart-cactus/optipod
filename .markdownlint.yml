@@ -1,0 +1,36 @@
+# Markdownlint configuration for OptipPod
+# See https://github.com/DavidAnson/markdownlint/blob/main/doc/Rules.md
+
+# Default state for all rules
+default: true
+
+# Disable specific rules that are too strict for documentation
+MD013:  # Line length
+  line_length: 120
+  code_blocks: false
+  tables: false
+  headings: false
+
+MD033: false  # Allow inline HTML (useful for badges, etc.)
+MD041: false  # Allow files to not start with H1 (useful for READMEs with badges)
+MD024: false  # Allow duplicate headings (common in changelogs)
+MD026: false  # Allow trailing punctuation in headings
+MD034: false  # Allow bare URLs (sometimes needed for references)
+
+# Customize heading styles
+MD003:
+  style: "atx"  # Use # style headings
+
+# Customize list styles
+MD004:
+  style: "dash"  # Use - for unordered lists
+
+MD007:
+  indent: 2  # Use 2-space indentation for lists
+
+# Customize emphasis styles
+MD049:
+  style: "asterisk"  # Use *emphasis* instead of _emphasis_
+
+MD050:
+  style: "asterisk"  # Use **strong** instead of __strong__

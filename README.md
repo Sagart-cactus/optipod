@@ -158,23 +158,72 @@ make docker-build docker-push IMG=your-registry/optipod:tag
 
 ## Development
 
+### Quick Setup
+
 ```bash
+# Clone the repository
+git clone https://github.com/Sagart-cactus/optipod.git
+cd optipod
+
+# Set up development environment (includes pre-commit hooks)
+make setup-pre-commit
+
 # Install CRDs into your cluster
 make install
 
 # Run the operator locally (against your current kubeconfig)
 make run
+```
 
-# Generate manifests after API changes
-make manifests
+### Code Quality
+
+We use pre-commit hooks to ensure code quality and consistency:
+
+```bash
+# Set up pre-commit hooks (one-time setup)
+make setup-pre-commit
+
+# Run all quality checks
+make pre-commit-run
+
+# Format code
+make format
 
 # Run linter
 make lint
 ```
 
+### Building and Testing
+
+```bash
+# Build the operator
+make build
+
+# Run unit tests
+make test
+
+# Run E2E tests
+make test-e2e
+
+# Generate manifests after API changes
+make manifests
+
+# Build and push Docker image
+make docker-build docker-push IMG=your-registry/optipod:tag
+```
+
 ## Contributing
 
-Contributions are welcome! Please read our [Contributing Guide](CONTRIBUTING.md) for details on our code of conduct and the process for submitting pull requests.
+Contributions are welcome! Please read our [Contributing Guide](docs/CONTRIBUTING.md) for details on our code of conduct, development setup, and the process for submitting pull requests.
+
+### Quick Start for Contributors
+
+1. Fork the repository
+2. Set up development environment: `make setup-pre-commit`
+3. Create a feature branch
+4. Make your changes (pre-commit hooks will run automatically)
+5. Run tests: `make test && make test-e2e`
+6. Submit a pull request
 
 ## License
 

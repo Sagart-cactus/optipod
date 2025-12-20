@@ -30,7 +30,7 @@ var _ = Describe("Error Handling and Edge Cases", func() {
 		By("Cleaning up any existing test resources")
 		cleanupHelper.CleanupAllPolicies()
 		cleanupHelper.CleanupTestWorkloads("default")
-		
+
 		// Wait a bit for cleanup to complete
 		time.Sleep(5 * time.Second)
 	})
@@ -45,7 +45,7 @@ var _ = Describe("Error Handling and Edge Cases", func() {
 		It("should handle policies with malformed resource specifications", func() {
 			By("Attempting to create policy with malformed CPU values")
 			err := policyHelper.CreatePolicyFromFile("hack/test-policy-malformed-resources.yaml")
-			
+
 			if err != nil {
 				GinkgoWriter.Println("✓ Malformed policy correctly rejected")
 				Expect(err.Error()).To(Or(
@@ -55,7 +55,7 @@ var _ = Describe("Error Handling and Edge Cases", func() {
 				))
 			} else {
 				GinkgoWriter.Println("⚠ Malformed policy was accepted - checking if handled properly")
-				
+
 				By("Verifying policy exists but may have validation issues")
 				Eventually(func() error {
 					cmd := exec.Command("kubectl", "get", "optimizationpolicy", "malformed-resources-test", "-n", "optipod-system")
@@ -74,7 +74,7 @@ var _ = Describe("Error Handling and Edge Cases", func() {
 
 			By("Attempting to create workload with invalid resource format")
 			err = workloadHelper.CreateWorkloadFromFile("hack/test-workload-invalid-resources.yaml")
-			
+
 			if err != nil {
 				GinkgoWriter.Println("✓ Invalid workload correctly rejected")
 				Expect(err.Error()).To(Or(
@@ -84,7 +84,7 @@ var _ = Describe("Error Handling and Edge Cases", func() {
 				))
 			} else {
 				GinkgoWriter.Println("⚠ Invalid workload was accepted - checking if it's handled properly")
-				
+
 				By("Checking if workload exists and is in error state")
 				cmd := exec.Command("kubectl", "get", "deployment", "invalid-resources-test", "-n", "default", "-o", "jsonpath={.status}")
 				output, err := utils.Run(cmd)
@@ -99,7 +99,7 @@ var _ = Describe("Error Handling and Edge Cases", func() {
 		It("should handle policies with missing required fields", func() {
 			By("Attempting to create policy with missing selector")
 			err := policyHelper.CreatePolicyFromFile("hack/test-policy-missing-selector.yaml")
-			
+
 			if err != nil {
 				GinkgoWriter.Println("✓ Policy with missing selector correctly rejected")
 				Expect(err.Error()).To(Or(
@@ -109,7 +109,7 @@ var _ = Describe("Error Handling and Edge Cases", func() {
 				))
 			} else {
 				GinkgoWriter.Println("⚠ Policy with missing selector was accepted")
-				
+
 				By("Checking policy status for validation errors")
 				cmd := exec.Command("kubectl", "get", "optimizationpolicy", "missing-selector-test", "-n", "optipod-system", "-o", "jsonpath={.status}")
 				output, err := utils.Run(cmd)

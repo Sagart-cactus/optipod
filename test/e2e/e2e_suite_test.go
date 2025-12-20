@@ -27,35 +27,35 @@ func TestE2E(t *testing.T) {
 
 var _ = BeforeSuite(func() {
 	By("Setting up E2E test environment")
-	
+
 	// Step 1: Create Kind Cluster
 	By("Creating Kind cluster")
 	createKindCluster()
-	
+
 	// Step 2: Install Prerequisites
 	By("Installing prerequisites")
 	installMetricsServer()
-	
+
 	// Step 3: Create OptipPod namespace
 	By("Creating OptipPod namespace")
 	createOptipodNamespace()
-	
+
 	// Step 4: Install OptipPod CRDs
 	By("Installing OptipPod CRDs")
 	installOptipodCRDs()
-	
+
 	// Step 5: Label default namespace for testing
 	By("Labeling default namespace")
 	labelDefaultNamespace()
-	
+
 	// Step 6: Install OptipPod Controller
 	By("Installing OptipPod Controller")
 	installOptipodController()
-	
+
 	// Step 7: Setup RBAC Permissions
 	By("Setting up RBAC permissions")
 	setupRBACPermissions()
-	
+
 	// Step 8: Verify Everything is Ready
 	By("Verifying cluster readiness")
 	verifyBasicClusterReadiness()
@@ -63,10 +63,10 @@ var _ = BeforeSuite(func() {
 
 var _ = AfterSuite(func() {
 	By("Cleaning up E2E test environment")
-	
+
 	// Clean up test resources
 	cleanupTestResources()
-	
+
 	// Optionally delete the Kind cluster
 	if os.Getenv("KEEP_CLUSTER") != "true" {
 		deleteKindCluster()
@@ -77,10 +77,10 @@ func createKindCluster() {
 	// Check if cluster already exists
 	cmd := exec.Command("kind", "get", "clusters")
 	output, _ := utils.Run(cmd)
-	
+
 	if !contains(output, clusterName) {
 		GinkgoWriter.Printf("Creating Kind cluster: %s\n", clusterName)
-		
+
 		kindConfig := `
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
@@ -89,7 +89,7 @@ nodes:
 - role: worker
 - role: worker
 `
-		
+
 		cmd := exec.Command("kind", "create", "cluster", "--name", clusterName, "--config", "-")
 		cmd.Stdin = strings.NewReader(kindConfig)
 		_, err := utils.Run(cmd)
@@ -97,7 +97,7 @@ nodes:
 	} else {
 		GinkgoWriter.Printf("Kind cluster %s already exists\n", clusterName)
 	}
-	
+
 	// Set kubectl context
 	cmd = exec.Command("kubectl", "config", "use-context", fmt.Sprintf("kind-%s", clusterName))
 	_, err := utils.Run(cmd)
@@ -106,12 +106,13 @@ nodes:
 
 func installMetricsServer() {
 	GinkgoWriter.Println("Installing metrics-server...")
-	
+
 	// Install metrics-server
-	cmd := exec.Command("kubectl", "apply", "-f", "https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml")
+	metricsURL := "https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml"
+	cmd := exec.Command("kubectl", "apply", "-f", metricsURL)
 	_, err := utils.Run(cmd)
 	Expect(err).NotTo(HaveOccurred())
-	
+
 	// Patch for Kind compatibility
 	patch := `[
 		{
@@ -130,14 +131,15 @@ func installMetricsServer() {
 			"value": "--metric-resolution=15s"
 		}
 	]`
-	
+
 	cmd = exec.Command("kubectl", "patch", "deployment", "metrics-server", "-n", "kube-system", "--type=json", "-p", patch)
 	_, err = utils.Run(cmd)
 	Expect(err).NotTo(HaveOccurred())
-	
+
 	// Wait for metrics-server to be ready
 	Eventually(func() error {
-		cmd := exec.Command("kubectl", "wait", "--for=condition=available", "--timeout=120s", "deployment/metrics-server", "-n", "kube-system")
+		cmd := exec.Command("kubectl", "wait", "--for=condition=available", "--timeout=120s",
+			"deployment/metrics-server", "-n", "kube-system")
 		_, err := utils.Run(cmd)
 		return err
 	}, 3*time.Minute, 10*time.Second).Should(Succeed())
@@ -161,12 +163,13 @@ func labelDefaultNamespace() {
 
 func installOptipodCRDs() {
 	GinkgoWriter.Println("Installing OptipPod CRDs...")
-	
+
 	// Install CRDs directly instead of using make install
-	cmd := exec.Command("kubectl", "apply", "-f", "config/crd/bases/optipod.optipod.io_optimizationpolicies.yaml", "--validate=false")
+	crdFile := "config/crd/bases/optipod.optipod.io_optimizationpolicies.yaml"
+	cmd := exec.Command("kubectl", "apply", "-f", crdFile, "--validate=false")
 	_, err := utils.Run(cmd)
 	Expect(err).NotTo(HaveOccurred())
-	
+
 	// Verify CRDs are installed
 	Eventually(func() error {
 		cmd := exec.Command("kubectl", "get", "crd", "optimizationpolicies.optipod.optipod.io")
@@ -177,14 +180,14 @@ func installOptipodCRDs() {
 
 func verifyBasicClusterReadiness() {
 	GinkgoWriter.Println("Verifying basic cluster readiness...")
-	
+
 	// Verify CRDs are available
 	Eventually(func() error {
 		cmd := exec.Command("kubectl", "get", "crd", "optimizationpolicies.optipod.optipod.io")
 		_, err := utils.Run(cmd)
 		return err
 	}, 1*time.Minute, 5*time.Second).Should(Succeed())
-	
+
 	// Verify namespaces exist
 	Eventually(func() error {
 		cmd := exec.Command("kubectl", "get", "namespace", optipodNamespace)
@@ -195,37 +198,37 @@ func verifyBasicClusterReadiness() {
 
 func installOptipodController() {
 	GinkgoWriter.Println("Installing OptipPod Controller...")
-	
+
 	// Build the controller binary first
 	GinkgoWriter.Println("Building OptipPod controller binary...")
 	cmd := exec.Command("go", "build", "-o", "bin/manager", "cmd/main.go")
 	_, err := utils.Run(cmd)
 	Expect(err).NotTo(HaveOccurred())
-	
+
 	// Build the controller Docker image
 	GinkgoWriter.Println("Building OptipPod controller Docker image...")
 	cmd = exec.Command("docker", "build", "-t", "optipod-controller:e2e", ".")
 	_, err = utils.Run(cmd)
 	Expect(err).NotTo(HaveOccurred())
-	
+
 	// Load the image into Kind cluster
 	GinkgoWriter.Println("Loading controller image into Kind cluster...")
 	cmd = exec.Command("kind", "load", "docker-image", "optipod-controller:e2e", "--name", clusterName)
 	_, err = utils.Run(cmd)
 	Expect(err).NotTo(HaveOccurred())
-	
+
 	// Install controller-gen if not available
 	GinkgoWriter.Println("Ensuring controller-gen is available...")
 	cmd = exec.Command("go", "install", "sigs.k8s.io/controller-tools/cmd/controller-gen@latest")
 	_, err = utils.Run(cmd)
 	Expect(err).NotTo(HaveOccurred())
-	
+
 	// Install kustomize if not available
 	GinkgoWriter.Println("Ensuring kustomize is available...")
 	cmd = exec.Command("go", "install", "sigs.k8s.io/kustomize/kustomize/v5@latest")
 	_, err = utils.Run(cmd)
 	Expect(err).NotTo(HaveOccurred())
-	
+
 	// Generate manifests
 	GinkgoWriter.Println("Generating controller manifests...")
 	goPath := os.Getenv("GOPATH")
@@ -233,50 +236,54 @@ func installOptipodController() {
 		goPath = os.Getenv("HOME") + "/go"
 	}
 	controllerGenPath := goPath + "/bin/controller-gen"
-	cmd = exec.Command(controllerGenPath, "rbac:roleName=manager-role", "crd:allowDangerousTypes=true", "webhook", "paths=./...", "output:crd:artifacts:config=config/crd/bases")
+	cmd = exec.Command(controllerGenPath, "rbac:roleName=manager-role", "crd:allowDangerousTypes=true",
+		"webhook", "paths=./...", "output:crd:artifacts:config=config/crd/bases")
 	_, err = utils.Run(cmd)
 	Expect(err).NotTo(HaveOccurred())
-	
+
 	// Deploy using kustomize
 	GinkgoWriter.Println("Deploying OptipPod controller...")
 	kustomizePath := goPath + "/bin/kustomize"
-	
+
 	// Update the image in the kustomization
-	cmd = exec.Command("bash", "-c", fmt.Sprintf("cd config/manager && %s edit set image controller=optipod-controller:e2e", kustomizePath))
+	setImageCmd := fmt.Sprintf("cd config/manager && %s edit set image controller=optipod-controller:e2e", kustomizePath)
+	cmd = exec.Command("bash", "-c", setImageCmd)
 	_, err = utils.Run(cmd)
 	Expect(err).NotTo(HaveOccurred())
-	
+
 	// Build and apply manifests
 	cmd = exec.Command(kustomizePath, "build", "config/default")
 	manifestsOutput, err := utils.Run(cmd)
 	Expect(err).NotTo(HaveOccurred())
-	
+
 	cmd = exec.Command("kubectl", "apply", "-f", "-")
 	cmd.Stdin = strings.NewReader(manifestsOutput)
 	_, err = utils.Run(cmd)
 	Expect(err).NotTo(HaveOccurred())
-	
+
 	// Wait for controller deployment to be ready
 	GinkgoWriter.Println("Waiting for controller to be ready...")
 	Eventually(func() error {
-		cmd := exec.Command("kubectl", "wait", "--for=condition=available", "--timeout=120s", "deployment/optipod-controller-manager", "-n", optipodNamespace)
+		cmd := exec.Command("kubectl", "wait", "--for=condition=available", "--timeout=120s",
+			"deployment/optipod-controller-manager", "-n", optipodNamespace)
 		_, err := utils.Run(cmd)
 		return err
 	}, 5*time.Minute, 15*time.Second).Should(Succeed())
-	
+
 	// Verify controller pods are running
 	Eventually(func() string {
-		cmd := exec.Command("kubectl", "get", "pods", "-n", optipodNamespace, "-l", "control-plane=controller-manager", "-o", "jsonpath={.items[0].status.phase}")
+		cmd := exec.Command("kubectl", "get", "pods", "-n", optipodNamespace,
+			"-l", "control-plane=controller-manager", "-o", "jsonpath={.items[0].status.phase}")
 		output, _ := utils.Run(cmd)
 		return strings.TrimSpace(output)
 	}, 3*time.Minute, 10*time.Second).Should(Equal("Running"))
-	
+
 	GinkgoWriter.Println("OptipPod controller installed and running successfully")
 }
 
 func setupRBACPermissions() {
 	GinkgoWriter.Println("Setting up RBAC permissions...")
-	
+
 	// Create ClusterRoleBinding for metrics access (needed for observability tests)
 	metricsRoleBinding := `
 apiVersion: rbac.authorization.k8s.io/v1
@@ -292,79 +299,31 @@ subjects:
   name: default
   namespace: ` + optipodNamespace + `
 `
-	
+
 	cmd := exec.Command("kubectl", "apply", "-f", "-")
 	cmd.Stdin = strings.NewReader(metricsRoleBinding)
 	_, err := utils.Run(cmd)
 	Expect(err).NotTo(HaveOccurred())
 }
 
-func installTestWorkloads() {
-	GinkgoWriter.Println("Installing test workloads...")
-	
-	// Create test namespace
-	cmd := exec.Command("kubectl", "create", "namespace", testNamespace, "--dry-run=client", "-o", "yaml")
-	output, err := utils.Run(cmd)
-	Expect(err).NotTo(HaveOccurred())
-	
-	cmd = exec.Command("kubectl", "apply", "-f", "-")
-	cmd.Stdin = strings.NewReader(output)
-	_, err = utils.Run(cmd)
-	Expect(err).NotTo(HaveOccurred())
-	
-	// Label namespace for testing
-	cmd = exec.Command("kubectl", "label", "namespace", testNamespace, "environment=development", "--overwrite")
-	_, err = utils.Run(cmd)
-	Expect(err).NotTo(HaveOccurred())
-	
-	// Install sample workloads using the setup script
-	cmd = exec.Command("bash", "hack/setup-dev-cluster.sh")
-	_, err = utils.Run(cmd)
-	Expect(err).NotTo(HaveOccurred())
-}
-
-func verifyClusterReadiness() {
-	GinkgoWriter.Println("Verifying cluster readiness...")
-	
-	// Verify OptipPod controller is running
-	Eventually(func() string {
-		cmd := exec.Command("kubectl", "get", "deployment", "optipod-controller-manager", "-n", optipodNamespace, "-o", "jsonpath={.status.conditions[?(@.type=='Available')].status}")
-		output, _ := utils.Run(cmd)
-		return output
-	}, 2*time.Minute, 5*time.Second).Should(Equal("True"))
-	
-	// Verify metrics-server is working
-	Eventually(func() error {
-		cmd := exec.Command("kubectl", "top", "nodes")
-		_, err := utils.Run(cmd)
-		return err
-	}, 2*time.Minute, 10*time.Second).Should(Succeed())
-	
-	// Verify test workloads are ready
-	Eventually(func() error {
-		cmd := exec.Command("kubectl", "wait", "--for=condition=available", "--timeout=60s", "deployment/nginx-web", "-n", testNamespace)
-		_, err := utils.Run(cmd)
-		return err
-	}, 2*time.Minute, 5*time.Second).Should(Succeed())
-}
-
 func cleanupTestResources() {
 	GinkgoWriter.Println("Cleaning up test resources...")
-	
+
 	// Delete test policies
-	cmd := exec.Command("kubectl", "delete", "optimizationpolicy", "--all", "-n", optipodNamespace, "--ignore-not-found=true")
-	utils.Run(cmd)
-	
+	cmd := exec.Command("kubectl", "delete", "optimizationpolicy", "--all", "-n", optipodNamespace,
+		"--ignore-not-found=true")
+	_, _ = utils.Run(cmd) // Ignore cleanup errors
+
 	// Delete test workloads
 	cmd = exec.Command("kubectl", "delete", "namespace", testNamespace, "--ignore-not-found=true")
-	utils.Run(cmd)
+	_, _ = utils.Run(cmd) // Ignore cleanup errors
 }
 
 func deleteKindCluster() {
 	GinkgoWriter.Printf("Deleting Kind cluster: %s\n", clusterName)
-	
+
 	cmd := exec.Command("kind", "delete", "cluster", "--name", clusterName)
-	utils.Run(cmd)
+	_, _ = utils.Run(cmd) // Ignore cleanup errors
 }
 
 func contains(s, substr string) bool {

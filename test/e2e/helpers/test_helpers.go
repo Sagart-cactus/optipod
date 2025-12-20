@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	. "github.com/onsi/gomega"
+	"github.com/onsi/gomega"
 	"github.com/optipod/optipod/test/utils"
 )
 
@@ -34,11 +34,12 @@ func (p *PolicyHelper) DeletePolicyFromFile(filePath string) error {
 
 // WaitForPolicyReady waits for a policy to be in Ready state
 func (p *PolicyHelper) WaitForPolicyReady(policyName, namespace string, timeout time.Duration) error {
-	Eventually(func() string {
-		cmd := exec.Command("kubectl", "get", "optimizationpolicy", policyName, "-n", namespace, "-o", "jsonpath={.status.conditions[?(@.type=='Ready')].status}")
+	gomega.Eventually(func() string {
+		cmd := exec.Command("kubectl", "get", "optimizationpolicy", policyName, "-n", namespace,
+			"-o", "jsonpath={.status.conditions[?(@.type=='Ready')].status}")
 		output, _ := utils.Run(cmd)
 		return strings.TrimSpace(output)
-	}, timeout, 5*time.Second).Should(Equal("True"))
+	}, timeout, 5*time.Second).Should(gomega.Equal("True"))
 	return nil
 }
 
@@ -66,28 +67,30 @@ func (w *WorkloadHelper) DeleteWorkloadFromFile(filePath string) error {
 
 // WaitForWorkloadReady waits for a deployment to be available
 func (w *WorkloadHelper) WaitForWorkloadReady(workloadName, namespace string, timeout time.Duration) error {
-	Eventually(func() error {
-		cmd := exec.Command("kubectl", "wait", "--for=condition=available", "--timeout=60s", fmt.Sprintf("deployment/%s", workloadName), "-n", namespace)
+	gomega.Eventually(func() error {
+		cmd := exec.Command("kubectl", "wait", "--for=condition=available", "--timeout=60s",
+			fmt.Sprintf("deployment/%s", workloadName), "-n", namespace)
 		_, err := utils.Run(cmd)
 		return err
-	}, timeout, 5*time.Second).Should(Succeed())
+	}, timeout, 5*time.Second).Should(gomega.Succeed())
 	return nil
 }
 
 // GetWorkloadAnnotations retrieves OptipPod annotations from a workload
 func (w *WorkloadHelper) GetWorkloadAnnotations(workloadName, namespace string) (map[string]string, error) {
-	cmd := exec.Command("kubectl", "get", "deployment", workloadName, "-n", namespace, "-o", "jsonpath={.metadata.annotations}")
+	cmd := exec.Command("kubectl", "get", "deployment", workloadName, "-n", namespace,
+		"-o", "jsonpath={.metadata.annotations}")
 	output, err := utils.Run(cmd)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// Simple parsing - in a real implementation you'd use JSON parsing
 	annotations := make(map[string]string)
 	if strings.Contains(output, "optipod.io/managed") {
 		annotations["optipod.io/managed"] = "true"
 	}
-	
+
 	return annotations, nil
 }
 
@@ -107,7 +110,7 @@ func (v *ValidationHelper) CheckOptipodLogs(pattern string, since time.Duration)
 	if err != nil {
 		return false, err
 	}
-	
+
 	return strings.Contains(output, pattern), nil
 }
 
@@ -127,7 +130,7 @@ spec:
     image: curlimages/curl:latest
     command: ["curl", "-s", "http://optipod-controller-manager-metrics-service:8080/metrics"]
 `
-	
+
 	// Apply curl pod
 	cmd := exec.Command("kubectl", "apply", "-f", "-")
 	cmd.Stdin = strings.NewReader(curlPod)
@@ -135,30 +138,31 @@ spec:
 	if err != nil {
 		return err
 	}
-	
+
 	// Wait for pod to complete and check logs
-	Eventually(func() string {
-		cmd := exec.Command("kubectl", "get", "pod", "curl-metrics-test", "-n", "optipod-system", "-o", "jsonpath={.status.phase}")
+	gomega.Eventually(func() string {
+		cmd := exec.Command("kubectl", "get", "pod", "curl-metrics-test", "-n", "optipod-system",
+			"-o", "jsonpath={.status.phase}")
 		output, _ := utils.Run(cmd)
 		return output
-	}, 1*time.Minute, 5*time.Second).Should(Equal("Succeeded"))
-	
+	}, 1*time.Minute, 5*time.Second).Should(gomega.Equal("Succeeded"))
+
 	// Get logs to check metrics content
 	cmd = exec.Command("kubectl", "logs", "curl-metrics-test", "-n", "optipod-system")
 	output, err := utils.Run(cmd)
 	if err != nil {
 		return err
 	}
-	
+
 	// Cleanup
 	cmd = exec.Command("kubectl", "delete", "pod", "curl-metrics-test", "-n", "optipod-system", "--ignore-not-found=true")
-	utils.Run(cmd)
-	
+	_, _ = utils.Run(cmd) // Ignore cleanup errors
+
 	// Validate metrics content
 	if !strings.Contains(output, "# HELP") {
 		return fmt.Errorf("metrics endpoint did not return Prometheus format")
 	}
-	
+
 	return nil
 }
 
@@ -172,7 +176,8 @@ func NewCleanupHelper() *CleanupHelper {
 
 // CleanupAllPolicies removes all OptimizationPolicies from optipod-system namespace
 func (c *CleanupHelper) CleanupAllPolicies() error {
-	cmd := exec.Command("kubectl", "delete", "optimizationpolicy", "--all", "-n", "optipod-system", "--ignore-not-found=true")
+	cmd := exec.Command("kubectl", "delete", "optimizationpolicy", "--all", "-n", "optipod-system",
+		"--ignore-not-found=true")
 	_, err := utils.Run(cmd)
 	return err
 }
@@ -197,12 +202,12 @@ func (c *CleanupHelper) CleanupTestWorkloads(namespace string) error {
 		"boundary-limits-test",
 		"invalid-bounds-test",
 	}
-	
+
 	for _, workload := range testWorkloads {
 		cmd := exec.Command("kubectl", "delete", "deployment", workload, "-n", namespace, "--ignore-not-found=true")
-		utils.Run(cmd) // Ignore errors for cleanup
+		_, _ = utils.Run(cmd) // Ignore cleanup errors
 	}
-	
+
 	return nil
 }
 

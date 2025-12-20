@@ -1,0 +1,150 @@
+name: Pre-commit Checks
+
+on:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [main, develop]
+
+permissions:
+  contents: read
+
+jobs:
+  pre-commit:
+    name: Pre-commit Hooks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install Go tools
+        run: |
+          go install golang.org/x/tools/cmd/goimports@latest
+          go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+
+      - name: Setup pre-commit
+        uses: pre-commit/action@v3.0.0
+        with:
+          extra_args: --all-files
+
+  format-check:
+    name: Code Formatting Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Check Go formatting
+        run: |
+          if [ "$(gofmt -l . | wc -l)" -gt 0 ]; then
+            echo "The following files are not properly formatted:"
+            gofmt -l .
+            echo "Please run 'make format' or 'gofmt -w .' to fix formatting issues."
+            exit 1
+          fi
+
+      - name: Check Go imports
+        run: |
+          go install golang.org/x/tools/cmd/goimports@latest
+          if [ "$(goimports -l . | wc -l)" -gt 0 ]; then
+            echo "The following files have import issues:"
+            goimports -l .
+            echo "Please run 'make format' or 'goimports -w .' to fix import issues."
+            exit 1
+          fi
+
+  lint-check:
+    name: Linting Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.5.0
+          args: --timeout=5m
+
+  security-check:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install detect-secrets
+        run: pip install detect-secrets
+
+      - name: Run detect-secrets
+        run: |
+          detect-secrets scan --baseline .secrets.baseline --force-use-all-plugins
+          if [ $? -ne 0 ]; then
+            echo "Potential secrets detected! Please review and update .secrets.baseline if needed."
+            exit 1
+          fi
+
+  yaml-check:
+    name: YAML Validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install yamllint
+        run: pip install yamllint
+
+      - name: Run yamllint
+        run: yamllint -c .yamllint.yml .
+
+  markdown-check:
+    name: Markdown Linting
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install markdownlint-cli
+        run: npm install -g markdownlint-cli
+
+      - name: Run markdownlint
+        run: markdownlint -c .markdownlint.yml *.md docs/

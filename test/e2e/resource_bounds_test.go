@@ -30,7 +30,7 @@ var _ = Describe("Resource Bounds Enforcement", func() {
 		By("Cleaning up any existing test resources")
 		cleanupHelper.CleanupAllPolicies()
 		cleanupHelper.CleanupTestWorkloads("default")
-		
+
 		// Wait a bit for cleanup to complete
 		time.Sleep(5 * time.Second)
 	})
@@ -232,21 +232,21 @@ var _ = Describe("Resource Bounds Enforcement", func() {
 			By("Attempting to create policy with invalid bounds (min > max)")
 			// This should either be rejected by the API server or handled gracefully
 			err := policyHelper.CreatePolicyFromFile("hack/test-policy-invalid-bounds.yaml")
-			
+
 			// We expect this to either fail (which is good) or succeed but be handled properly
 			if err != nil {
 				GinkgoWriter.Println("✓ Invalid bounds policy correctly rejected")
 				Expect(err.Error()).To(ContainSubstring("invalid"))
 			} else {
 				GinkgoWriter.Println("⚠ Invalid bounds policy was accepted - checking if handled properly")
-				
+
 				By("Verifying policy exists but may have validation issues")
 				Eventually(func() error {
 					cmd := exec.Command("kubectl", "get", "optimizationpolicy", "invalid-bounds-test", "-n", "optipod-system")
 					_, err := utils.Run(cmd)
 					return err
 				}, 30*time.Second, 5*time.Second).Should(Succeed())
-				
+
 				By("Checking policy status for validation errors")
 				cmd := exec.Command("kubectl", "get", "optimizationpolicy", "invalid-bounds-test", "-n", "optipod-system", "-o", "jsonpath={.status}")
 				output, err := utils.Run(cmd)

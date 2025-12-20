@@ -30,7 +30,7 @@ var _ = Describe("Policy Modes", func() {
 		By("Cleaning up any existing test resources")
 		cleanupHelper.CleanupAllPolicies()
 		cleanupHelper.CleanupTestWorkloads("default")
-		
+
 		// Wait a bit for cleanup to complete
 		time.Sleep(5 * time.Second)
 	})

@@ -78,7 +78,7 @@ var _ = Describe("Error Handling Unit Tests", func() {
 
 			for _, tc := range testCases {
 				// Simple validation that errors can be classified
-				Expect(tc.error).NotTo(BeNil())
+				Expect(tc.error).To(HaveOccurred())
 				Expect(tc.expectedType).NotTo(BeEmpty())
 				Expect(tc.error.Error()).NotTo(BeEmpty())
 			}
@@ -86,7 +86,7 @@ var _ = Describe("Error Handling Unit Tests", func() {
 
 		It("should handle unknown error types gracefully", func() {
 			unknownError := errors.New("unknown error condition")
-			Expect(unknownError).NotTo(BeNil())
+			Expect(unknownError).To(HaveOccurred())
 			Expect(unknownError.Error()).To(ContainSubstring("unknown"))
 		})
 	})

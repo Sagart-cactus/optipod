@@ -49,7 +49,8 @@ var _ = Describe("Observability Unit Tests", func() {
 			validMetricLines := []string{
 				`optipod_workloads_monitored{namespace="default",policy="test-policy"} 1`,
 				`optipod_reconciliation_errors_total{policy="test-policy",error_type="validation"} 0`,
-				`optipod_ssa_patch_total{policy="test",namespace="default",workload="app",kind="Deployment",status="success",patch_type="strategic"} 1`,
+				`optipod_ssa_patch_total{policy="test",namespace="default",workload="app",` +
+					`kind="Deployment",status="success",patch_type="strategic"} 1`,
 			}
 
 			for _, line := range validMetricLines {
@@ -136,7 +137,7 @@ var _ = Describe("Observability Unit Tests", func() {
 			// Test that our regex patterns are working
 			timestampRegex := regexp.MustCompile(`\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}`)
 			testLog := `2025-01-01T12:00:00.000Z INFO Test message`
-			
+
 			Expect(timestampRegex.MatchString(testLog)).To(BeTrue())
 		})
 	})
