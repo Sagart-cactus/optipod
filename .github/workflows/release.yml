@@ -183,7 +183,6 @@ jobs:
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.licenses=Apache-2.0
             org.opencontainers.image.created=${{ github.event.repository.updated_at }}
-          cache-from: type=registry,ref=${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:buildcache
           cache-to: type=registry,ref=${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:buildcache,mode=max
 
       - name: Save image to tar
