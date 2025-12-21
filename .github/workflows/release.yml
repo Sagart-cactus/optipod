@@ -183,7 +183,8 @@ jobs:
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.licenses=Apache-2.0
             org.opencontainers.image.created=${{ github.event.repository.updated_at }}
-          cache-to: type=registry,ref=${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:buildcache,mode=max
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
       - name: Save image to tar
         run: |
@@ -472,8 +473,8 @@ jobs:
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.licenses=Apache-2.0
             org.opencontainers.image.created=${{ github.event.repository.updated_at }}
-          cache-from: type=registry,ref=${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:buildcache
-          cache-to: type=registry,ref=${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:buildcache,mode=max
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
       - name: Verify image is pullable
         run: |
@@ -552,7 +553,7 @@ jobs:
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.licenses=Apache-2.0
             org.opencontainers.image.created=${{ github.event.repository.updated_at }}
-          cache-from: type=registry,ref=${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:buildcache
+          cache-from: type=gha
 
       - name: Verify Docker Hub image
         if: steps.check_dockerhub.outputs.has_credentials == 'true'
