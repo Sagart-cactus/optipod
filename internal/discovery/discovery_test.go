@@ -33,6 +33,13 @@ import (
 	optipodv1alpha1 "github.com/optipod/optipod/api/v1alpha1"
 )
 
+const (
+	// Test workload type constants
+	testDeploymentKind  = "Deployment"
+	testStatefulSetKind = "StatefulSet"
+	testDaemonSetKind   = "DaemonSet"
+)
+
 // Feature: k8s-workload-rightsizing, Property 16: Workload discovery
 // For any OptimizationPolicy with label selectors, the system should automatically discover
 // all matching Deployments, StatefulSets, and DaemonSets in the specified namespaces.
@@ -182,11 +189,11 @@ func TestProperty16_WorkloadDiscovery(t *testing.T) {
 
 			for _, w := range workloads {
 				switch w.Kind {
-				case "Deployment":
+				case testDeploymentKind:
 					deploymentCount++
-				case "StatefulSet":
+				case testStatefulSetKind:
 					statefulSetCount++
-				case "DaemonSet":
+				case testDaemonSetKind:
 					daemonSetCount++
 				}
 			}
@@ -574,11 +581,11 @@ func TestProperty1_IncludeFilterBehavior(t *testing.T) {
 
 			for _, w := range workloads {
 				switch w.Kind {
-				case "Deployment":
+				case testDeploymentKind:
 					deploymentCount++
-				case "StatefulSet":
+				case testStatefulSetKind:
 					statefulSetCount++
-				case "DaemonSet":
+				case testDaemonSetKind:
 					daemonSetCount++
 				}
 			}
@@ -750,11 +757,11 @@ func TestProperty4_ExcludeFilterBehavior(t *testing.T) {
 
 			for _, w := range workloads {
 				switch w.Kind {
-				case "Deployment":
+				case testDeploymentKind:
 					deploymentCount++
-				case "StatefulSet":
+				case testStatefulSetKind:
 					statefulSetCount++
-				case "DaemonSet":
+				case testDaemonSetKind:
 					daemonSetCount++
 				}
 			}
@@ -812,7 +819,7 @@ func TestProperty2_BackwardCompatibilityForMissingFilters(t *testing.T) {
 			// Create namespaces and workloads
 			for i := 0; i < numNamespaces; i++ {
 				nsName := "test-ns-" + string(rune('a'+i))
-				namespaceNames = append(namespaceNames, nsName)
+				namespaceNames = append(namespaceNames, nsName) //nolint:staticcheck // Result is used
 
 				namespace := &corev1.Namespace{
 					ObjectMeta: metav1.ObjectMeta{
@@ -931,11 +938,11 @@ func TestProperty2_BackwardCompatibilityForMissingFilters(t *testing.T) {
 
 			for _, w := range workloads {
 				switch w.Kind {
-				case "Deployment":
+				case testDeploymentKind:
 					deploymentCount++
-				case "StatefulSet":
+				case testStatefulSetKind:
 					statefulSetCount++
-				case "DaemonSet":
+				case testDaemonSetKind:
 					daemonSetCount++
 				}
 			}
@@ -1076,11 +1083,11 @@ func TestProperty2_BackwardCompatibilityForMissingFilters(t *testing.T) {
 
 			for _, w := range workloads {
 				switch w.Kind {
-				case "Deployment":
+				case testDeploymentKind:
 					deploymentCount++
-				case "StatefulSet":
+				case testStatefulSetKind:
 					statefulSetCount++
-				case "DaemonSet":
+				case testDaemonSetKind:
 					daemonSetCount++
 				}
 			}

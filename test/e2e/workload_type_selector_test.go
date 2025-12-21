@@ -18,6 +18,8 @@ package e2e
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -27,6 +29,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	optipodv1alpha1 "github.com/optipod/optipod/api/v1alpha1"
 	"github.com/optipod/optipod/internal/discovery"
@@ -35,31 +38,22 @@ import (
 
 var _ = Describe("Workload Type Selector E2E Tests", func() {
 	const (
-		timeout  = time.Second * 30
-		interval = time.Millisecond * 250
+		timeout          = time.Second * 30
+		interval         = time.Millisecond * 250
+		namespaceTimeout = time.Minute * 2 // Longer timeout for namespace operations
 	)
 
 	var (
-		testNamespace = "workload-type-test"
+		testNamespace string
 		ctx           = context.Background()
 	)
 
 	BeforeEach(func() {
-		// Ensure any previous namespace is fully deleted before creating new one
-		ns := &corev1.Namespace{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: testNamespace,
-			},
-		}
-
-		// Wait for any existing namespace to be fully deleted
-		Eventually(func() bool {
-			err := utils.GetResource(ctx, types.NamespacedName{Name: testNamespace}, ns)
-			return err != nil // Returns true when namespace no longer exists
-		}, timeout, interval).Should(BeTrue(), "Previous namespace should be fully deleted")
+		// Generate unique namespace name for each test to avoid conflicts
+		testNamespace = fmt.Sprintf("workload-type-test-%d", time.Now().UnixNano())
 
 		// Create test namespace
-		ns = &corev1.Namespace{
+		ns := &corev1.Namespace{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: testNamespace,
 				Labels: map[string]string{
@@ -70,91 +64,106 @@ var _ = Describe("Workload Type Selector E2E Tests", func() {
 		}
 		err := utils.CreateResource(ctx, ns)
 		Expect(err).NotTo(HaveOccurred())
+
+		// Wait for namespace to be ready
+		Eventually(func() bool {
+			err := utils.GetResource(ctx, types.NamespacedName{Name: testNamespace}, ns)
+			return err == nil && ns.Status.Phase == corev1.NamespaceActive
+		}, timeout, interval).Should(BeTrue(), "Namespace should be active")
 	})
 
 	AfterEach(func() {
-		// Clean up test namespace and wait for deletion
+		// Clean up all resources in the namespace first
+		By("Cleaning up test resources")
+
+		// Delete all optimization policies in the namespace
+		policyList := &optipodv1alpha1.OptimizationPolicyList{}
+		err := utils.GetClient().List(ctx, policyList, client.InNamespace("default"))
+		if err == nil {
+			for _, policy := range policyList.Items {
+				if strings.Contains(policy.Name, "test") || strings.Contains(policy.Name, "policy") {
+					_ = utils.DeleteResource(ctx, &policy)
+				}
+			}
+		}
+
+		// Delete all deployments in test namespace
+		deploymentList := &appsv1.DeploymentList{}
+		err = utils.GetClient().List(ctx, deploymentList, client.InNamespace(testNamespace))
+		if err == nil {
+			for _, deployment := range deploymentList.Items {
+				_ = utils.DeleteResource(ctx, &deployment)
+			}
+		}
+
+		// Delete all statefulsets in test namespace
+		statefulSetList := &appsv1.StatefulSetList{}
+		err = utils.GetClient().List(ctx, statefulSetList, client.InNamespace(testNamespace))
+		if err == nil {
+			for _, statefulSet := range statefulSetList.Items {
+				_ = utils.DeleteResource(ctx, &statefulSet)
+			}
+		}
+
+		// Delete all daemonsets in test namespace
+		daemonSetList := &appsv1.DaemonSetList{}
+		err = utils.GetClient().List(ctx, daemonSetList, client.InNamespace(testNamespace))
+		if err == nil {
+			for _, daemonSet := range daemonSetList.Items {
+				_ = utils.DeleteResource(ctx, &daemonSet)
+			}
+		}
+
+		// Wait a bit for resources to be cleaned up
+		time.Sleep(5 * time.Second)
+
+		// Clean up test namespace
 		ns := &corev1.Namespace{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: testNamespace,
 			},
 		}
-		err := utils.DeleteResource(ctx, ns)
+		err = utils.DeleteResource(ctx, ns)
 		if err != nil {
 			// Namespace might already be deleted, which is fine
+			GinkgoWriter.Printf("Warning: Failed to delete namespace %s: %v\n", testNamespace, err)
 			return
 		}
 
-		// Wait for namespace to be fully deleted
+		// Wait for namespace to be fully deleted with longer timeout
 		Eventually(func() bool {
 			err := utils.GetResource(ctx, types.NamespacedName{Name: testNamespace}, ns)
 			return err != nil // Returns true when namespace no longer exists
-		}, timeout, interval).Should(BeTrue(), "Namespace should be deleted")
+		}, namespaceTimeout, interval).Should(BeTrue(), "Namespace should be deleted")
 	})
 
 	Context("Complete Workflow Tests", func() {
 		It("Should complete full workflow from policy creation to workload discovery with include filter", func() {
 			// Create test workloads of different types
-			deployment := createTestDeployment("test-deployment", testNamespace, map[string]string{
+			deployment := createTestDeployment(testNamespace, map[string]string{
 				"app":      "web",
 				"optimize": "true",
 			})
 			Expect(utils.CreateResource(ctx, deployment)).Should(Succeed())
 
-			statefulSet := createTestStatefulSet("test-statefulset", testNamespace, map[string]string{
+			statefulSet := createTestStatefulSet(testNamespace, map[string]string{
 				"app":      "database",
 				"optimize": "true",
 			})
 			Expect(utils.CreateResource(ctx, statefulSet)).Should(Succeed())
 
-			daemonSet := createTestDaemonSet("test-daemonset", testNamespace, map[string]string{
+			daemonSet := createTestDaemonSet(testNamespace, map[string]string{
 				"app":      "monitoring",
 				"optimize": "true",
 			})
 			Expect(utils.CreateResource(ctx, daemonSet)).Should(Succeed())
 
 			// Create policy that only includes Deployments
-			policy := &optipodv1alpha1.OptimizationPolicy{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "deployment-only-policy",
-					Namespace: "default",
+			policy := createBasicOptimizationPolicy("deployment-only-policy", &optipodv1alpha1.WorkloadTypeFilter{
+				Include: []optipodv1alpha1.WorkloadType{
+					optipodv1alpha1.WorkloadTypeDeployment,
 				},
-				Spec: optipodv1alpha1.OptimizationPolicySpec{
-					Mode: optipodv1alpha1.ModeRecommend,
-					Selector: optipodv1alpha1.WorkloadSelector{
-						NamespaceSelector: &metav1.LabelSelector{
-							MatchLabels: map[string]string{"environment": "test"},
-						},
-						WorkloadSelector: &metav1.LabelSelector{
-							MatchLabels: map[string]string{"optimize": "true"},
-						},
-						WorkloadTypes: &optipodv1alpha1.WorkloadTypeFilter{
-							Include: []optipodv1alpha1.WorkloadType{
-								optipodv1alpha1.WorkloadTypeDeployment,
-							},
-						},
-					},
-					MetricsConfig: optipodv1alpha1.MetricsConfig{
-						Provider:   "metrics-server",
-						Percentile: "P90",
-					},
-					ResourceBounds: optipodv1alpha1.ResourceBounds{
-						CPU: optipodv1alpha1.ResourceBound{
-							Min: resource.MustParse("50m"),
-							Max: resource.MustParse("2000m"),
-						},
-						Memory: optipodv1alpha1.ResourceBound{
-							Min: resource.MustParse("64Mi"),
-							Max: resource.MustParse("4Gi"),
-						},
-					},
-					UpdateStrategy: optipodv1alpha1.UpdateStrategy{
-						AllowInPlaceResize: true,
-						UpdateRequestsOnly: true,
-					},
-					ReconciliationInterval: metav1.Duration{Duration: 1 * time.Minute},
-				},
-			}
+			})
 			Expect(utils.CreateResource(ctx, policy)).Should(Succeed())
 
 			// Wait for policy to be processed
@@ -222,66 +231,30 @@ var _ = Describe("Workload Type Selector E2E Tests", func() {
 
 		It("Should complete full workflow with exclude filter", func() {
 			// Create test workloads of different types
-			deployment := createTestDeployment("test-deployment", testNamespace, map[string]string{
+			deployment := createTestDeployment(testNamespace, map[string]string{
 				"app":      "web",
 				"optimize": "true",
 			})
 			Expect(utils.CreateResource(ctx, deployment)).Should(Succeed())
 
-			statefulSet := createTestStatefulSet("test-statefulset", testNamespace, map[string]string{
+			statefulSet := createTestStatefulSet(testNamespace, map[string]string{
 				"app":      "database",
 				"optimize": "true",
 			})
 			Expect(utils.CreateResource(ctx, statefulSet)).Should(Succeed())
 
-			daemonSet := createTestDaemonSet("test-daemonset", testNamespace, map[string]string{
+			daemonSet := createTestDaemonSet(testNamespace, map[string]string{
 				"app":      "monitoring",
 				"optimize": "true",
 			})
 			Expect(utils.CreateResource(ctx, daemonSet)).Should(Succeed())
 
 			// Create policy that excludes StatefulSets
-			policy := &optipodv1alpha1.OptimizationPolicy{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "exclude-statefulset-policy",
-					Namespace: "default",
+			policy := createBasicOptimizationPolicy("exclude-statefulset-policy", &optipodv1alpha1.WorkloadTypeFilter{
+				Exclude: []optipodv1alpha1.WorkloadType{
+					optipodv1alpha1.WorkloadTypeStatefulSet,
 				},
-				Spec: optipodv1alpha1.OptimizationPolicySpec{
-					Mode: optipodv1alpha1.ModeRecommend,
-					Selector: optipodv1alpha1.WorkloadSelector{
-						NamespaceSelector: &metav1.LabelSelector{
-							MatchLabels: map[string]string{"environment": "test"},
-						},
-						WorkloadSelector: &metav1.LabelSelector{
-							MatchLabels: map[string]string{"optimize": "true"},
-						},
-						WorkloadTypes: &optipodv1alpha1.WorkloadTypeFilter{
-							Exclude: []optipodv1alpha1.WorkloadType{
-								optipodv1alpha1.WorkloadTypeStatefulSet,
-							},
-						},
-					},
-					MetricsConfig: optipodv1alpha1.MetricsConfig{
-						Provider:   "metrics-server",
-						Percentile: "P90",
-					},
-					ResourceBounds: optipodv1alpha1.ResourceBounds{
-						CPU: optipodv1alpha1.ResourceBound{
-							Min: resource.MustParse("50m"),
-							Max: resource.MustParse("2000m"),
-						},
-						Memory: optipodv1alpha1.ResourceBound{
-							Min: resource.MustParse("64Mi"),
-							Max: resource.MustParse("4Gi"),
-						},
-					},
-					UpdateStrategy: optipodv1alpha1.UpdateStrategy{
-						AllowInPlaceResize: true,
-						UpdateRequestsOnly: true,
-					},
-					ReconciliationInterval: metav1.Duration{Duration: 1 * time.Minute},
-				},
-			}
+			})
 			Expect(utils.CreateResource(ctx, policy)).Should(Succeed())
 
 			// Wait for policy to be processed and verify discovery
@@ -329,19 +302,19 @@ var _ = Describe("Workload Type Selector E2E Tests", func() {
 
 		It("Should handle backward compatibility with existing policies", func() {
 			// Create test workloads of different types
-			deployment := createTestDeployment("test-deployment", testNamespace, map[string]string{
+			deployment := createTestDeployment(testNamespace, map[string]string{
 				"app":      "web",
 				"optimize": "true",
 			})
 			Expect(utils.CreateResource(ctx, deployment)).Should(Succeed())
 
-			statefulSet := createTestStatefulSet("test-statefulset", testNamespace, map[string]string{
+			statefulSet := createTestStatefulSet(testNamespace, map[string]string{
 				"app":      "database",
 				"optimize": "true",
 			})
 			Expect(utils.CreateResource(ctx, statefulSet)).Should(Succeed())
 
-			daemonSet := createTestDaemonSet("test-daemonset", testNamespace, map[string]string{
+			daemonSet := createTestDaemonSet(testNamespace, map[string]string{
 				"app":      "monitoring",
 				"optimize": "true",
 			})
@@ -434,112 +407,56 @@ var _ = Describe("Workload Type Selector E2E Tests", func() {
 	Context("Multiple Policy Interaction Tests", func() {
 		It("Should handle multiple policies with different workload type filters", func() {
 			// Create test workloads of different types
-			deployment := createTestDeployment("test-deployment", testNamespace, map[string]string{
+			deployment := createTestDeployment(testNamespace, map[string]string{
 				"app":      "web",
 				"optimize": "true",
 			})
 			Expect(utils.CreateResource(ctx, deployment)).Should(Succeed())
 
-			statefulSet := createTestStatefulSet("test-statefulset", testNamespace, map[string]string{
+			statefulSet := createTestStatefulSet(testNamespace, map[string]string{
 				"app":      "database",
 				"optimize": "true",
 			})
 			Expect(utils.CreateResource(ctx, statefulSet)).Should(Succeed())
 
-			daemonSet := createTestDaemonSet("test-daemonset", testNamespace, map[string]string{
+			daemonSet := createTestDaemonSet(testNamespace, map[string]string{
 				"app":      "monitoring",
 				"optimize": "true",
 			})
 			Expect(utils.CreateResource(ctx, daemonSet)).Should(Succeed())
 
 			// Create first policy for Deployments only
-			deploymentPolicy := &optipodv1alpha1.OptimizationPolicy{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "deployment-policy",
-					Namespace: "default",
+			deploymentPolicy := createWeightedOptimizationPolicy(
+				"deployment-policy",
+				100, // Higher weight
+				&optipodv1alpha1.WorkloadTypeFilter{
+					Include: []optipodv1alpha1.WorkloadType{
+						optipodv1alpha1.WorkloadTypeDeployment,
+					},
 				},
-				Spec: optipodv1alpha1.OptimizationPolicySpec{
-					Mode:   optipodv1alpha1.ModeRecommend,
-					Weight: int32Ptr(100), // Higher weight
-					Selector: optipodv1alpha1.WorkloadSelector{
-						NamespaceSelector: &metav1.LabelSelector{
-							MatchLabels: map[string]string{"environment": "test"},
-						},
-						WorkloadSelector: &metav1.LabelSelector{
-							MatchLabels: map[string]string{"optimize": "true"},
-						},
-						WorkloadTypes: &optipodv1alpha1.WorkloadTypeFilter{
-							Include: []optipodv1alpha1.WorkloadType{
-								optipodv1alpha1.WorkloadTypeDeployment,
-							},
-						},
-					},
-					MetricsConfig: optipodv1alpha1.MetricsConfig{
-						Provider:   "metrics-server",
-						Percentile: "P90",
-					},
-					ResourceBounds: optipodv1alpha1.ResourceBounds{
-						CPU: optipodv1alpha1.ResourceBound{
-							Min: resource.MustParse("50m"),
-							Max: resource.MustParse("2000m"),
-						},
-						Memory: optipodv1alpha1.ResourceBound{
-							Min: resource.MustParse("64Mi"),
-							Max: resource.MustParse("4Gi"),
-						},
-					},
-					UpdateStrategy: optipodv1alpha1.UpdateStrategy{
-						AllowInPlaceResize: true,
-						UpdateRequestsOnly: true,
-					},
-					ReconciliationInterval: metav1.Duration{Duration: 1 * time.Minute},
-				},
-			}
+				"P90",
+				"50m", "2000m",
+				"64Mi", "4Gi",
+				true, true,
+				1*time.Minute,
+			)
 			Expect(utils.CreateResource(ctx, deploymentPolicy)).Should(Succeed())
 
 			// Create second policy for StatefulSets only
-			statefulSetPolicy := &optipodv1alpha1.OptimizationPolicy{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "statefulset-policy",
-					Namespace: "default",
+			statefulSetPolicy := createWeightedOptimizationPolicy(
+				"statefulset-policy",
+				50, // Lower weight
+				&optipodv1alpha1.WorkloadTypeFilter{
+					Include: []optipodv1alpha1.WorkloadType{
+						optipodv1alpha1.WorkloadTypeStatefulSet,
+					},
 				},
-				Spec: optipodv1alpha1.OptimizationPolicySpec{
-					Mode:   optipodv1alpha1.ModeRecommend,
-					Weight: int32Ptr(50), // Lower weight
-					Selector: optipodv1alpha1.WorkloadSelector{
-						NamespaceSelector: &metav1.LabelSelector{
-							MatchLabels: map[string]string{"environment": "test"},
-						},
-						WorkloadSelector: &metav1.LabelSelector{
-							MatchLabels: map[string]string{"optimize": "true"},
-						},
-						WorkloadTypes: &optipodv1alpha1.WorkloadTypeFilter{
-							Include: []optipodv1alpha1.WorkloadType{
-								optipodv1alpha1.WorkloadTypeStatefulSet,
-							},
-						},
-					},
-					MetricsConfig: optipodv1alpha1.MetricsConfig{
-						Provider:   "metrics-server",
-						Percentile: "P99",
-					},
-					ResourceBounds: optipodv1alpha1.ResourceBounds{
-						CPU: optipodv1alpha1.ResourceBound{
-							Min: resource.MustParse("100m"),
-							Max: resource.MustParse("4000m"),
-						},
-						Memory: optipodv1alpha1.ResourceBound{
-							Min: resource.MustParse("128Mi"),
-							Max: resource.MustParse("8Gi"),
-						},
-					},
-					UpdateStrategy: optipodv1alpha1.UpdateStrategy{
-						AllowInPlaceResize: false,
-						UpdateRequestsOnly: false,
-					},
-					ReconciliationInterval: metav1.Duration{Duration: 2 * time.Minute},
-				},
-			}
+				"P99",
+				"100m", "4000m",
+				"128Mi", "8Gi",
+				false, false,
+				2*time.Minute,
+			)
 			Expect(utils.CreateResource(ctx, statefulSetPolicy)).Should(Succeed())
 
 			// Wait for both policies to be processed
@@ -608,99 +525,43 @@ var _ = Describe("Workload Type Selector E2E Tests", func() {
 
 		It("Should handle weight-based selection with workload type filtering", func() {
 			// Create test deployment
-			deployment := createTestDeployment("test-deployment", testNamespace, map[string]string{
+			deployment := createTestDeployment(testNamespace, map[string]string{
 				"app":      "web",
 				"optimize": "true",
 			})
 			Expect(utils.CreateResource(ctx, deployment)).Should(Succeed())
 
 			// Create two policies that both target Deployments with different weights
-			highWeightPolicy := &optipodv1alpha1.OptimizationPolicy{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "high-weight-policy",
-					Namespace: "default",
+			highWeightPolicy := createWeightedOptimizationPolicy(
+				"high-weight-policy",
+				200, // Higher weight
+				&optipodv1alpha1.WorkloadTypeFilter{
+					Include: []optipodv1alpha1.WorkloadType{
+						optipodv1alpha1.WorkloadTypeDeployment,
+					},
 				},
-				Spec: optipodv1alpha1.OptimizationPolicySpec{
-					Mode:   optipodv1alpha1.ModeRecommend,
-					Weight: int32Ptr(200), // Higher weight
-					Selector: optipodv1alpha1.WorkloadSelector{
-						NamespaceSelector: &metav1.LabelSelector{
-							MatchLabels: map[string]string{"environment": "test"},
-						},
-						WorkloadSelector: &metav1.LabelSelector{
-							MatchLabels: map[string]string{"optimize": "true"},
-						},
-						WorkloadTypes: &optipodv1alpha1.WorkloadTypeFilter{
-							Include: []optipodv1alpha1.WorkloadType{
-								optipodv1alpha1.WorkloadTypeDeployment,
-							},
-						},
-					},
-					MetricsConfig: optipodv1alpha1.MetricsConfig{
-						Provider:   "metrics-server",
-						Percentile: "P90",
-					},
-					ResourceBounds: optipodv1alpha1.ResourceBounds{
-						CPU: optipodv1alpha1.ResourceBound{
-							Min: resource.MustParse("50m"),
-							Max: resource.MustParse("2000m"),
-						},
-						Memory: optipodv1alpha1.ResourceBound{
-							Min: resource.MustParse("64Mi"),
-							Max: resource.MustParse("4Gi"),
-						},
-					},
-					UpdateStrategy: optipodv1alpha1.UpdateStrategy{
-						AllowInPlaceResize: true,
-						UpdateRequestsOnly: true,
-					},
-					ReconciliationInterval: metav1.Duration{Duration: 1 * time.Minute},
-				},
-			}
+				"P90",
+				"50m", "2000m",
+				"64Mi", "4Gi",
+				true, true,
+				1*time.Minute,
+			)
 			Expect(utils.CreateResource(ctx, highWeightPolicy)).Should(Succeed())
 
-			lowWeightPolicy := &optipodv1alpha1.OptimizationPolicy{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "low-weight-policy",
-					Namespace: "default",
+			lowWeightPolicy := createWeightedOptimizationPolicy(
+				"low-weight-policy",
+				50, // Lower weight
+				&optipodv1alpha1.WorkloadTypeFilter{
+					Include: []optipodv1alpha1.WorkloadType{
+						optipodv1alpha1.WorkloadTypeDeployment,
+					},
 				},
-				Spec: optipodv1alpha1.OptimizationPolicySpec{
-					Mode:   optipodv1alpha1.ModeRecommend,
-					Weight: int32Ptr(50), // Lower weight
-					Selector: optipodv1alpha1.WorkloadSelector{
-						NamespaceSelector: &metav1.LabelSelector{
-							MatchLabels: map[string]string{"environment": "test"},
-						},
-						WorkloadSelector: &metav1.LabelSelector{
-							MatchLabels: map[string]string{"optimize": "true"},
-						},
-						WorkloadTypes: &optipodv1alpha1.WorkloadTypeFilter{
-							Include: []optipodv1alpha1.WorkloadType{
-								optipodv1alpha1.WorkloadTypeDeployment,
-							},
-						},
-					},
-					MetricsConfig: optipodv1alpha1.MetricsConfig{
-						Provider:   "metrics-server",
-						Percentile: "P50",
-					},
-					ResourceBounds: optipodv1alpha1.ResourceBounds{
-						CPU: optipodv1alpha1.ResourceBound{
-							Min: resource.MustParse("100m"),
-							Max: resource.MustParse("4000m"),
-						},
-						Memory: optipodv1alpha1.ResourceBound{
-							Min: resource.MustParse("128Mi"),
-							Max: resource.MustParse("8Gi"),
-						},
-					},
-					UpdateStrategy: optipodv1alpha1.UpdateStrategy{
-						AllowInPlaceResize: false,
-						UpdateRequestsOnly: false,
-					},
-					ReconciliationInterval: metav1.Duration{Duration: 2 * time.Minute},
-				},
-			}
+				"P50",
+				"100m", "4000m",
+				"128Mi", "8Gi",
+				false, false,
+				2*time.Minute,
+			)
 			Expect(utils.CreateResource(ctx, lowWeightPolicy)).Should(Succeed())
 
 			// Wait for both policies to be processed
@@ -743,13 +604,13 @@ var _ = Describe("Workload Type Selector E2E Tests", func() {
 	Context("Edge Cases and Error Handling", func() {
 		It("Should handle policies with conflicting include/exclude filters", func() {
 			// Create test workloads
-			deployment := createTestDeployment("test-deployment", testNamespace, map[string]string{
+			deployment := createTestDeployment(testNamespace, map[string]string{
 				"app":      "web",
 				"optimize": "true",
 			})
 			Expect(utils.CreateResource(ctx, deployment)).Should(Succeed())
 
-			statefulSet := createTestStatefulSet("test-statefulset", testNamespace, map[string]string{
+			statefulSet := createTestStatefulSet(testNamespace, map[string]string{
 				"app":      "database",
 				"optimize": "true",
 			})
@@ -847,7 +708,7 @@ var _ = Describe("Workload Type Selector E2E Tests", func() {
 
 		It("Should handle policies that result in no discoverable workloads", func() {
 			// Create test workloads
-			deployment := createTestDeployment("test-deployment", testNamespace, map[string]string{
+			deployment := createTestDeployment(testNamespace, map[string]string{
 				"app":      "web",
 				"optimize": "true",
 			})
@@ -951,10 +812,77 @@ var _ = Describe("Workload Type Selector E2E Tests", func() {
 
 // Helper functions for creating test workloads
 
-func createTestDeployment(name, namespace string, labels map[string]string) *appsv1.Deployment {
-	return &appsv1.Deployment{
+// Helper functions for creating test policies
+
+func createBasicOptimizationPolicy(
+	name string,
+	workloadTypes *optipodv1alpha1.WorkloadTypeFilter,
+) *optipodv1alpha1.OptimizationPolicy {
+	return &optipodv1alpha1.OptimizationPolicy{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
+			Namespace: "default",
+		},
+		Spec: optipodv1alpha1.OptimizationPolicySpec{
+			Mode: optipodv1alpha1.ModeRecommend,
+			Selector: optipodv1alpha1.WorkloadSelector{
+				NamespaceSelector: &metav1.LabelSelector{
+					MatchLabels: map[string]string{"environment": "test"},
+				},
+				WorkloadSelector: &metav1.LabelSelector{
+					MatchLabels: map[string]string{"optimize": "true"},
+				},
+				WorkloadTypes: workloadTypes,
+			},
+			MetricsConfig: optipodv1alpha1.MetricsConfig{
+				Provider:   "metrics-server",
+				Percentile: "P90",
+			},
+			ResourceBounds: optipodv1alpha1.ResourceBounds{
+				CPU: optipodv1alpha1.ResourceBound{
+					Min: resource.MustParse("50m"),
+					Max: resource.MustParse("2000m"),
+				},
+				Memory: optipodv1alpha1.ResourceBound{
+					Min: resource.MustParse("64Mi"),
+					Max: resource.MustParse("4Gi"),
+				},
+			},
+			UpdateStrategy: optipodv1alpha1.UpdateStrategy{
+				AllowInPlaceResize: true,
+				UpdateRequestsOnly: true,
+			},
+			ReconciliationInterval: metav1.Duration{Duration: 1 * time.Minute},
+		},
+	}
+}
+
+func createWeightedOptimizationPolicy(
+	name string,
+	weight int32,
+	workloadTypes *optipodv1alpha1.WorkloadTypeFilter,
+	percentile string,
+	cpuMin, cpuMax, memMin, memMax string,
+	allowResize, requestsOnly bool,
+	interval time.Duration,
+) *optipodv1alpha1.OptimizationPolicy {
+	policy := createBasicOptimizationPolicy(name, workloadTypes)
+	policy.Spec.Weight = &weight
+	policy.Spec.MetricsConfig.Percentile = percentile
+	policy.Spec.ResourceBounds.CPU.Min = resource.MustParse(cpuMin)
+	policy.Spec.ResourceBounds.CPU.Max = resource.MustParse(cpuMax)
+	policy.Spec.ResourceBounds.Memory.Min = resource.MustParse(memMin)
+	policy.Spec.ResourceBounds.Memory.Max = resource.MustParse(memMax)
+	policy.Spec.UpdateStrategy.AllowInPlaceResize = allowResize
+	policy.Spec.UpdateStrategy.UpdateRequestsOnly = requestsOnly
+	policy.Spec.ReconciliationInterval = metav1.Duration{Duration: interval}
+	return policy
+}
+
+func createTestDeployment(namespace string, labels map[string]string) *appsv1.Deployment {
+	return &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-deployment",
 			Namespace: namespace,
 			Labels:    labels,
 		},
@@ -986,10 +914,10 @@ func createTestDeployment(name, namespace string, labels map[string]string) *app
 	}
 }
 
-func createTestStatefulSet(name, namespace string, labels map[string]string) *appsv1.StatefulSet {
+func createTestStatefulSet(namespace string, labels map[string]string) *appsv1.StatefulSet {
 	return &appsv1.StatefulSet{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
+			Name:      "test-statefulset",
 			Namespace: namespace,
 			Labels:    labels,
 		},
@@ -998,7 +926,7 @@ func createTestStatefulSet(name, namespace string, labels map[string]string) *ap
 			Selector: &metav1.LabelSelector{
 				MatchLabels: map[string]string{"app": labels["app"]},
 			},
-			ServiceName: name,
+			ServiceName: "test-statefulset",
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
 					Labels: map[string]string{"app": labels["app"]},
@@ -1022,10 +950,10 @@ func createTestStatefulSet(name, namespace string, labels map[string]string) *ap
 	}
 }
 
-func createTestDaemonSet(name, namespace string, labels map[string]string) *appsv1.DaemonSet {
+func createTestDaemonSet(namespace string, labels map[string]string) *appsv1.DaemonSet {
 	return &appsv1.DaemonSet{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
+			Name:      "test-daemonset",
 			Namespace: namespace,
 			Labels:    labels,
 		},

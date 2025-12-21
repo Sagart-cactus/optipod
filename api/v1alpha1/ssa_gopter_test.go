@@ -27,6 +27,8 @@ import (
 )
 
 const (
+	// Test workload type constants
+	testDeploymentKind = "Deployment"
 	// TestWorkloadName is the default workload name used in tests
 	TestWorkloadName = "test-workload"
 	// DefaultNamespace is the default namespace used in tests
@@ -175,7 +177,7 @@ func TestProperty_StatusTracksApplyMethod(t *testing.T) {
 			}
 			validKinds := []string{"Deployment", "StatefulSet", "DaemonSet"}
 			if kind == "" || !contains(validKinds, kind) {
-				kind = "Deployment"
+				kind = testDeploymentKind
 			}
 
 			// Create a workload status simulating SSA usage
@@ -214,7 +216,7 @@ func TestProperty_StatusTracksApplyMethod(t *testing.T) {
 			}
 			validKinds := []string{"Deployment", "StatefulSet", "DaemonSet"}
 			if kind == "" || !contains(validKinds, kind) {
-				kind = "Deployment"
+				kind = testDeploymentKind
 			}
 
 			// Create a workload status simulating Strategic Merge Patch usage

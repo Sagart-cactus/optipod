@@ -33,6 +33,12 @@ import (
 	"github.com/optipod/optipod/internal/discovery"
 )
 
+const (
+	// Test policy name constants
+	testPolicy1Name = "policy1"
+	testPolicy2Name = "policy2"
+)
+
 // Feature: workload-type-selector, Property 3: Policy Matcher Include Validation
 func TestPolicyMatcherIncludeValidation(t *testing.T) {
 	// **Validates: Requirements 1.5**
@@ -369,21 +375,21 @@ func TestProperty13_MultiplePolicyIndependence(t *testing.T) {
 
 			// If only one policy matches, it should be selected
 			if policy1Matches && !policy2Matches {
-				return err == nil && bestPolicy.Name == "policy1"
+				return err == nil && bestPolicy.Name == testPolicy1Name
 			}
 			if !policy1Matches && policy2Matches {
-				return err == nil && bestPolicy.Name == "policy2"
+				return err == nil && bestPolicy.Name == testPolicy2Name
 			}
 
 			// If both policies match, highest weight should be selected
 			if policy1Matches && policy2Matches {
 				if policy1Weight > policy2Weight {
-					return err == nil && bestPolicy.Name == "policy1"
+					return err == nil && bestPolicy.Name == testPolicy1Name
 				} else if policy2Weight > policy1Weight {
-					return err == nil && bestPolicy.Name == "policy2"
+					return err == nil && bestPolicy.Name == testPolicy2Name
 				} else {
 					// Equal weights - should select by name (policy1 < policy2)
-					return err == nil && bestPolicy.Name == "policy1"
+					return err == nil && bestPolicy.Name == testPolicy1Name
 				}
 			}
 
