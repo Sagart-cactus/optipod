@@ -1,0 +1,27 @@
+# Global code owners
+* @Sagart-cactus
+
+# API and CRD definitions
+/api/ @Sagart-cactus
+/config/crd/ @Sagart-cactus
+
+# Core controller logic
+/internal/controller/ @Sagart-cactus
+/internal/application/ @Sagart-cactus
+/internal/recommendation/ @Sagart-cactus
+
+# Security-sensitive files
+/config/rbac/ @Sagart-cactus
+/.github/workflows/ @Sagart-cactus
+/Dockerfile @Sagart-cactus
+
+# Documentation
+/docs/ @Sagart-cactus
+README.md @Sagart-cactus
+ROADMAP.md @Sagart-cactus
+
+# Release and build configuration
+/Makefile @Sagart-cactus
+/go.mod @Sagart-cactus
+/go.sum @Sagart-cactus
+/.github/workflows/release.yml @Sagart-cactus
