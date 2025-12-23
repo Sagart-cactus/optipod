@@ -267,16 +267,16 @@ jobs:
         run: |
           CRITICAL=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="CRITICAL")] | length' trivy-results.json)
           HIGH=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="HIGH")] | length' trivy-results.json)
-          
+
           echo "Critical vulnerabilities: $CRITICAL"
           echo "High vulnerabilities: $HIGH"
-          
+
           if [ "$CRITICAL" -gt 0 ] || [ "$HIGH" -gt 0 ]; then
             echo "Error: Found $CRITICAL critical and $HIGH high severity vulnerabilities"
             echo "Release blocked due to security vulnerabilities"
             exit 1
           fi
-          
+
           echo "No critical or high severity vulnerabilities found"
 
   sbom:
@@ -393,7 +393,7 @@ jobs:
               }
             ]
           }" > provenance.json
-          
+
           cosign attest --yes \
             --predicate provenance.json \
             --type slsaprovenance \
@@ -442,12 +442,12 @@ jobs:
           VERSION="${{ needs.setup.outputs.version }}"
           # Remove 'v' prefix
           VERSION_NO_V="${VERSION#v}"
-          
+
           # Extract major.minor.patch
           MAJOR=$(echo $VERSION_NO_V | cut -d. -f1)
           MINOR=$(echo $VERSION_NO_V | cut -d. -f2)
           PATCH=$(echo $VERSION_NO_V | cut -d. -f3 | cut -d- -f1)
-          
+
           echo "full=${VERSION}" >> $GITHUB_OUTPUT
           echo "major=${MAJOR}" >> $GITHUB_OUTPUT
           echo "minor=${MAJOR}.${MINOR}" >> $GITHUB_OUTPUT
@@ -630,54 +630,54 @@ jobs:
         id: release_notes
         run: |
           VERSION="${{ needs.setup.outputs.version }}"
-          
+
           # Get previous tag
           PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
-          
+
           # Generate changelog
           if [ -n "$PREV_TAG" ]; then
             CHANGELOG=$(git log ${PREV_TAG}..HEAD --pretty=format:"- %s (%h)" --no-merges)
           else
             CHANGELOG=$(git log --pretty=format:"- %s (%h)" --no-merges)
           fi
-          
+
           # Create release notes
           cat > release_notes.md <<EOF
           ## OptiPod ${VERSION}
-          
+
           ### Container Images
-          
+
           - \`ghcr.io/${{ github.repository }}:${VERSION}\`
           - \`ghcr.io/${{ github.repository }}:latest\`
-          
+
           ### Installation
-          
+
           \`\`\`bash
           kubectl apply -f https://github.com/${{ github.repository }}/releases/download/${VERSION}/install.yaml
           \`\`\`
-          
+
           ### What's Changed
-          
+
           ${CHANGELOG}
-          
+
           ### Artifacts
-          
+
           - **install.yaml**: Complete Kubernetes deployment manifest
           - **Binaries**: Pre-built binaries for multiple platforms
           - **sbom.json**: Software Bill of Materials
           - **trivy-results.json**: Security scan results
           - **checksums.txt**: SHA256 checksums for all binaries
-          
+
           ### Verification
-          
+
           Verify image signature:
           \`\`\`bash
           cosign verify ghcr.io/${{ github.repository }}:${VERSION}
           \`\`\`
-          
+
           **Full Changelog**: https://github.com/${{ github.repository }}/compare/${PREV_TAG}...${VERSION}
           EOF
-          
+
           cat release_notes.md
 
       - name: Check if pre-release

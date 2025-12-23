@@ -21,15 +21,20 @@ constructive in all interactions.
 
 1. Fork the repository
 2. Clone your fork:
+
    ```bash
    git clone https://github.com/YOUR_USERNAME/optipod.git
    cd optipod
    ```
+
 3. Install dependencies:
+
    ```bash
    go mod download
    ```
+
 4. Run tests to ensure everything works:
+
    ```bash
    make test
    ```
@@ -39,6 +44,7 @@ constructive in all interactions.
 ### Making Changes
 
 1. Create a new branch from main:
+
    ```bash
    git checkout main
    git pull origin main
@@ -48,6 +54,7 @@ constructive in all interactions.
 2. Make your changes following our coding standards
 
 3. Run tests and linting:
+
    ```bash
    make test
    make lint
@@ -55,6 +62,7 @@ constructive in all interactions.
    ```
 
 4. Commit your changes with a descriptive message:
+
    ```bash
    git commit -m "feat: add new feature description"
    ```
@@ -62,6 +70,7 @@ constructive in all interactions.
 ### Commit Message Format
 
 We follow conventional commits format:
+
 - `feat:` for new features
 - `fix:` for bug fixes
 - `docs:` for documentation changes
@@ -72,6 +81,7 @@ We follow conventional commits format:
 ### Pull Request Process
 
 1. Push your branch to your fork:
+
    ```bash
    git push origin feature/your-feature-name
    ```
@@ -117,7 +127,7 @@ We follow conventional commits format:
 
 ## Project Structure
 
-```
+```text
 ├── api/                    # Kubernetes API definitions
 ├── cmd/                    # Main application entry point
 ├── config/                 # Kubernetes manifests and configuration
@@ -136,6 +146,7 @@ We follow conventional commits format:
 ### Bug Reports
 
 Use the bug report template and include:
+
 - Clear description of the issue
 - Steps to reproduce
 - Expected vs actual behavior
@@ -145,6 +156,7 @@ Use the bug report template and include:
 ### Feature Requests
 
 Use the feature request template and include:
+
 - Clear description of the feature
 - Use case and benefits
 - Proposed implementation approach
