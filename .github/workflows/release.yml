@@ -12,10 +12,11 @@ on:
         type: string
 
 permissions:
-  contents: write        # Create releases and upload artifacts
-  packages: write        # Push to GHCR
-  id-token: write       # Keyless signing with cosign
-  security-events: write # Upload security scan results
+  contents: write
+  packages: write
+  id-token: write
+  security-events: write
+  actions: read
 
 env:
   REGISTRY_GHCR: ghcr.io
@@ -247,7 +248,7 @@ jobs:
             ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ needs.setup.outputs.version }}
 
       - name: Upload SARIF to GitHub Security
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
           sarif_file: trivy-results.sarif
@@ -480,85 +481,6 @@ jobs:
         run: |
           docker pull ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ steps.version.outputs.full }}
           docker pull ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:latest
-
-  publish-dockerhub:
-    name: Publish to Docker Hub (Optional)
-    runs-on: ubuntu-latest
-    needs: [setup, build, security-scan, sign]
-    continue-on-error: true
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Check Docker Hub credentials
-        id: check_dockerhub
-        run: |
-          if [ -n "${{ secrets.DOCKERHUB_USERNAME }}" ] && [ -n "${{ secrets.DOCKERHUB_TOKEN }}" ]; then
-            echo "has_credentials=true" >> $GITHUB_OUTPUT
-          else
-            echo "has_credentials=false" >> $GITHUB_OUTPUT
-            echo "Docker Hub credentials not found, skipping Docker Hub publish"
-          fi
-
-      - name: Log in to Docker Hub
-        if: steps.check_dockerhub.outputs.has_credentials == 'true'
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY_DOCKERHUB }}
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - name: Extract version components
-        id: version
-        run: |
-          VERSION="${{ needs.setup.outputs.version }}"
-          # Remove 'v' prefix
-          VERSION_NO_V="${VERSION#v}"
-          
-          # Extract major.minor.patch
-          MAJOR=$(echo $VERSION_NO_V | cut -d. -f1)
-          MINOR=$(echo $VERSION_NO_V | cut -d. -f2)
-          PATCH=$(echo $VERSION_NO_V | cut -d. -f3 | cut -d- -f1)
-          
-          echo "full=${VERSION}" >> $GITHUB_OUTPUT
-          echo "major=${MAJOR}" >> $GITHUB_OUTPUT
-          echo "minor=${MAJOR}.${MINOR}" >> $GITHUB_OUTPUT
-          echo "patch=${MAJOR}.${MINOR}.${PATCH}" >> $GITHUB_OUTPUT
-
-      - name: Build and push to Docker Hub
-        if: steps.check_dockerhub.outputs.has_credentials == 'true'
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          platforms: ${{ env.PLATFORMS }}
-          push: true
-          tags: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/optipod:${{ steps.version.outputs.full }}
-            ${{ secrets.DOCKERHUB_USERNAME }}/optipod:${{ steps.version.outputs.minor }}
-            ${{ secrets.DOCKERHUB_USERNAME }}/optipod:${{ steps.version.outputs.major }}
-            ${{ secrets.DOCKERHUB_USERNAME }}/optipod:latest
-          build-args: |
-            VERSION=${{ needs.setup.outputs.version }}
-            COMMIT=${{ github.sha }}
-            BUILD_DATE=${{ github.event.repository.updated_at }}
-          labels: |
-            org.opencontainers.image.source=${{ github.repositoryUrl }}
-            org.opencontainers.image.version=${{ needs.setup.outputs.version }}
-            org.opencontainers.image.revision=${{ github.sha }}
-            org.opencontainers.image.licenses=Apache-2.0
-            org.opencontainers.image.created=${{ github.event.repository.updated_at }}
-          cache-from: type=gha
-
-      - name: Verify Docker Hub image
-        if: steps.check_dockerhub.outputs.has_credentials == 'true'
-        run: |
-          docker pull ${{ secrets.DOCKERHUB_USERNAME }}/optipod:${{ steps.version.outputs.full }} || echo "Warning: Failed to verify Docker Hub image"
 
   generate-manifests:
     name: Generate Deployment Manifests
