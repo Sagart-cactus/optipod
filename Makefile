@@ -87,6 +87,39 @@ format: ## Format code using gofmt and goimports
 .PHONY: lint-all
 lint-all: lint ## Run all linting checks (alias for lint)
 
+.PHONY: lint-local
+lint-local: ## Run all local linting checks (format, yaml, markdown, go)
+	@echo "🔍 Running comprehensive local linting checks..."
+	@echo "📝 Checking Go formatting..."
+	@if [ "$$(gofmt -l . | wc -l)" -gt 0 ]; then \
+		echo "❌ Go formatting issues found:"; \
+		gofmt -l .; \
+		echo "Run 'make format' to fix"; \
+		exit 1; \
+	fi
+	@echo "📦 Checking Go imports..."
+	@if [ "$$(goimports -l . | wc -l)" -gt 0 ]; then \
+		echo "❌ Go import issues found:"; \
+		goimports -l .; \
+		echo "Run 'make format' to fix"; \
+		exit 1; \
+	fi
+	@echo "🔧 Running golangci-lint..."
+	@$(MAKE) lint
+	@echo "📄 Checking YAML files..."
+	@if command -v yamllint >/dev/null 2>&1; then \
+		yamllint -c .yamllint.yml .; \
+	else \
+		echo "⚠️  yamllint not found. Install with: pip3 install yamllint"; \
+	fi
+	@echo "📖 Checking Markdown files..."
+	@if command -v markdownlint >/dev/null 2>&1; then \
+		markdownlint -c .markdownlint.yml *.md docs/ || true; \
+	else \
+		echo "⚠️  markdownlint not found. Install with: npm install -g markdownlint-cli"; \
+	fi
+	@echo "✅ All local checks completed!"
+
 ##@ Development
 
 .PHONY: manifests
