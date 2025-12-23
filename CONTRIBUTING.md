@@ -1,10 +1,12 @@
 # Contributing to Optipod
 
-Thank you for your interest in contributing to Optipod! This document provides guidelines and information for contributors.
+Thank you for your interest in contributing to Optipod! This document provides guidelines and information for
+contributors.
 
 ## Code of Conduct
 
-By participating in this project, you agree to abide by our code of conduct. Please be respectful and constructive in all interactions.
+By participating in this project, you agree to abide by our code of conduct. Please be respectful and
+constructive in all interactions.
 
 ## Getting Started
 
