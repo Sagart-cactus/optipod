@@ -38,6 +38,9 @@ import (
 	"github.com/optipod/optipod/internal/policy"
 )
 
+// Initialize random generator once at package level to ensure proper jitter
+var rng = rand.New(rand.NewSource(time.Now().UnixNano()))
+
 // OptimizationPolicyReconciler reconciles a OptimizationPolicy object
 type OptimizationPolicyReconciler struct {
 	client.Client
@@ -431,7 +434,7 @@ func (r *OptimizationPolicyReconciler) calculateRequeueInterval(policyObj *optip
 	}
 
 	// Active processing - use base interval but with some jitter to avoid thundering herd
-	jitter := time.Duration(float64(baseInterval) * 0.1 * (0.5 + 0.5*rand.Float64()))
+	jitter := time.Duration(float64(baseInterval) * 0.1 * (0.5 + 0.5*rng.Float64()))
 	return baseInterval + jitter
 }
 

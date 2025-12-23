@@ -303,32 +303,42 @@ func (wp *WorkloadProcessor) getFirstPodName(workload *discovery.Workload) (stri
 		return fmt.Sprintf("%s-test-pod", workload.Name), nil
 	}
 
-	// Get the pod selector labels from the workload
-	var selector map[string]string
+	// Get the full pod selector from the workload (including MatchExpressions)
+	var labelSelector *metav1.LabelSelector
 
 	switch obj := workload.Object.(type) {
 	case *appsv1.Deployment:
-		selector = obj.Spec.Selector.MatchLabels
-		fmt.Printf("DEBUG: Looking for pods with selector %v in namespace %s\n", selector, workload.Namespace)
+		labelSelector = obj.Spec.Selector
+		fmt.Printf("DEBUG: Looking for pods with selector %+v in namespace %s\n", labelSelector, workload.Namespace)
 	case *appsv1.DaemonSet:
-		selector = obj.Spec.Selector.MatchLabels
-		fmt.Printf("DEBUG: Looking for pods with selector %v in namespace %s\n", selector, workload.Namespace)
+		labelSelector = obj.Spec.Selector
+		fmt.Printf("DEBUG: Looking for pods with selector %+v in namespace %s\n", labelSelector, workload.Namespace)
 	default:
 		return "", fmt.Errorf("unsupported workload type: %T", workload.Object)
 	}
 
-	// Query for pods matching the selector with a timeout context
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	// Create a context with timeout that respects cancellation
+	ctxWithTimeout, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	podList := &corev1.PodList{}
+
+	// Convert LabelSelector to labels.Selector for proper handling of MatchExpressions
+	selector, err := metav1.LabelSelectorAsSelector(labelSelector)
+	if err != nil {
+		return "", fmt.Errorf("failed to convert label selector: %w", err)
+	}
+
+	// Use MatchingLabelsSelector to handle both MatchLabels and MatchExpressions
 	listOpts := []client.ListOption{
 		client.InNamespace(workload.Namespace),
-		client.MatchingLabels(selector),
+		client.MatchingLabelsSelector{
+			Selector: selector,
+		},
 		client.Limit(1), // We only need one pod
 	}
 
-	if err := wp.client.List(ctx, podList, listOpts...); err != nil {
+	if err := wp.client.List(ctxWithTimeout, podList, listOpts...); err != nil {
 		fmt.Printf("DEBUG: Failed to list pods: %v\n", err)
 		return "", fmt.Errorf("failed to list pods: %w", err)
 	}
