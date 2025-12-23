@@ -22,7 +22,7 @@ env:
   REGISTRY_GHCR: ghcr.io
   REGISTRY_DOCKERHUB: docker.io
   IMAGE_NAME: ${{ github.repository }}
-  PLATFORMS: linux/amd64,linux/arm64,linux/s390x,linux/ppc64le
+  PLATFORMS: linux/amd64,linux/arm64
   GO_VERSION: '1.21'
 
 jobs:
