@@ -247,20 +247,36 @@ func (e *Engine) getCurrentResources(workload *Workload) (map[string]corev1.Reso
 		if requestsMap, ok := resourcesMap["requests"].(map[string]interface{}); ok {
 			reqs.Requests = corev1.ResourceList{}
 			if cpu, ok := requestsMap["cpu"].(string); ok {
-				reqs.Requests[corev1.ResourceCPU] = resource.MustParse(cpu)
+				if cpuQuantity, err := resource.ParseQuantity(cpu); err != nil {
+					return nil, fmt.Errorf("invalid CPU request quantity %q in container %s: %w", cpu, name, err)
+				} else {
+					reqs.Requests[corev1.ResourceCPU] = cpuQuantity
+				}
 			}
 			if memory, ok := requestsMap["memory"].(string); ok {
-				reqs.Requests[corev1.ResourceMemory] = resource.MustParse(memory)
+				if memoryQuantity, err := resource.ParseQuantity(memory); err != nil {
+					return nil, fmt.Errorf("invalid memory request quantity %q in container %s: %w", memory, name, err)
+				} else {
+					reqs.Requests[corev1.ResourceMemory] = memoryQuantity
+				}
 			}
 		}
 
 		if limitsMap, ok := resourcesMap["limits"].(map[string]interface{}); ok {
 			reqs.Limits = corev1.ResourceList{}
 			if cpu, ok := limitsMap["cpu"].(string); ok {
-				reqs.Limits[corev1.ResourceCPU] = resource.MustParse(cpu)
+				if cpuQuantity, err := resource.ParseQuantity(cpu); err != nil {
+					return nil, fmt.Errorf("invalid CPU limit quantity %q in container %s: %w", cpu, name, err)
+				} else {
+					reqs.Limits[corev1.ResourceCPU] = cpuQuantity
+				}
 			}
 			if memory, ok := limitsMap["memory"].(string); ok {
-				reqs.Limits[corev1.ResourceMemory] = resource.MustParse(memory)
+				if memoryQuantity, err := resource.ParseQuantity(memory); err != nil {
+					return nil, fmt.Errorf("invalid memory limit quantity %q in container %s: %w", memory, name, err)
+				} else {
+					reqs.Limits[corev1.ResourceMemory] = memoryQuantity
+				}
 			}
 		}
 
