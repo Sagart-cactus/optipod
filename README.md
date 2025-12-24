@@ -1,23 +1,29 @@
 # OptiPod
 
-[![CI](https://github.com/Sagart-cactus/optipod/actions/workflows/ci.yml/badge.svg)](https://github.com/Sagart-cactus/optipod/actions/workflows/ci.yml)
-[![Lint](https://github.com/Sagart-cactus/optipod/actions/workflows/lint.yml/badge.svg)](https://github.com/Sagart-cactus/optipod/actions/workflows/lint.yml)
-[![Tests](https://github.com/Sagart-cactus/optipod/actions/workflows/test.yml/badge.svg)](https://github.com/Sagart-cactus/optipod/actions/workflows/test.yml)
-[![E2E Tests](https://github.com/Sagart-cactus/optipod/actions/workflows/test-e2e.yml/badge.svg)](https://github.com/Sagart-cactus/optipod/actions/workflows/test-e2e.yml)
-[![Release](https://github.com/Sagart-cactus/optipod/actions/workflows/release.yml/badge.svg)](https://github.com/Sagart-cactus/optipod/actions/workflows/release.yml)
-[![Go Version](https://img.shields.io/github/go-mod/go-version/Sagart-cactus/optipod)](https://github.com/Sagart-cactus/optipod)
+[![CI][ci-badge]][ci-link]
+[![Lint][lint-badge]][lint-link]
+[![Tests][tests-badge]][tests-link]
+[![E2E Tests][e2e-badge]][e2e-link]
+[![Release][release-badge]][release-link]
+[![Go Version][go-badge]][go-link]
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
-OptiPod is an open-source, Kubernetes-native operator that automatically rightsizes CPU and memory requests for your workloads based on real-time and historical usage patterns. It helps reduce cloud costs by eliminating over-provisioning while maintaining safety margins to prevent performance issues.
+OptiPod is an open-source, Kubernetes-native operator that automatically rightsizes CPU and memory requests for your
+workloads based on real-time and historical usage patterns. It helps reduce cloud costs by eliminating over-provisioning
+while maintaining safety margins to prevent performance issues.
 
 ## Features
 
 ### ✅ Production-Ready Features
 
-- **Automatic Resource Optimization**: Continuously monitors workload resource usage and adjusts CPU and memory requests based on actual consumption
-- **Server-Side Apply (SSA)**: Field-level ownership tracking prevents conflicts with GitOps tools like ArgoCD - OptiPod owns only resource requests/limits while other tools manage different fields
-- **Multiple Operational Modes**: Choose between Auto (automatic application), Recommend (review before applying), or Disabled modes
-- **Safety-First Approach**: Configurable safety factors, min/max bounds, and intelligent handling of in-place resize vs pod recreation
+- **Automatic Resource Optimization**: Continuously monitors workload resource usage and adjusts CPU and memory requests
+  based on actual consumption
+- **Server-Side Apply (SSA)**: Field-level ownership tracking prevents conflicts with GitOps tools like ArgoCD - OptiPod
+  owns only resource requests/limits while other tools manage different fields
+- **Multiple Operational Modes**: Choose between Auto (automatic application), Recommend (review before applying), or
+  Disabled modes
+- **Safety-First Approach**: Configurable safety factors, min/max bounds, and intelligent handling of in-place resize vs
+  pod recreation
 - **Multi-Tenant Ready**: Namespace and label-based workload selection with allow/deny lists
 - **Comprehensive Observability**: Prometheus metrics, Kubernetes events, and detailed status reporting
 - **Property-Based Tested**: Extensive test coverage including property-based tests for correctness guarantees
@@ -40,18 +46,22 @@ OptiPod is an open-source, Kubernetes-native operator that automatically rightsi
 ### Installation
 
 1. **Install using the release manifest**:
+
 ```bash
 kubectl apply -f https://github.com/Sagart-cactus/optipod/releases/latest/download/install.yaml
 ```
 
 Or install a specific version:
+
 ```bash
 kubectl apply -f https://github.com/Sagart-cactus/optipod/releases/download/v1.0.0/install.yaml
 ```
 
-> **Note**: The release workflow has been recently updated and validated. All releases include signed container images, SBOMs, and security scan results.
+> **Note**: The release workflow has been recently updated and validated. All releases include signed container images,
+> SBOMs, and security scan results.
 
-2. **Verify the installation**:
+1. **Verify the installation**:
+
 ```bash
 kubectl get pods -n optipod-system
 kubectl logs -n optipod-system deployment/optipod-manager
@@ -98,16 +108,19 @@ spec:
 ```
 
 Apply the policy:
+
 ```bash
 kubectl apply -f my-policy.yaml
 ```
 
 Label your workloads to enable optimization:
+
 ```bash
 kubectl label deployment my-app optimize=true
 ```
 
 Check the recommendations:
+
 ```bash
 kubectl describe optimizationpolicy production-workloads
 ```
@@ -223,7 +236,21 @@ make docker-build docker-push IMG=your-registry/optipod:tag
 
 ## Contributing
 
-Contributions are welcome! Please read our [Contributing Guide](docs/CONTRIBUTING.md) for details on our code of conduct, development setup, and the process for submitting pull requests.
+Contributions are welcome! Please read our [Contributing Guide](docs/CONTRIBUTING.md) for details on our code of
+conduct, development setup, and the process for submitting pull requests.
+
+[ci-badge]: https://github.com/Sagart-cactus/optipod/actions/workflows/ci.yml/badge.svg
+[ci-link]: https://github.com/Sagart-cactus/optipod/actions/workflows/ci.yml
+[lint-badge]: https://github.com/Sagart-cactus/optipod/actions/workflows/lint.yml/badge.svg
+[lint-link]: https://github.com/Sagart-cactus/optipod/actions/workflows/lint.yml
+[tests-badge]: https://github.com/Sagart-cactus/optipod/actions/workflows/test.yml/badge.svg
+[tests-link]: https://github.com/Sagart-cactus/optipod/actions/workflows/test.yml
+[e2e-badge]: https://github.com/Sagart-cactus/optipod/actions/workflows/test-e2e.yml/badge.svg
+[e2e-link]: https://github.com/Sagart-cactus/optipod/actions/workflows/test-e2e.yml
+[release-badge]: https://github.com/Sagart-cactus/optipod/actions/workflows/release.yml/badge.svg
+[release-link]: https://github.com/Sagart-cactus/optipod/actions/workflows/release.yml
+[go-badge]: https://img.shields.io/github/go-mod/go-version/Sagart-cactus/optipod
+[go-link]: https://github.com/Sagart-cactus/optipod
 
 ### Quick Start for Contributors
 
@@ -247,6 +274,7 @@ This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENS
 ## Acknowledgments
 
 Built with:
+
 - [Kubebuilder](https://book.kubebuilder.io/) - Kubernetes operator framework
 - [controller-runtime](https://github.com/kubernetes-sigs/controller-runtime) - Kubernetes controller library
 - [gopter](https://github.com/leanovate/gopter) - Property-based testing for Go

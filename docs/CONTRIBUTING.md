@@ -14,7 +14,8 @@ Thank you for your interest in contributing to OptipPod! This document provides 
 
 ## Code of Conduct
 
-This project adheres to a code of conduct. By participating, you are expected to uphold this code. Please report unacceptable behavior to the project maintainers.
+This project adheres to a code of conduct. By participating, you are expected to uphold this code. Please report unacceptable
+behavior to the project maintainers.
 
 ## Getting Started
 
@@ -68,6 +69,7 @@ make setup-pre-commit
 ```
 
 This will:
+
 - Install pre-commit if not already installed
 - Set up all configured hooks
 - Install required tools (golangci-lint, goimports, etc.)
@@ -94,6 +96,7 @@ pre-commit run --all-files
 Our pre-commit configuration includes:
 
 #### Go Code Quality
+
 - **gofmt**: Formats Go code according to standard conventions
 - **goimports**: Organizes and formats Go imports
 - **go-mod-tidy**: Cleans up Go module dependencies
@@ -102,6 +105,7 @@ Our pre-commit configuration includes:
 - **go-unit-tests**: Runs unit tests (excludes e2e tests)
 
 #### General Code Quality
+
 - **trailing-whitespace**: Removes trailing whitespace
 - **end-of-file-fixer**: Ensures files end with newline
 - **check-yaml**: Validates YAML syntax
@@ -109,15 +113,18 @@ Our pre-commit configuration includes:
 - **check-merge-conflict**: Detects merge conflict markers
 
 #### Security
+
 - **detect-secrets**: Scans for potential secrets in code
 - **shellcheck**: Analyzes shell scripts for issues
 
 #### Documentation
+
 - **yamllint**: Lints YAML files for style and syntax
 - **markdownlint**: Lints Markdown files for consistency
 - **hadolint**: Lints Dockerfiles for best practices
 
 #### Kubernetes
+
 - **kubeval**: Validates Kubernetes YAML manifests
 
 ### Running Hooks Manually
@@ -162,6 +169,7 @@ SKIP=golangci-lint git commit -m "commit message"
 ### Linting Rules
 
 We use golangci-lint with the following key rules:
+
 - **errcheck**: Check for unchecked errors
 - **gofmt**: Ensure proper formatting
 - **goimports**: Ensure proper import organization
@@ -222,6 +230,7 @@ make test-e2e-focus FOCUS="Policy Modes"
 ### Pull Request Process
 
 1. **Create a feature branch** from `main`:
+
    ```bash
    git checkout -b feature/your-feature-name
    ```
@@ -229,23 +238,27 @@ make test-e2e-focus FOCUS="Policy Modes"
 2. **Make your changes** following the coding standards
 
 3. **Run pre-commit checks**:
+
    ```bash
    make pre-commit-run
    ```
 
 4. **Run tests**:
+
    ```bash
    make test
    make test-e2e
    ```
 
 5. **Commit your changes**:
+
    ```bash
    git add .
    git commit -m "feat: add new feature description"
    ```
 
 6. **Push to your fork**:
+
    ```bash
    git push origin feature/your-feature-name
    ```
@@ -256,7 +269,7 @@ make test-e2e-focus FOCUS="Policy Modes"
 
 We follow conventional commit format:
 
-```
+```text
 <type>(<scope>): <description>
 
 [optional body]
@@ -265,6 +278,7 @@ We follow conventional commit format:
 ```
 
 Types:
+
 - `feat`: New feature
 - `fix`: Bug fix
 - `docs`: Documentation changes
@@ -274,7 +288,8 @@ Types:
 - `chore`: Maintenance tasks
 
 Examples:
-```
+
+```text
 feat(controller): add resource optimization logic
 fix(api): handle nil pointer in policy validation
 docs(readme): update installation instructions
@@ -321,6 +336,7 @@ make pre-commit-run    # Run pre-commit on all files
 ### IDE Setup
 
 For VS Code, consider these extensions:
+
 - Go extension
 - YAML extension
 - Markdown extension

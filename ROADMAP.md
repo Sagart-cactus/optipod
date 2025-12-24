@@ -4,11 +4,13 @@ This document outlines the current implementation status and future plans for Op
 
 ## 🎯 Current Status
 
-OptiPod is in **active development** with core functionality implemented and tested. The project follows a spec-driven development approach with comprehensive testing.
+OptiPod is in **active development** with core functionality implemented and tested. The project follows a spec-driven
+development approach with comprehensive testing.
 
 ## ✅ Implemented Features
 
 ### Core Functionality
+
 - **Automatic Resource Optimization**: ✅ Fully implemented
   - CPU and memory request optimization based on actual usage
   - Percentile-based recommendations (P50, P90, P99)
@@ -31,6 +33,7 @@ OptiPod is in **active development** with core functionality implemented and tes
   - Graceful fallback for pod recreation scenarios
 
 ### Workload Management
+
 - **Multi-Workload Support**: ✅ Fully implemented
   - Deployments, StatefulSets, DaemonSets
   - Multi-container workload optimization
@@ -42,6 +45,7 @@ OptiPod is in **active development** with core functionality implemented and tes
   - Policy weight-based prioritization
 
 ### Observability & Testing
+
 - **Comprehensive Observability**: ✅ Fully implemented
   - Prometheus metrics exposure
   - Kubernetes events generation
@@ -53,6 +57,7 @@ OptiPod is in **active development** with core functionality implemented and tes
   - E2E test suite with real Kubernetes clusters
 
 ### CI/CD & Release
+
 - **Production-Ready CI/CD**: ✅ Fully implemented
   - Multi-architecture builds (amd64, arm64, s390x, ppc64le)
   - Security scanning with Trivy
@@ -62,6 +67,7 @@ OptiPod is in **active development** with core functionality implemented and tes
 ## 🚧 Work in Progress
 
 ### Metrics Providers
+
 - **Kubernetes metrics-server**: ✅ Basic implementation complete
   - ⚠️ Limited testing coverage
   - 🔄 Enhanced integration testing in progress
@@ -73,6 +79,7 @@ OptiPod is in **active development** with core functionality implemented and tes
   - 🔄 Custom metrics and alerting integration
 
 ### Advanced Features
+
 - **Custom Metrics Providers**: 🚧 Framework in progress
   - ✅ Plugin architecture designed
   - 🔄 Implementation of custom provider interface
@@ -87,6 +94,7 @@ OptiPod is in **active development** with core functionality implemented and tes
 ## 📋 Planned Features
 
 ### Q1 2025
+
 - **Performance & Scale Enhancements**
   - Cluster-wide performance benchmarks
   - Large-scale deployment testing (1000+ workloads)
@@ -98,6 +106,7 @@ OptiPod is in **active development** with core functionality implemented and tes
   - Recommendation confidence scoring
 
 ### Q2 2025
+
 - **Enterprise Features**
   - Multi-cluster support and management
   - Advanced RBAC with fine-grained permissions
@@ -109,6 +118,7 @@ OptiPod is in **active development** with core functionality implemented and tes
   - Integration with popular monitoring stacks (Grafana, Datadog)
 
 ### Q3 2025
+
 - **Machine Learning Enhancements**
   - Predictive scaling based on historical patterns
   - Anomaly detection for resource usage
@@ -120,6 +130,7 @@ OptiPod is in **active development** with core functionality implemented and tes
   - Performance-aware optimization (SLA considerations)
 
 ### Future Considerations
+
 - **Multi-Cloud Support**
   - Cloud provider-specific optimizations
   - Cross-cloud cost comparison
@@ -133,13 +144,16 @@ OptiPod is in **active development** with core functionality implemented and tes
 ## 🔄 Migration Path
 
 ### From Current State
+
 If you're using OptiPod today, you have access to all **Implemented Features**. The system is production-ready for:
+
 - Basic resource optimization
 - GitOps workflows with ArgoCD
 - Multi-tenant Kubernetes clusters
 - CI/CD integration
 
 ### Upgrading Strategy
+
 - **Backward Compatibility**: All new features maintain backward compatibility
 - **Gradual Adoption**: New features can be adopted incrementally
 - **Migration Guides**: Detailed guides provided for major version updates
@@ -158,13 +172,15 @@ See [CONTRIBUTING.md](docs/CONTRIBUTING.md) for detailed contribution guidelines
 ## 📞 Feedback
 
 Have suggestions for the roadmap? We'd love to hear from you:
+
 - [GitHub Issues](https://github.com/Sagart-cactus/optipod/issues) for feature requests
 - [GitHub Discussions](https://github.com/Sagart-cactus/optipod/discussions) for general feedback
-- [Community Slack](#) for real-time discussions (coming soon)
+- Community Slack for real-time discussions (coming soon)
 
 ---
 
 **Last Updated**: December 2024  
 **Next Review**: March 2025
 
-> This roadmap is a living document and may be updated based on community feedback, technical discoveries, and changing requirements.
+> This roadmap is a living document and may be updated based on community feedback, technical discoveries, and changing
+> requirements.

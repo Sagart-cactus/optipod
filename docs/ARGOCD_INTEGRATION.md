@@ -1,10 +1,13 @@
 # ArgoCD Integration Guide
 
-This guide explains how to use OptiPod alongside ArgoCD without sync conflicts, leveraging Kubernetes Server-Side Apply (SSA) for field-level ownership.
+This guide explains how to use OptiPod alongside ArgoCD without sync conflicts, leveraging Kubernetes Server-Side Apply
+(SSA) for field-level ownership.
 
 ## Overview
 
-OptiPod uses Server-Side Apply (SSA) by default to manage only resource requests and limits, while ArgoCD manages other fields like image, replicas, and environment variables. This field-level ownership prevents sync conflicts and allows both tools to coexist peacefully.
+OptiPod uses Server-Side Apply (SSA) by default to manage only resource requests and limits, while ArgoCD manages other
+fields like image, replicas, and environment variables. This field-level ownership prevents sync conflicts and allows both
+tools to coexist peacefully.
 
 ### How It Works
 

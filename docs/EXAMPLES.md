@@ -2,7 +2,8 @@
 
 This document provides example OptimizationPolicy configurations for common use cases.
 
-> **📋 Metrics Provider Status**: Examples use `metrics-server` as the recommended provider. Prometheus support is in development. See [ROADMAP.md](../ROADMAP.md) for current implementation status.
+> **📋 Metrics Provider Status**: Examples use `metrics-server` as the recommended provider. Prometheus support is in
+> development. See [ROADMAP.md](../ROADMAP.md) for current implementation status.
 
 ## Table of Contents
 
@@ -133,6 +134,7 @@ spec:
 ```
 
 **Benefits**:
+
 - No conflicts with ArgoCD or other GitOps tools
 - Field-level ownership tracking via managedFields
 - OptiPod owns only resource requests/limits

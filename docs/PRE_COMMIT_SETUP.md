@@ -4,7 +4,8 @@ This document describes the pre-commit hooks configuration for the OptipPod proj
 
 ## Overview
 
-Pre-commit hooks are automated checks that run before each commit to ensure code quality, consistency, and security. They help catch issues early and maintain high code standards across the project.
+Pre-commit hooks are automated checks that run before each commit to ensure code quality, consistency, and security. They
+help catch issues early and maintain high code standards across the project.
 
 ## Quick Start
 
@@ -18,6 +19,7 @@ make setup-pre-commit
 ## What Gets Checked
 
 ### Go Code Quality
+
 - **gofmt**: Automatically formats Go code
 - **goimports**: Organizes and formats imports
 - **go-mod-tidy**: Cleans up module dependencies
@@ -26,6 +28,7 @@ make setup-pre-commit
 - **go-unit-tests**: Runs unit tests (excludes e2e)
 
 ### General Code Quality
+
 - **trailing-whitespace**: Removes trailing whitespace
 - **end-of-file-fixer**: Ensures files end with newline
 - **check-yaml**: Validates YAML syntax
@@ -34,15 +37,18 @@ make setup-pre-commit
 - **check-added-large-files**: Prevents committing large files (>1MB)
 
 ### Security
+
 - **detect-secrets**: Scans for potential secrets
 - **shellcheck**: Analyzes shell scripts
 
 ### Documentation
+
 - **yamllint**: Lints YAML files
 - **markdownlint**: Lints Markdown files
 - **hadolint**: Lints Dockerfiles
 
 ### Kubernetes
+
 - **kubeval**: Validates Kubernetes manifests
 
 ## Installation
@@ -54,6 +60,7 @@ make setup-pre-commit
 ```
 
 This script will:
+
 1. Install pre-commit if not already installed
 2. Set up all configured hooks
 3. Install required tools (golangci-lint, goimports)
@@ -78,12 +85,14 @@ pre-commit run --all-files
 If pre-commit is not found after installation, add the Python user bin directory to your PATH:
 
 **Linux:**
+
 ```bash
 echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
 source ~/.bashrc
 ```
 
 **macOS:**
+
 ```bash
 echo 'export PATH="$HOME/Library/Python/3.x/bin:$PATH"' >> ~/.zshrc
 source ~/.zshrc
@@ -139,18 +148,23 @@ SKIP=golangci-lint,go-unit-tests git commit -m "commit message"
 ## Configuration Files
 
 ### `.pre-commit-config.yaml`
+
 Main configuration file defining all hooks and their settings.
 
 ### `.yamllint.yml`
+
 YAML linting rules (line length, indentation, etc.).
 
 ### `.markdownlint.yml`
+
 Markdown linting rules (heading styles, line length, etc.).
 
 ### `.secrets.baseline`
+
 Baseline file for detect-secrets to track known false positives.
 
 ### `.golangci.yml`
+
 golangci-lint configuration (already exists in project).
 
 ## Updating Hooks
@@ -206,6 +220,7 @@ Add Python user bin to PATH (see PATH Configuration above).
 Some hooks can be slow on first run. Subsequent runs are faster due to caching.
 
 To skip slow hooks temporarily:
+
 ```bash
 SKIP=go-unit-tests git commit -m "message"
 ```
@@ -251,6 +266,7 @@ To add a new hook:
 5. Commit the configuration
 
 Example:
+
 ```yaml
 - repo: https://github.com/example/hook-repo
   rev: v1.0.0
@@ -277,6 +293,7 @@ Example:
 ## Summary
 
 Pre-commit hooks are your first line of defense against code quality issues. They:
+
 - Save time by catching issues early
 - Ensure consistency across the codebase
 - Reduce code review burden

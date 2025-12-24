@@ -21,6 +21,7 @@ Use the provided script to validate all workflow YAML files:
 ```
 
 This will:
+
 - Install actionlint if not present
 - Validate all workflow files in `.github/workflows/`
 - Report any syntax errors or deprecated actions
@@ -28,6 +29,7 @@ This will:
 ### Local Workflow Testing with act
 
 Install act:
+
 ```bash
 # macOS
 brew install act
@@ -37,6 +39,7 @@ curl https://raw.githubusercontent.com/nektos/act/master/install.sh | sudo bash
 ```
 
 Test workflows locally:
+
 ```bash
 # Test CI workflow
 act push -W .github/workflows/ci.yml
@@ -56,11 +59,13 @@ Use the test script to create a test release:
 ```
 
 This will:
+
 1. Create a test tag (e.g., `v0.0.0-test-1234567890`)
 2. Push the tag to trigger the release workflow
 3. Provide a link to monitor the workflow
 
 After validation, clean up:
+
 ```bash
 # Delete local tag
 git tag -d v0.0.0-test-1234567890
@@ -92,6 +97,7 @@ After a release, verify all artifacts are present:
 ```
 
 This checks for:
+
 - install.yaml
 - Binaries (linux-amd64, linux-arm64, darwin-amd64, darwin-arm64)
 - SBOM (sbom.json)
@@ -107,6 +113,7 @@ Verify the signature of a released image:
 ```
 
 This will:
+
 - Verify the image signature using cosign
 - Check SLSA provenance attestation
 - Check SBOM attestation
@@ -114,6 +121,7 @@ This will:
 ### Manual Verification
 
 Pull and inspect the image:
+
 ```bash
 # Pull the image
 docker pull ghcr.io/yourusername/optipod:v1.0.0
@@ -126,6 +134,7 @@ docker manifest inspect ghcr.io/yourusername/optipod:v1.0.0
 ```
 
 Test the installation manifest:
+
 ```bash
 # Download the manifest
 curl -LO https://github.com/yourusername/optipod/releases/download/v1.0.0/install.yaml
@@ -142,6 +151,7 @@ kubectl apply -f install.yaml
 ### Workflow Validation Errors
 
 If GitHub Actions reports workflow syntax errors:
+
 - Run `./hack/validate-workflows.sh` locally to catch issues early
 - Check for proper YAML indentation and syntax
 - Verify all required parameters are provided for actions
@@ -150,6 +160,7 @@ If GitHub Actions reports workflow syntax errors:
 ### Workflow Fails at Build Step
 
 Check:
+
 - Dockerfile syntax
 - Go module dependencies
 - Build arguments
@@ -159,6 +170,7 @@ Check:
 ### Security Scan Fails
 
 Check:
+
 - Trivy scan results in workflow logs
 - Update base images if vulnerabilities found
 - Review vulnerability report artifact
@@ -168,6 +180,7 @@ Check:
 ### Image Push Fails
 
 Check:
+
 - GitHub token permissions
 - Registry authentication
 - Network connectivity
@@ -175,6 +188,7 @@ Check:
 ### Signing Fails
 
 Check:
+
 - OIDC token configuration
 - Cosign installation
 - Rekor availability
@@ -182,6 +196,7 @@ Check:
 ### Manifest Generation Fails
 
 Check:
+
 - Kustomize configuration
 - Image reference format
 - kubectl validation output
@@ -198,6 +213,7 @@ Check:
 ## Monitoring
 
 Monitor workflow health:
+
 - Check workflow status badges in README
 - Review GitHub Actions dashboard
 - Set up notifications for workflow failures
@@ -208,6 +224,7 @@ Monitor workflow health:
 The release workflow has been updated to fix several critical issues:
 
 ### Fixed Issues
+
 - **Syntax Validation**: All workflow YAML files now pass GitHub Actions validation
 - **Docker Build Configuration**: Resolved conflicts between `load` and `outputs` parameters
 - **Security Scanning**: Updated Trivy installation to use modern GPG keyring management
@@ -215,7 +232,9 @@ The release workflow has been updated to fix several critical issues:
 - **Job Dependencies**: Ensured correct execution order for all workflow jobs
 
 ### Validation
+
 After the fixes, the workflow now:
+
 - ✅ Passes `actionlint` validation
 - ✅ Builds Docker images without configuration conflicts
 - ✅ Installs Trivy using supported methods
@@ -223,7 +242,9 @@ After the fixes, the workflow now:
 - ✅ Executes all jobs in correct dependency order
 
 ### Testing the Fixes
+
 To verify the fixes work correctly:
+
 ```bash
 # Validate workflow syntax
 ./hack/validate-workflows.sh
