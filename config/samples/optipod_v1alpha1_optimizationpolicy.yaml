@@ -1,5 +1,5 @@
 # Example 1: Production workloads with Server-Side Apply (Recommended)
-# 
+#
 # This is the recommended configuration for production environments, especially
 # when using GitOps tools like ArgoCD. Server-Side Apply (SSA) enables field-level
 # ownership, allowing OptipPod to manage resource requests/limits while other tools
@@ -18,7 +18,7 @@ metadata:
   namespace: default
 spec:
   mode: Auto
-  
+
   selector:
     namespaceSelector:
       matchLabels:
@@ -32,13 +32,13 @@ spec:
         - production
       deny:
         - kube-system
-  
+
   metricsConfig:
     provider: prometheus
     rollingWindow: 24h
     percentile: P90
     safetyFactor: 1.2
-  
+
   resourceBounds:
     cpu:
       min: "100m"
@@ -46,7 +46,7 @@ spec:
     memory:
       min: "128Mi"
       max: "8Gi"
-  
+
   updateStrategy:
     allowInPlaceResize: true
     allowRecreate: false
@@ -55,7 +55,7 @@ spec:
     # This allows OptipPod to own only resource fields while other tools
     # manage different fields without conflicts
     useServerSideApply: true
-  
+
   reconciliationInterval: 5m
 
 ---
@@ -78,7 +78,7 @@ metadata:
   namespace: default
 spec:
   mode: Auto
-  
+
   selector:
     namespaceSelector:
       matchLabels:
@@ -86,13 +86,13 @@ spec:
     workloadSelector:
       matchLabels:
         optimize: "true"
-  
+
   metricsConfig:
     provider: prometheus
     rollingWindow: 12h
     percentile: P95
     safetyFactor: 1.1
-  
+
   resourceBounds:
     cpu:
       min: "50m"
@@ -100,14 +100,14 @@ spec:
     memory:
       min: "64Mi"
       max: "4Gi"
-  
+
   updateStrategy:
     allowInPlaceResize: true
     allowRecreate: true
     updateRequestsOnly: false
     # Disable Server-Side Apply to use Strategic Merge Patch
     useServerSideApply: false
-  
+
   reconciliationInterval: 10m
 
 ---
@@ -130,19 +130,19 @@ metadata:
   namespace: default
 spec:
   mode: Auto
-  
+
   selector:
     workloadSelector:
       matchLabels:
         # Target workloads managed by ArgoCD
         argocd.argoproj.io/instance: my-app
-  
+
   metricsConfig:
     provider: prometheus
     rollingWindow: 24h
     percentile: P90
     safetyFactor: 1.2
-  
+
   resourceBounds:
     cpu:
       min: "100m"
@@ -150,14 +150,14 @@ spec:
     memory:
       min: "128Mi"
       max: "8Gi"
-  
+
   updateStrategy:
     allowInPlaceResize: true
     allowRecreate: false
     updateRequestsOnly: true
     # SSA is essential for ArgoCD compatibility
     useServerSideApply: true
-  
+
   reconciliationInterval: 5m
 
 ---
@@ -173,18 +173,18 @@ metadata:
   namespace: default
 spec:
   mode: Auto
-  
+
   selector:
     namespaceSelector:
       matchLabels:
         optimize: "true"
-  
+
   metricsConfig:
     provider: prometheus
     rollingWindow: 24h
     percentile: P90
     safetyFactor: 1.2
-  
+
   resourceBounds:
     cpu:
       min: "100m"
@@ -192,13 +192,13 @@ spec:
     memory:
       min: "128Mi"
       max: "8Gi"
-  
+
   updateStrategy:
     allowInPlaceResize: true
     allowRecreate: false
     updateRequestsOnly: true
     # useServerSideApply not specified - defaults to true
-  
+
   reconciliationInterval: 5m
 
 ---
@@ -220,7 +220,7 @@ metadata:
   namespace: default
 spec:
   mode: Auto
-  
+
   selector:
     namespaceSelector:
       matchLabels:
@@ -229,13 +229,13 @@ spec:
     workloadTypes:
       include:
         - Deployment
-  
+
   metricsConfig:
     provider: prometheus
     rollingWindow: 24h
     percentile: P90
     safetyFactor: 1.2
-  
+
   resourceBounds:
     cpu:
       min: "100m"
@@ -243,13 +243,13 @@ spec:
     memory:
       min: "128Mi"
       max: "8Gi"
-  
+
   updateStrategy:
     allowInPlaceResize: true
     allowRecreate: false
     updateRequestsOnly: true
     useServerSideApply: true
-  
+
   reconciliationInterval: 5m
 
 ---
@@ -271,7 +271,7 @@ metadata:
   namespace: default
 spec:
   mode: Auto
-  
+
   selector:
     namespaceSelector:
       matchLabels:
@@ -280,13 +280,13 @@ spec:
     workloadTypes:
       exclude:
         - StatefulSet
-  
+
   metricsConfig:
     provider: prometheus
     rollingWindow: 24h
     percentile: P90
     safetyFactor: 1.2
-  
+
   resourceBounds:
     cpu:
       min: "100m"
@@ -294,13 +294,13 @@ spec:
     memory:
       min: "128Mi"
       max: "8Gi"
-  
+
   updateStrategy:
     allowInPlaceResize: true
     allowRecreate: false
     updateRequestsOnly: true
     useServerSideApply: true
-  
+
   reconciliationInterval: 5m
 
 ---
@@ -317,7 +317,7 @@ metadata:
   namespace: default
 spec:
   mode: Auto
-  
+
   selector:
     namespaceSelector:
       matchLabels:
@@ -327,13 +327,13 @@ spec:
       include:
         - Deployment
         - DaemonSet
-  
+
   metricsConfig:
     provider: prometheus
     rollingWindow: 12h
     percentile: P90
     safetyFactor: 1.15
-  
+
   resourceBounds:
     cpu:
       min: "50m"
@@ -341,13 +341,13 @@ spec:
     memory:
       min: "64Mi"
       max: "4Gi"
-  
+
   updateStrategy:
     allowInPlaceResize: true
     allowRecreate: true
     updateRequestsOnly: true
     useServerSideApply: true
-  
+
   reconciliationInterval: 10m
 
 ---
@@ -369,7 +369,7 @@ metadata:
   namespace: default
 spec:
   mode: Auto
-  
+
   selector:
     namespaceSelector:
       matchLabels:
@@ -382,13 +382,13 @@ spec:
         - DaemonSet
       exclude:
         - Deployment
-  
+
   metricsConfig:
     provider: prometheus
     rollingWindow: 12h
     percentile: P90
     safetyFactor: 1.1
-  
+
   resourceBounds:
     cpu:
       min: "50m"
@@ -396,13 +396,13 @@ spec:
     memory:
       min: "64Mi"
       max: "4Gi"
-  
+
   updateStrategy:
     allowInPlaceResize: true
     allowRecreate: true
     updateRequestsOnly: true
     useServerSideApply: true
-  
+
   reconciliationInterval: 10m
 
 ---
@@ -421,7 +421,7 @@ metadata:
 spec:
   mode: Auto
   weight: 100
-  
+
   selector:
     namespaceSelector:
       matchLabels:
@@ -429,13 +429,13 @@ spec:
     workloadTypes:
       include:
         - Deployment
-  
+
   metricsConfig:
     provider: prometheus
     rollingWindow: 24h
     percentile: P90
     safetyFactor: 1.1  # Lower safety factor for stateless workloads
-  
+
   resourceBounds:
     cpu:
       min: "50m"
@@ -443,13 +443,13 @@ spec:
     memory:
       min: "64Mi"
       max: "8Gi"
-  
+
   updateStrategy:
     allowInPlaceResize: true
     allowRecreate: true  # Allow recreation for Deployments
     updateRequestsOnly: true
     useServerSideApply: true
-  
+
   reconciliationInterval: 5m
 
 ---
@@ -462,7 +462,7 @@ metadata:
 spec:
   mode: Recommend  # Only recommend, don't auto-apply for StatefulSets
   weight: 100
-  
+
   selector:
     namespaceSelector:
       matchLabels:
@@ -470,13 +470,13 @@ spec:
     workloadTypes:
       include:
         - StatefulSet
-  
+
   metricsConfig:
     provider: prometheus
     rollingWindow: 48h  # Longer window for stateful workloads
     percentile: P95     # Higher percentile for safety
     safetyFactor: 1.3   # Higher safety factor for stateful workloads
-  
+
   resourceBounds:
     cpu:
       min: "100m"
@@ -484,11 +484,11 @@ spec:
     memory:
       min: "256Mi"
       max: "16Gi"
-  
+
   updateStrategy:
     allowInPlaceResize: true
     allowRecreate: false  # Never recreate StatefulSet pods
     updateRequestsOnly: true
     useServerSideApply: true
-  
+
   reconciliationInterval: 15m
