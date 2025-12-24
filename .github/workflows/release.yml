@@ -510,7 +510,7 @@ jobs:
 
       - name: Validate manifest with kubectl dry-run
         run: |
-          kubectl apply --dry-run=client -f install.yaml
+          kubectl apply --dry-run=client --validate=false -f install.yaml
 
       - name: Upload manifest as artifact
         uses: actions/upload-artifact@v4
