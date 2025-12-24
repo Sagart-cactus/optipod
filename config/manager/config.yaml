@@ -11,25 +11,25 @@ data:
   # Global dry-run mode configuration
   # When enabled, OptiPod computes recommendations but never applies them
   dry-run: "false"
-  
+
   # Default metrics provider (metrics-server, prometheus, or custom)
   # This can be overridden via command-line flags
   metrics-provider: "prometheus"
-  
+
   # Prometheus URL for metrics collection
   # Used when metrics-provider is set to prometheus
   prometheus-url: "http://prometheus-k8s.monitoring.svc:9090"
-  
+
   # Default reconciliation interval
   # How often OptiPod evaluates and applies optimization decisions
   reconciliation-interval: "5m"
-  
+
   # Leader election configuration
   # Enable for high availability in multi-replica deployments
   leader-election: "true"
-  
+
   # Metrics endpoint configuration
   metrics-bind-address: ":8080"
-  
+
   # Health probe endpoint configuration
   health-probe-bind-address: ":8081"
