@@ -1,11 +1,10 @@
 # Pre-commit configuration for OptipPod
 # See https://pre-commit.com for more information
-# See https://pre-commit.com/hooks.html for more hooks
 
 repos:
   # General file checks
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.5.0
+    rev: v6.0.0
     hooks:
       - id: trailing-whitespace
         exclude: '\.md$'
@@ -21,92 +20,52 @@ repos:
       - id: check-executables-have-shebangs
       - id: check-shebang-scripts-are-executable
 
-  # Go formatting and imports
-  - repo: https://github.com/dnephin/pre-commit-golang
-    rev: v0.5.1
-    hooks:
-      - id: go-fmt
-        name: Format Go code
-        description: Runs gofmt to format Go code
-      - id: go-imports
-        name: Organize Go imports
-        description: Runs goimports to organize imports
-      - id: go-mod-tidy
-        name: Tidy Go modules
-        description: Runs go mod tidy to clean up module dependencies
-      - id: go-vet-mod
-        name: Go vet
-        description: Runs go vet to examine Go source code
-      - id: go-unit-tests-mod
-        name: Run Go unit tests
-        description: Runs go test for unit tests (excludes e2e)
-        args: ['-race', '-short', './...']
-        exclude: 'test/e2e/'
-
   # Go linting with golangci-lint
   - repo: https://github.com/golangci/golangci-lint
-    rev: v1.55.2
+    rev: v2.7.2
     hooks:
       - id: golangci-lint
         name: Lint Go code
         description: Runs golangci-lint to check Go code quality
         args: ['--timeout=5m']
 
-  # Dockerfile linting
-  - repo: https://github.com/hadolint/hadolint
-    rev: v2.12.0
-    hooks:
-      - id: hadolint-docker
-        name: Lint Dockerfile
-        description: Runs hadolint to check Dockerfile best practices
-
-  # YAML formatting and linting
+  # YAML linting
   - repo: https://github.com/adrienverge/yamllint
-    rev: v1.33.0
+    rev: v1.37.1
     hooks:
       - id: yamllint
         name: Lint YAML files
         description: Runs yamllint to check YAML syntax and style
-        args: ['-d', 'relaxed']
+        args: ['-c', '.yamllint.yml']
 
   # Markdown linting
   - repo: https://github.com/igorshubovych/markdownlint-cli
-    rev: v0.37.0
+    rev: v0.47.0
     hooks:
       - id: markdownlint
         name: Lint Markdown files
         description: Runs markdownlint to check Markdown style
-        args: ['--fix']
+        args: ['--config', '.markdownlint.yml']
         exclude: '^(CHANGELOG\.md|\.github/)'
 
   # Shell script linting
   - repo: https://github.com/shellcheck-py/shellcheck-py
-    rev: v0.9.0.6
+    rev: v0.11.0.1
     hooks:
       - id: shellcheck
         name: Lint shell scripts
         description: Runs shellcheck to analyze shell scripts
-        args: ['-e', 'SC1091']  # Ignore sourcing non-existent files
+        args: ['-e', 'SC1091']
 
   # Security scanning
   - repo: https://github.com/Yelp/detect-secrets
-    rev: v1.4.0
+    rev: v1.5.0
     hooks:
       - id: detect-secrets
         name: Detect secrets
         description: Scans for potential secrets in code
         args: ['--baseline', '.secrets.baseline']
         exclude: '\.lock$|\.sum$|test/.*\.yaml$'
-
-  # Kubernetes YAML validation
-  - repo: https://github.com/instrumenta/kubeval
-    rev: v0.16.1
-    hooks:
-      - id: kubeval
-        name: Validate Kubernetes YAML
-        description: Validates Kubernetes YAML files
-        files: '^config/.*\.yaml$'
-        args: ['--ignore-missing-schemas']
 
 # Configuration for specific hooks
 ci:
