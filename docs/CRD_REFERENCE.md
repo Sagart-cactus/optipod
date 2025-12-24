@@ -13,6 +13,7 @@ Complete reference documentation for the `OptimizationPolicy` Custom Resource De
 ## Overview
 
 The `OptimizationPolicy` CRD defines how OptiPod should optimize workload resources. Each policy specifies:
+
 - Which workloads to target (via selectors)
 - How to collect and analyze metrics
 - Resource bounds and safety constraints
@@ -31,6 +32,7 @@ The `OptimizationPolicy` CRD defines how OptiPod should optimize workload resour
 - **Disabled**: Stops processing workloads while preserving historical status
 
 **Example**:
+
 ```yaml
 spec:
   mode: Auto
@@ -48,6 +50,7 @@ spec:
 **Description**: Selects namespaces by labels
 
 **Example**:
+
 ```yaml
 selector:
   namespaceSelector:
@@ -66,6 +69,7 @@ selector:
 **Description**: Selects workloads (Deployments, StatefulSets, DaemonSets) by labels
 
 **Example**:
+
 ```yaml
 selector:
   workloadSelector:
@@ -84,10 +88,12 @@ selector:
 **Description**: Allow/deny lists for namespace filtering
 
 **Fields**:
+
 - `allow` ([]string): List of namespaces to include
 - `deny` ([]string): List of namespaces to exclude (takes precedence)
 
 **Example**:
+
 ```yaml
 selector:
   namespaces:
@@ -107,18 +113,21 @@ selector:
 **Description**: Include/exclude filters for workload types (Deployment, StatefulSet, DaemonSet)
 
 **Fields**:
+
 - `include` ([]WorkloadType): List of workload types to include (if empty, includes all)
 - `exclude` ([]WorkloadType): List of workload types to exclude (takes precedence over include)
 
 **WorkloadType Values**: `Deployment`, `StatefulSet`, `DaemonSet`
 
 **Precedence Rules**:
+
 - If both `include` and `exclude` are specified, `exclude` takes precedence
 - If a workload type appears in both lists, it will be excluded
 - If `include` is empty or not specified, all workload types are included (backward compatibility)
 - If filtering results in no valid workload types, the policy discovers no workloads
 
 **Use Cases**:
+
 - **Gradual Adoption**: Start with low-risk workloads like Deployments before expanding to StatefulSets
 - **Risk Management**: Exclude critical stateful workloads (databases, caches) from optimization
 - **Team Separation**: Different teams manage different workload types with different policies
@@ -127,6 +136,7 @@ selector:
 **Examples**:
 
 Include only Deployments (gradual adoption):
+
 ```yaml
 selector:
   workloadTypes:
@@ -135,6 +145,7 @@ selector:
 ```
 
 Exclude StatefulSets (protect stateful workloads):
+
 ```yaml
 selector:
   workloadTypes:
@@ -143,6 +154,7 @@ selector:
 ```
 
 Include multiple types:
+
 ```yaml
 selector:
   workloadTypes:
@@ -152,6 +164,7 @@ selector:
 ```
 
 Exclude precedence (only StatefulSets and DaemonSets will be optimized):
+
 ```yaml
 selector:
   workloadTypes:
@@ -177,11 +190,13 @@ selector:
 **Description**: Metrics backend to use
 
 **Current Status**:
+
 - `metrics-server`: ✅ Fully supported and recommended
 - `prometheus`: 🚧 In development (basic support available)
 - `custom`: 📋 Planned for future release
 
 **Example**:
+
 ```yaml
 metricsConfig:
   provider: metrics-server  # Recommended for current version
@@ -197,6 +212,7 @@ metricsConfig:
 **Valid values**: Any valid Go duration string (e.g., `1h`, `24h`, `7d`)
 
 **Example**:
+
 ```yaml
 metricsConfig:
   rollingWindow: 48h
@@ -215,6 +231,7 @@ metricsConfig:
 - **P99**: 99th percentile - conservative, handles spikes better
 
 **Example**:
+
 ```yaml
 metricsConfig:
   percentile: P90
@@ -229,6 +246,7 @@ metricsConfig:
 **Description**: Multiplier applied to selected percentile for safety margin
 
 **Example**:
+
 ```yaml
 metricsConfig:
   safetyFactor: 1.3  # 30% safety margin
@@ -245,10 +263,12 @@ metricsConfig:
 **Description**: CPU resource bounds
 
 **Fields**:
+
 - `min` (Quantity, required): Minimum CPU request
 - `max` (Quantity, required): Maximum CPU request
 
 **Example**:
+
 ```yaml
 resourceBounds:
   cpu:
@@ -262,10 +282,12 @@ resourceBounds:
 **Description**: Memory resource bounds
 
 **Fields**:
+
 - `min` (Quantity, required): Minimum memory request
 - `max` (Quantity, required): Maximum memory request
 
 **Example**:
+
 ```yaml
 resourceBounds:
   memory:
@@ -288,6 +310,7 @@ resourceBounds:
 **Description**: Enable in-place pod resize when supported (Kubernetes 1.29+)
 
 **Example**:
+
 ```yaml
 updateStrategy:
   allowInPlaceResize: true
@@ -303,6 +326,7 @@ updateStrategy:
 **Warning**: Setting to `true` will cause pod restarts when changes cannot be applied in-place.
 
 **Example**:
+
 ```yaml
 updateStrategy:
   allowRecreate: false  # Skip changes requiring recreation
@@ -316,6 +340,7 @@ updateStrategy:
 **Description**: Update only resource requests, leaving limits unchanged
 
 **Example**:
+
 ```yaml
 updateStrategy:
   updateRequestsOnly: true
@@ -328,32 +353,38 @@ updateStrategy:
 **Optional**: Yes  
 **Description**: Enable Server-Side Apply (SSA) for field-level ownership tracking
 
-When enabled, OptiPod uses Kubernetes Server-Side Apply to manage only resource requests and limits, allowing other tools (like ArgoCD) to manage different fields without conflicts. SSA tracks field ownership in `managedFields` metadata.
+When enabled, OptiPod uses Kubernetes Server-Side Apply to manage only resource requests and limits, allowing other tools
+(like ArgoCD) to manage different fields without conflicts. SSA tracks field ownership in `managedFields` metadata.
 
 **Benefits of SSA**:
+
 - **GitOps Compatibility**: No sync conflicts with ArgoCD or Flux
 - **Field-Level Ownership**: OptiPod owns only resource fields, other tools own their fields
 - **Audit Trail**: `managedFields` shows which tool manages which fields
 - **Conflict Resolution**: Built-in conflict detection and resolution
 
 **When to use SSA** (recommended):
+
 - Using GitOps tools (ArgoCD, Flux)
 - Multiple tools managing the same workloads
 - Need clear field ownership tracking
 - Kubernetes 1.22+ clusters
 
 **When to disable SSA** (not recommended):
+
 - Kubernetes < 1.22 (SSA not available)
 - Legacy environments requiring Strategic Merge Patch
 - Specific compatibility requirements
 
 **Example**:
+
 ```yaml
 updateStrategy:
   useServerSideApply: true  # Default, recommended
 ```
 
 **Disabling SSA** (may cause GitOps conflicts):
+
 ```yaml
 updateStrategy:
   useServerSideApply: false  # Use Strategic Merge Patch
@@ -369,6 +400,7 @@ updateStrategy:
 **Description**: How often the policy is evaluated and applied
 
 **Example**:
+
 ```yaml
 reconciliationInterval: 10m
 ```
@@ -383,10 +415,12 @@ The status is automatically populated by OptiPod and should not be manually edit
 **Description**: Standard Kubernetes conditions
 
 **Common condition types**:
+
 - `Ready`: Policy is valid and processing workloads
 - `Error`: Policy has validation or processing errors
 
 **Example**:
+
 ```yaml
 status:
   conditions:
@@ -414,13 +448,16 @@ status:
 **Description**: Breakdown of discovered workloads by type
 
 **Fields**:
+
 - `deployments` (integer): Count of Deployment workloads
 - `statefulSets` (integer): Count of StatefulSet workloads  
 - `daemonSets` (integer): Count of DaemonSet workloads
 
-This field is populated when workload type filtering is used and provides visibility into which workload types are being discovered and processed.
+This field is populated when workload type filtering is used and provides visibility into which workload types are being
+discovered and processed.
 
 **Example**:
+
 ```yaml
 status:
   workloadsDiscovered: 15
@@ -455,6 +492,7 @@ status:
 - `reason` (string): Additional context
 
 **Example**:
+
 ```yaml
 status:
   workloads:
@@ -561,11 +599,13 @@ Invalid policies are rejected with descriptive error messages.
 ## kubectl Commands
 
 ### Create a policy
+
 ```bash
 kubectl apply -f policy.yaml
 ```
 
 ### List policies
+
 ```bash
 kubectl get optimizationpolicies
 # or use short name
@@ -573,21 +613,25 @@ kubectl get optpol
 ```
 
 ### Describe a policy
+
 ```bash
 kubectl describe optimizationpolicy production-workloads
 ```
 
 ### Get policy status
+
 ```bash
 kubectl get optimizationpolicy production-workloads -o yaml
 ```
 
 ### Watch policy changes
+
 ```bash
 kubectl get optimizationpolicy -w
 ```
 
 ### Delete a policy
+
 ```bash
 kubectl delete optimizationpolicy production-workloads
 ```
@@ -627,24 +671,26 @@ kubectl get events -n <namespace> --field-selector reason=SSAConflict
 
 #### Solutions
 
-**Solution 1: OptiPod takes ownership (recommended)**
+##### Solution 1: OptiPod takes ownership (recommended)
 
 OptiPod uses `Force: true` by default, which automatically takes ownership of resource fields. If conflicts persist:
 
 1. Verify SSA is enabled:
+
 ```yaml
 updateStrategy:
   useServerSideApply: true
 ```
 
-2. Check OptiPod has proper RBAC permissions:
+1. Check OptiPod has proper RBAC permissions:
+
 ```bash
 kubectl auth can-i patch deployments --as=system:serviceaccount:optipod-system:optipod-controller-manager
 ```
 
-3. Review OptiPod logs for specific error messages
+1. Review OptiPod logs for specific error messages
 
-**Solution 2: Clear conflicting ownership**
+##### Solution 2: Clear conflicting ownership
 
 Manually remove the conflicting manager's ownership:
 
@@ -657,7 +703,7 @@ kubectl get deployment <name> -n <namespace> -o json > deployment.json
 kubectl apply -f deployment.json
 ```
 
-**Solution 3: Use Strategic Merge Patch**
+##### Solution 3: Use Strategic Merge Patch
 
 Disable SSA if conflicts cannot be resolved (not recommended for GitOps):
 
@@ -701,19 +747,21 @@ kubectl get deployment <name> --show-labels
 #### Common Causes
 
 1. **Selector mismatch**: Workload labels don't match policy selectors
-2. **Namespace filtering**: Workload namespace is in deny list or not in allow list
-3. **Workload type filtering**: Workload type is excluded or not included in workloadTypes filter
-4. **Policy mode**: Policy is in Disabled mode
-5. **RBAC issues**: OptiPod lacks permissions to access workloads
+1. **Namespace filtering**: Workload namespace is in deny list or not in allow list
+1. **Workload type filtering**: Workload type is excluded or not included in workloadTypes filter
+1. **Policy mode**: Policy is in Disabled mode
+1. **RBAC issues**: OptiPod lacks permissions to access workloads
 
 #### Solutions
 
 1. Verify workload has matching labels:
+
 ```bash
 kubectl label deployment <name> optimize=true
 ```
 
-2. Check namespace is allowed:
+1. Check namespace is allowed:
+
 ```yaml
 selector:
   namespaces:
@@ -721,7 +769,8 @@ selector:
     - <namespace>
 ```
 
-3. Verify workload type is included:
+1. Verify workload type is included:
+
 ```yaml
 selector:
   workloadTypes:
@@ -730,13 +779,15 @@ selector:
     # exclude: []  # Ensure workload type is not excluded
 ```
 
-4. Check for workload type filtering conflicts:
+1. Check for workload type filtering conflicts:
+
 ```bash
 # If a Deployment is not being processed, check if it's excluded
 kubectl get optimizationpolicy <name> -o jsonpath='{.spec.selector.workloadTypes.exclude}'
 ```
 
-5. Ensure policy is in Auto or Recommend mode:
+1. Ensure policy is in Auto or Recommend mode:
+
 ```bash
 kubectl patch optimizationpolicy <name> --type=merge -p '{"spec":{"mode":"Auto"}}'
 ```
@@ -765,13 +816,14 @@ kubectl get deployments,statefulsets,daemonsets -n <namespace> --show-labels
 #### Common Causes
 
 1. **Exclude precedence**: Workload type is in both include and exclude lists (exclude wins)
-2. **Empty result set**: Include/exclude combination results in no valid workload types
-3. **Case sensitivity**: Workload type names must match exactly (Deployment, StatefulSet, DaemonSet)
-4. **Validation errors**: Invalid workload type names in configuration
+1. **Empty result set**: Include/exclude combination results in no valid workload types
+1. **Case sensitivity**: Workload type names must match exactly (Deployment, StatefulSet, DaemonSet)
+1. **Validation errors**: Invalid workload type names in configuration
 
 #### Solutions
 
 1. **Check exclude precedence**:
+
 ```yaml
 # This will exclude Deployments even though they're in include
 selector:
@@ -780,7 +832,8 @@ selector:
     exclude: [Deployment]  # Remove this or move to include only
 ```
 
-2. **Verify workload type names**:
+1. **Verify workload type names**:
+
 ```yaml
 # Correct (case-sensitive)
 selector:
@@ -793,13 +846,15 @@ selector:
     # - statefulset   # ✗ Wrong case
 ```
 
-3. **Check for empty result sets**:
+1. **Check for empty result sets**:
+
 ```bash
 # This policy will discover no workloads (all types excluded)
 kubectl get optimizationpolicy <name> -o yaml | grep -A 10 workloadTypes
 ```
 
-4. **Validate configuration**:
+1. **Validate configuration**:
+
 ```bash
 # Check for validation errors
 kubectl describe optimizationpolicy <name> | grep -A 5 "Events:"
@@ -825,24 +880,27 @@ kubectl get optimizationpolicy <name> -o jsonpath='{.status.workloads[*].status}
 #### Common Causes
 
 1. **Recommend mode**: Policy is in Recommend mode (recommendations not auto-applied)
-2. **Update strategy**: Changes require pod recreation but `allowRecreate: false`
-3. **In-place resize unavailable**: Kubernetes < 1.29 and `allowRecreate: false`
-4. **Bounds violation**: Recommendation exceeds min/max bounds
+1. **Update strategy**: Changes require pod recreation but `allowRecreate: false`
+1. **In-place resize unavailable**: Kubernetes < 1.29 and `allowRecreate: false`
+1. **Bounds violation**: Recommendation exceeds min/max bounds
 
 #### Solutions
 
 1. Switch to Auto mode:
+
 ```bash
 kubectl patch optimizationpolicy <name> --type=merge -p '{"spec":{"mode":"Auto"}}'
 ```
 
-2. Allow pod recreation if needed:
+1. Allow pod recreation if needed:
+
 ```yaml
 updateStrategy:
   allowRecreate: true
 ```
 
-3. Adjust resource bounds:
+1. Adjust resource bounds:
+
 ```yaml
 resourceBounds:
   cpu:
@@ -852,28 +910,28 @@ resourceBounds:
 ## Best Practices
 
 1. **Start with Recommend Mode**: Test policies in Recommend mode before switching to Auto
-2. **Use Conservative Percentiles**: Start with P90 or P99, adjust based on workload behavior
-3. **Set Appropriate Bounds**: Ensure min/max bounds match your workload requirements
-4. **Monitor Status**: Regularly check policy status for errors or skipped workloads
-5. **Use Specific Selectors**: Target specific workloads rather than broad selectors
-6. **Test Safety Factors**: Adjust safety factors based on workload variability
-7. **Review Recommendations**: In Recommend mode, review suggestions before enabling Auto mode
-8. **Enable SSA**: Use Server-Side Apply for GitOps compatibility (default)
-9. **Monitor Field Ownership**: Regularly check managedFields to ensure proper ownership
-10. **Use Labels Consistently**: Apply clear, consistent labels for workload selection
+1. **Use Conservative Percentiles**: Start with P90 or P99, adjust based on workload behavior
+1. **Set Appropriate Bounds**: Ensure min/max bounds match your workload requirements
+1. **Monitor Status**: Regularly check policy status for errors or skipped workloads
+1. **Use Specific Selectors**: Target specific workloads rather than broad selectors
+1. **Test Safety Factors**: Adjust safety factors based on workload variability
+1. **Review Recommendations**: In Recommend mode, review suggestions before enabling Auto mode
+1. **Enable SSA**: Use Server-Side Apply for GitOps compatibility (default)
+1. **Monitor Field Ownership**: Regularly check managedFields to ensure proper ownership
+1. **Use Labels Consistently**: Apply clear, consistent labels for workload selection
 
 ### Workload Type Filtering Best Practices
 
-11. **Start with Deployments**: Begin optimization with stateless Deployments before expanding to StatefulSets
-12. **Protect Critical Workloads**: Use exclude filters to protect databases, caches, and other critical stateful workloads
-13. **Use Multiple Policies**: Create separate policies for different workload types with appropriate settings:
+1. **Start with Deployments**: Begin optimization with stateless Deployments before expanding to StatefulSets
+1. **Protect Critical Workloads**: Use exclude filters to protect databases, caches, and other critical stateful workloads
+1. **Use Multiple Policies**: Create separate policies for different workload types with appropriate settings:
     - **Deployments**: More aggressive optimization (lower safety factors, allow recreation)
     - **StatefulSets**: Conservative optimization (higher safety factors, recommend mode)
     - **DaemonSets**: Careful optimization (consider node resource constraints)
-14. **Monitor Workload Type Breakdown**: Check `workloadsByType` status to verify expected workload discovery
-15. **Understand Exclude Precedence**: Remember that exclude always takes precedence over include
-16. **Test Filter Combinations**: Verify that include/exclude combinations produce expected results
-17. **Document Policy Intent**: Use clear naming and annotations to document which workload types each policy targets
+1. **Monitor Workload Type Breakdown**: Check `workloadsByType` status to verify expected workload discovery
+1. **Understand Exclude Precedence**: Remember that exclude always takes precedence over include
+1. **Test Filter Combinations**: Verify that include/exclude combinations produce expected results
+1. **Document Policy Intent**: Use clear naming and annotations to document which workload types each policy targets
 
 ### Example Multi-Policy Strategy
 

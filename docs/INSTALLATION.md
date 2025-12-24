@@ -29,6 +29,7 @@ kubectl apply -f https://github.com/Sagart-cactus/optipod/releases/latest/downlo
 ```
 
 Or install a specific version:
+
 ```bash
 kubectl apply -f https://github.com/Sagart-cactus/optipod/releases/download/v1.0.0/install.yaml
 ```
@@ -46,6 +47,7 @@ kubectl apply -f https://raw.githubusercontent.com/Sagart-cactus/optipod/main/co
 ```
 
 This creates:
+
 - `optipod-system` namespace
 - ServiceAccount, Roles, and RoleBindings
 - Deployment for the operator
@@ -53,6 +55,7 @@ This creates:
 - Service for metrics
 
 > **Security Note**: All release images are signed with cosign and include SBOMs. You can verify signatures using:
+>
 > ```bash
 > cosign verify ghcr.io/sagart-cactus/optipod:v1.0.0
 > ```
@@ -60,17 +63,20 @@ This creates:
 #### Step 2: Verify Installation
 
 Check that the operator is running:
+
 ```bash
 kubectl get pods -n optipod-system
 ```
 
 Expected output:
-```
+
+```text
 NAME                                        READY   STATUS    RESTARTS   AGE
 optipod-controller-manager-xxxxxxxxx-xxxxx   1/1     Running   0          30s
 ```
 
 Check operator logs:
+
 ```bash
 kubectl logs -n optipod-system deployment/optipod-controller-manager -f
 ```
@@ -112,6 +118,7 @@ kubectl apply -k config/default
 ### Operator Configuration
 
 OptiPod can be configured via:
+
 1. Command-line flags (in deployment args)
 2. ConfigMap (`optipod-config`)
 3. Environment variables
@@ -144,6 +151,7 @@ data:
 ```
 
 Apply changes:
+
 ```bash
 kubectl apply -f config/manager/config.yaml
 kubectl rollout restart deployment/optipod-controller-manager -n optipod-system
@@ -154,7 +162,7 @@ kubectl rollout restart deployment/optipod-controller-manager -n optipod-system
 Available flags (set in deployment args):
 
 | Flag | Default | Description |
-|------|---------|-------------|
+| --- | --- | --- |
 | `--leader-elect` | `true` | Enable leader election |
 | `--metrics-bind-address` | `:8080` | Metrics endpoint address |
 | `--health-probe-bind-address` | `:8081` | Health probe address |
@@ -168,15 +176,18 @@ Available flags (set in deployment args):
 OptiPod requires the following permissions:
 
 **Cluster-scoped**:
+
 - Read: Deployments, StatefulSets, DaemonSets
 - Update: Deployments, StatefulSets, DaemonSets (for resource patching)
 - Read: Pods (for metrics collection)
 - Create: Events (for notifications)
 
 **Namespace-scoped**:
+
 - Full access to OptimizationPolicy CRDs
 
-The default installation includes all necessary RBAC resources. To restrict OptiPod to specific namespaces, modify the RoleBindings in `config/rbac/`.
+The default installation includes all necessary RBAC resources. To restrict OptiPod to specific namespaces, modify the
+RoleBindings in `config/rbac/`.
 
 ### Metrics Provider Setup
 
@@ -185,29 +196,34 @@ The default installation includes all necessary RBAC resources. To restrict Opti
 1. Ensure Prometheus is deployed and accessible
 2. Configure the Prometheus URL in the ConfigMap or via `--prometheus-url` flag
 3. Verify connectivity:
+
 ```bash
 kubectl exec -n optipod-system deployment/optipod-controller-manager -- \
   curl http://prometheus-k8s.monitoring.svc:9090/-/healthy
 ```
 
 Required Prometheus metrics:
+
 - `container_cpu_usage_seconds_total`
 - `container_memory_working_set_bytes`
 
 #### Metrics-Server
 
 1. Install metrics-server:
+
 ```bash
 kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
 ```
 
-2. Configure OptiPod to use metrics-server:
+1. Configure OptiPod to use metrics-server:
+
 ```yaml
 data:
   metrics-provider: "metrics-server"
 ```
 
-3. Verify metrics-server:
+1. Verify metrics-server:
+
 ```bash
 kubectl top nodes
 kubectl top pods
@@ -233,6 +249,7 @@ curl http://localhost:8080/metrics | grep optipod
 ```
 
 Expected metrics:
+
 - `optipod_workloads_monitored`
 - `optipod_workloads_updated`
 - `optipod_reconciliation_duration_seconds`
@@ -272,6 +289,7 @@ EOF
 ```
 
 Check policy status:
+
 ```bash
 kubectl get optimizationpolicy test-policy -o yaml
 kubectl describe optimizationpolicy test-policy
