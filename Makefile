@@ -44,7 +44,25 @@ help: ## Display this help.
 .PHONY: setup-pre-commit
 setup-pre-commit: ## Set up pre-commit hooks
 	@echo "Setting up pre-commit hooks..."
-	@./scripts/setup-pre-commit.sh
+	@if command -v pre-commit >/dev/null 2>&1; then \
+		pre-commit install; \
+	elif [ -f "$$HOME/Library/Python/3.9/bin/pre-commit" ]; then \
+		$$HOME/Library/Python/3.9/bin/pre-commit install; \
+	elif [ -f "$$HOME/Library/Python/3.11/bin/pre-commit" ]; then \
+		$$HOME/Library/Python/3.11/bin/pre-commit install; \
+	elif [ -f "$$HOME/.local/bin/pre-commit" ]; then \
+		$$HOME/.local/bin/pre-commit install; \
+	else \
+		echo "pre-commit not found. Installing..."; \
+		pip3 install --user pre-commit; \
+		if [ -f "$$HOME/Library/Python/3.9/bin/pre-commit" ]; then \
+			$$HOME/Library/Python/3.9/bin/pre-commit install; \
+		elif [ -f "$$HOME/Library/Python/3.11/bin/pre-commit" ]; then \
+			$$HOME/Library/Python/3.11/bin/pre-commit install; \
+		elif [ -f "$$HOME/.local/bin/pre-commit" ]; then \
+			$$HOME/.local/bin/pre-commit install; \
+		fi; \
+	fi
 
 .PHONY: pre-commit-run
 pre-commit-run: ## Run pre-commit hooks on all files
