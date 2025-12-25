@@ -46,7 +46,7 @@ repos:
         name: Lint Markdown files
         description: Runs markdownlint to check Markdown style
         args: ['--config', '.markdownlint.yml']
-        exclude: '^(CHANGELOG\.md|\.github/)'
+        exclude: '^(CHANGELOG\.md|\.github/|\.kiro/specs/)'
 
   # Shell script linting
   - repo: https://github.com/shellcheck-py/shellcheck-py
