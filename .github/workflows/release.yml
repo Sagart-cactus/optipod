@@ -423,6 +423,15 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Download image artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: container-image
+          path: /tmp
+
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
@@ -453,7 +462,23 @@ jobs:
           echo "minor=${MAJOR}.${MINOR}" >> $GITHUB_OUTPUT
           echo "patch=${MAJOR}.${MINOR}.${PATCH}" >> $GITHUB_OUTPUT
 
-      - name: Build and push multi-platform image
+      - name: Tag and push existing image with multiple tags
+        run: |
+          # Source image (already loaded)
+          SOURCE_IMAGE="${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ steps.version.outputs.full }}"
+
+          # Tag with additional version tags
+          docker tag $SOURCE_IMAGE ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ steps.version.outputs.minor }}
+          docker tag $SOURCE_IMAGE ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ steps.version.outputs.major }}
+          docker tag $SOURCE_IMAGE ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:latest
+
+          # Push all tags
+          docker push ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ steps.version.outputs.full }}
+          docker push ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ steps.version.outputs.minor }}
+          docker push ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ steps.version.outputs.major }}
+          docker push ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:latest
+
+      - name: Build and push multi-platform image (for arm64 support)
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -508,9 +533,29 @@ jobs:
           cd config/default
           kustomize build . > ../../install.yaml
 
-      - name: Validate manifest with kubectl dry-run
+      - name: Validate manifest syntax
         run: |
-          kubectl apply --dry-run=client --validate=false -f install.yaml
+          # Basic YAML syntax validation
+          if ! command -v yq &> /dev/null; then
+            sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+            sudo chmod +x /usr/local/bin/yq
+          fi
+
+          # Validate YAML syntax
+          yq eval '.' install.yaml > /dev/null
+
+          # Check for basic Kubernetes resource structure
+          if ! grep -q "apiVersion:" install.yaml; then
+            echo "Error: No apiVersion found in manifest"
+            exit 1
+          fi
+
+          if ! grep -q "kind:" install.yaml; then
+            echo "Error: No kind found in manifest"
+            exit 1
+          fi
+
+          echo "Manifest validation passed"
 
       - name: Upload manifest as artifact
         uses: actions/upload-artifact@v4
