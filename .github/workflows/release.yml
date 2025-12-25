@@ -137,7 +137,7 @@ jobs:
           KUBECONFIG: /tmp/kubeconfig
 
       - name: Upload E2E test results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         if: always()
         with:
           name: e2e-test-results
@@ -192,7 +192,7 @@ jobs:
           docker save ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ needs.setup.outputs.version }} -o /tmp/image.tar
 
       - name: Upload image artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: container-image
           path: /tmp/image.tar
@@ -254,7 +254,7 @@ jobs:
           sarif_file: trivy-results.sarif
 
       - name: Upload scan results as artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         if: always()
         with:
           name: security-scan-results
@@ -306,7 +306,7 @@ jobs:
             -o spdx-json=sbom.json
 
       - name: Upload SBOM as artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: sbom
           path: sbom.json
@@ -558,7 +558,7 @@ jobs:
           echo "Manifest validation passed"
 
       - name: Upload manifest as artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: install-manifest
           path: install.yaml
@@ -599,7 +599,7 @@ jobs:
             cmd/main.go
 
       - name: Upload binary
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: binary-${{ matrix.goos }}-${{ matrix.goarch }}
           path: optipod-${{ matrix.goos }}-${{ matrix.goarch }}
@@ -624,7 +624,7 @@ jobs:
           cat checksums.txt
 
       - name: Upload checksums
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: checksums
           path: binaries/checksums.txt
