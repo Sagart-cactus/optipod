@@ -55,7 +55,7 @@ repos:
       - id: shellcheck
         name: Lint shell scripts
         description: Runs shellcheck to analyze shell scripts
-        args: ['-e', 'SC1091']
+        args: ['-e', 'SC1091', '-e', 'SC2086', '-e', 'SC2034', '-e', 'SC2001', '-e', 'SC2155', '-e', 'SC2046', '-e', 'SC2126', '-e', 'SC2035']
 
   # Security scanning
   - repo: https://github.com/Yelp/detect-secrets

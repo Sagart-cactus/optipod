@@ -25,4 +25,3 @@ resources:
 - optimizationpolicy_admin_role.yaml
 - optimizationpolicy_editor_role.yaml
 - optimizationpolicy_viewer_role.yaml
-

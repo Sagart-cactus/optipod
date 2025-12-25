@@ -46,12 +46,12 @@ echo ""
 if [ "$CRITICAL" -gt 0 ] || [ "$HIGH" -gt 0 ]; then
     echo "✗ Property 4 validation: Image has $CRITICAL critical and $HIGH high vulnerabilities"
     echo "✓ Security gate would correctly block this image"
-    
+
     # Show details
     echo ""
     echo "Critical/High vulnerabilities:"
     jq -r '.Results[]?.Vulnerabilities[]? | select(.Severity=="CRITICAL" or .Severity=="HIGH") | "  - \(.VulnerabilityID): \(.PkgName) (\(.Severity))"' /tmp/scan-results.json | head -10
-    
+
     rm -f /tmp/scan-results.json
     exit 0
 else

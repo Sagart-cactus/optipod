@@ -27,6 +27,6 @@ echo "📄 Checking YAML files..."
 yamllint -c .yamllint.yml .
 
 echo "📖 Checking Markdown files..."
-markdownlint -c .markdownlint.yml *.md docs/ || true
+markdownlint -c .markdownlint.yml ./*.md docs/ || true
 
 echo "✅ All checks passed!"

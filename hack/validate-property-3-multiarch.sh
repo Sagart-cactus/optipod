@@ -55,7 +55,7 @@ done
 echo ""
 if [ $MISSING -eq 0 ]; then
     echo "✓ Property 3 validated: All required platforms are present"
-    
+
     # Additional check: verify each platform image is pullable
     echo ""
     echo "Verifying platform images are pullable..."
@@ -68,7 +68,7 @@ if [ $MISSING -eq 0 ]; then
             exit 1
         fi
     done
-    
+
     echo ""
     echo "✓ All platform images are pullable"
     exit 0

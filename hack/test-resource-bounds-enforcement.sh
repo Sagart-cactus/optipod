@@ -27,9 +27,9 @@ check_bounds() {
     local max=$3
     local resource_type=$4
     local test_name=$5
-    
+
     echo "  Checking $resource_type: $value (bounds: $min - $max)"
-    
+
     # Convert to comparable format (remove units for comparison)
     # This is a simplified comparison - in practice you'd need proper unit conversion
     if [[ "$value" == "$min" ]] || [[ "$value" == "$max" ]]; then
@@ -55,52 +55,52 @@ run_bounds_test() {
     local policy_file=$2
     local workload_file=$3
     local expected_behavior=$4
-    
+
     echo -e "${BLUE}--- Test: $test_name ---${NC}"
-    
+
     # Apply policy
     echo "Applying policy: $policy_file"
     kubectl apply -f "$policy_file"
-    
+
     # Apply workload
     echo "Applying workload: $workload_file"
     kubectl apply -f "$workload_file"
-    
+
     # Wait for workload to be ready
     workload_name=$(grep -A 5 "kind: Deployment" "$workload_file" | grep "name:" | awk '{print $2}')
     echo "Waiting for workload $workload_name to be ready..."
     kubectl wait --for=condition=available deployment/$workload_name -n default --timeout=60s
-    
+
     # Wait for OptipPod to process the workload
     echo "Waiting for OptipPod to process workload..."
     sleep 10
-    
+
     # Check annotations for recommendations
     echo "Checking recommendations..."
     annotations=$(kubectl get deployment $workload_name -n default -o jsonpath='{.metadata.annotations}')
-    
+
     if [[ "$annotations" == *"optipod.io/recommendation"* ]]; then
         echo -e "${GREEN}✓${NC} Recommendations found in annotations"
-        
+
         # Extract CPU and memory recommendations
         cpu_rec=$(kubectl get deployment $workload_name -n default -o jsonpath='{.metadata.annotations.optipod\.io/recommendation\.app\.cpu}' 2>/dev/null || echo "")
         memory_rec=$(kubectl get deployment $workload_name -n default -o jsonpath='{.metadata.annotations.optipod\.io/recommendation\.app\.memory}' 2>/dev/null || echo "")
-        
+
         echo "  CPU recommendation: $cpu_rec"
         echo "  Memory recommendation: $memory_rec"
-        
+
         # Get policy bounds for verification
         policy_name=$(grep "name:" "$policy_file" | head -1 | awk '{print $2}')
         cpu_min=$(kubectl get optimizationpolicy $policy_name -n optipod-system -o jsonpath='{.spec.resourceBounds.cpu.min}')
         cpu_max=$(kubectl get optimizationpolicy $policy_name -n optipod-system -o jsonpath='{.spec.resourceBounds.cpu.max}')
         memory_min=$(kubectl get optimizationpolicy $policy_name -n optipod-system -o jsonpath='{.spec.resourceBounds.memory.min}')
         memory_max=$(kubectl get optimizationpolicy $policy_name -n optipod-system -o jsonpath='{.spec.resourceBounds.memory.max}')
-        
+
         echo "  Policy bounds - CPU: $cpu_min - $cpu_max, Memory: $memory_min - $memory_max"
-        
+
         # Verify bounds enforcement based on expected behavior
         test_passed=true
-        
+
         case "$expected_behavior" in
             "within")
                 echo "  Expected: Recommendations should be within bounds"
@@ -135,7 +135,7 @@ run_bounds_test() {
                 fi
                 ;;
         esac
-        
+
         if $test_passed; then
             echo -e "${GREEN}✓ Test PASSED: $test_name${NC}"
             ((TESTS_PASSED++))
@@ -148,12 +148,12 @@ run_bounds_test() {
         echo -e "${RED}✗ Test FAILED: $test_name${NC}"
         ((TESTS_FAILED++))
     fi
-    
+
     # Cleanup
     echo "Cleaning up..."
     kubectl delete -f "$workload_file" --ignore-not-found=true
     kubectl delete -f "$policy_file" --ignore-not-found=true
-    
+
     echo
 }
 

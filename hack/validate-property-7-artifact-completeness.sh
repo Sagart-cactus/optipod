@@ -39,11 +39,11 @@ EMPTY=0
 
 for artifact in "${REQUIRED_ARTIFACTS[@]}"; do
     URL="https://github.com/$REPO/releases/download/$VERSION/$artifact"
-    
+
     if curl --output /dev/null --silent --head --fail "$URL"; then
         # Check file size
         SIZE=$(curl -sI "$URL" | grep -i content-length | awk '{print $2}' | tr -d '\r')
-        
+
         if [ -z "$SIZE" ] || [ "$SIZE" -eq 0 ]; then
             echo "✗ $artifact (empty file)"
             EMPTY=$((EMPTY + 1))
@@ -59,16 +59,16 @@ done
 echo ""
 if [ $MISSING -eq 0 ] && [ $EMPTY -eq 0 ]; then
     echo "✓ Property 7 validated: All required artifacts are present and non-empty"
-    
+
     # Verify checksums
     echo ""
     echo "Verifying checksums..."
     CHECKSUMS_URL="https://github.com/$REPO/releases/download/$VERSION/checksums.txt"
     curl -sL "$CHECKSUMS_URL" -o /tmp/checksums.txt
-    
+
     echo "Checksums file contains:"
     cat /tmp/checksums.txt
-    
+
     rm -f /tmp/checksums.txt
     exit 0
 else

@@ -43,13 +43,13 @@ ALL_MATCH=true
 for registry in "${REGISTRIES[@]}"; do
     IMAGE="${registry}:${VERSION}"
     echo "Checking $IMAGE..."
-    
+
     if ! DIGEST=$(docker manifest inspect "$IMAGE" 2>/dev/null | jq -r '.config.digest'); then
         echo "✗ Image not found in registry"
         ALL_MATCH=false
         continue
     fi
-    
+
     if [ "$DIGEST" = "$REFERENCE_DIGEST" ]; then
         echo "✓ Digest matches: $DIGEST"
     else
