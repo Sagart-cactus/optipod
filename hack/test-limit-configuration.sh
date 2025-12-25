@@ -24,7 +24,7 @@ TESTS_FAILED=0
 calculate_expected_limit() {
     local request=$1
     local multiplier=$2
-    
+
     # Convert request to millicores/mebibytes for calculation
     if [[ "$request" =~ ^([0-9]+)m$ ]]; then
         # CPU in millicores
@@ -46,30 +46,30 @@ check_limit_calculations() {
     local workload_name=$1
     local expected_cpu_multiplier=$2
     local expected_memory_multiplier=$3
-    
+
     echo "  Checking limit calculations..."
-    
+
     # Get current resources
     current_cpu_req=$(kubectl get deployment $workload_name -n default -o jsonpath='{.spec.template.spec.containers[0].resources.requests.cpu}')
     current_mem_req=$(kubectl get deployment $workload_name -n default -o jsonpath='{.spec.template.spec.containers[0].resources.requests.memory}')
     current_cpu_lim=$(kubectl get deployment $workload_name -n default -o jsonpath='{.spec.template.spec.containers[0].resources.limits.cpu}')
     current_mem_lim=$(kubectl get deployment $workload_name -n default -o jsonpath='{.spec.template.spec.containers[0].resources.limits.memory}')
-    
+
     echo "    Current resources:"
     echo "      Requests: CPU=$current_cpu_req, Memory=$current_mem_req"
     echo "      Limits: CPU=$current_cpu_lim, Memory=$current_mem_lim"
-    
+
     # Calculate expected limits based on multipliers
     expected_cpu_lim=$(calculate_expected_limit "$current_cpu_req" "$expected_cpu_multiplier")
     expected_mem_lim=$(calculate_expected_limit "$current_mem_req" "$expected_memory_multiplier")
-    
+
     echo "    Expected limits (based on multipliers):"
     echo "      CPU: $expected_cpu_lim (request * $expected_cpu_multiplier)"
     echo "      Memory: $expected_mem_lim (request * $expected_memory_multiplier)"
-    
+
     # Check if limits match expectations (allowing for some tolerance)
     limit_check_passed=true
-    
+
     # For now, just verify that limits are present and reasonable
     if [[ -n "$current_cpu_lim" ]] && [[ -n "$current_mem_lim" ]]; then
         echo -e "    ${GREEN}✓${NC} Limits are present and configured"
@@ -84,12 +84,12 @@ check_limit_calculations() {
 check_workload_updates() {
     local workload_name=$1
     local expected_updated=$2  # "true" or "false"
-    
+
     echo "  Checking if workload $workload_name was updated..."
-    
+
     # Check if there's a last-applied annotation (indicates actual update)
     last_applied=$(kubectl get deployment $workload_name -n default -o jsonpath='{.metadata.annotations.optipod\.io/last-applied}' 2>/dev/null || echo "")
-    
+
     if [[ -n "$last_applied" ]]; then
         echo "    Workload was updated (last-applied: $last_applied)"
         if [[ "$expected_updated" == "true" ]]; then
@@ -118,40 +118,40 @@ run_limit_config_test() {
     local workload_label=$3
     local cpu_multiplier=$4
     local memory_multiplier=$5
-    
+
     echo -e "${BLUE}--- Test: $test_name ---${NC}"
-    
+
     # Create workload with appropriate label
     sed "s/limit-config-test: \"default\"/limit-config-test: \"$workload_label\"/g" hack/test-workload-limit-config.yaml > /tmp/test-workload-$workload_label.yaml
-    
+
     # Apply policy and workload
     echo "Applying policy and workload..."
     kubectl apply -f "$policy_file"
     kubectl apply -f "/tmp/test-workload-$workload_label.yaml"
-    
+
     # Wait for workload to be ready
     echo "Waiting for workload to be ready..."
     kubectl wait --for=condition=available deployment/limit-config-test -n default --timeout=60s
-    
+
     # Wait for OptipPod to process the workload
     echo "Waiting for OptipPod to process workload..."
     sleep 15
-    
+
     # Check results
     test_passed=true
-    
+
     echo "  Expected: CPU multiplier=$cpu_multiplier, Memory multiplier=$memory_multiplier"
     check_workload_updates "limit-config-test" "true" || test_passed=false
     check_limit_calculations "limit-config-test" "$cpu_multiplier" "$memory_multiplier" || test_passed=false
-    
+
     # Show current workload resources
     echo "  Final workload resources:"
     kubectl get deployment limit-config-test -n default -o jsonpath='{.spec.template.spec.containers[0].resources}' | jq '.' 2>/dev/null || echo "    (Unable to parse resources)"
-    
+
     # Show current annotations
     echo "  Current OptipPod annotations:"
     kubectl get deployment limit-config-test -n default -o jsonpath='{.metadata.annotations}' | tr ',' '\n' | grep optipod || echo "    (No OptipPod annotations found)"
-    
+
     if $test_passed; then
         echo -e "${GREEN}✓ Test PASSED: $test_name${NC}"
         ((TESTS_PASSED++))
@@ -159,13 +159,13 @@ run_limit_config_test() {
         echo -e "${RED}✗ Test FAILED: $test_name${NC}"
         ((TESTS_FAILED++))
     fi
-    
+
     # Cleanup
     echo "Cleaning up test resources..."
     kubectl delete -f "/tmp/test-workload-$workload_label.yaml" --ignore-not-found=true
     kubectl delete -f "$policy_file" --ignore-not-found=true
     rm -f "/tmp/test-workload-$workload_label.yaml"
-    
+
     echo
 }
 

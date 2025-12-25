@@ -41,14 +41,14 @@ find_precommit() {
         "$HOME/Library/Python/3.12/bin/pre-commit"
         "/usr/local/bin/pre-commit"
     )
-    
+
     for location in "${locations[@]}"; do
         if command -v "$location" &> /dev/null; then
             echo "$location"
             return 0
         fi
     done
-    
+
     return 1
 }
 
@@ -79,7 +79,7 @@ if PRECOMMIT_CMD=$(find_precommit); then
 else
     print_status "Installing pre-commit..."
     pip3 install --user pre-commit
-    
+
     # Try to find it again after installation
     if PRECOMMIT_CMD=$(find_precommit); then
         print_success "pre-commit installed successfully at: $PRECOMMIT_CMD"
@@ -118,7 +118,7 @@ if ! command -v golangci-lint &> /dev/null; then
     if command -v brew &> /dev/null; then
         brew install golangci-lint
     else
-        curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin
+        curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b "$(go env GOPATH)/bin"
     fi
     print_success "golangci-lint installed"
 fi

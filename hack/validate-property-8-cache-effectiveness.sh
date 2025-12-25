@@ -62,7 +62,7 @@ echo ""
 THRESHOLD=30
 if (( $(echo "$IMPROVEMENT >= $THRESHOLD" | bc -l) )); then
     echo "✓ Property 8 validated: Cache provides ${IMPROVEMENT}% improvement (>= ${THRESHOLD}%)"
-    
+
     # Cleanup
     docker rmi "$IMAGE_NAME:clean" "$IMAGE_NAME:cached" > /dev/null 2>&1 || true
     rm -f /tmp/build-clean.log /tmp/build-cached.log
@@ -72,7 +72,7 @@ else
     echo ""
     echo "Note: This may be expected for small projects or fast builds."
     echo "Cache effectiveness is more noticeable in larger projects with many dependencies."
-    
+
     # Cleanup
     docker rmi "$IMAGE_NAME:clean" "$IMAGE_NAME:cached" > /dev/null 2>&1 || true
     rm -f /tmp/build-clean.log /tmp/build-cached.log

@@ -24,17 +24,17 @@ TESTS_FAILED=0
 check_policy_selection_logs() {
     local expected_policy=$1
     local expected_weight=$2
-    
+
     echo "  Checking policy selection logs..."
     sleep 15
-    
+
     # Check for policy selection messages
     selection_logs=$(kubectl logs -n optipod-system deployment/optipod-controller-manager --since=30s 2>/dev/null | grep -i "selected.*weight\|multiple.*policies\|processing.*workload.*policy" || echo "")
-    
+
     if [[ -n "$selection_logs" ]]; then
         echo "    Found policy selection logs:"
         echo "$selection_logs" | sed 's/^/      /' | tail -5
-        
+
         # Check if expected policy was selected
         if echo "$selection_logs" | grep -q "selectedPolicy.*$expected_policy"; then
             echo -e "    ${GREEN}✓${NC} Expected policy '$expected_policy' was selected"
@@ -53,17 +53,17 @@ check_policy_selection_logs() {
 check_workload_annotations() {
     local workload_name=$1
     local expected_policy=$2
-    
+
     echo "  Checking workload annotations..."
-    
+
     # Get annotations
     annotations=$(kubectl get deployment $workload_name -n default -o jsonpath='{.metadata.annotations}' 2>/dev/null || echo "{}")
-    
+
     # Check for OptipPod annotations
     if echo "$annotations" | grep -q "optipod.io/managed"; then
         echo "    Found OptipPod annotations:"
         echo "$annotations" | jq -r 'to_entries[] | select(.key | startswith("optipod.io/")) | "      \(.key): \(.value)"' 2>/dev/null || echo "      (Unable to parse annotations)"
-        
+
         # Check if managed by expected policy
         if echo "$annotations" | grep -q "optipod.io/policy.*$expected_policy"; then
             echo -e "    ${GREEN}✓${NC} Workload managed by expected policy: $expected_policy"
@@ -81,7 +81,7 @@ check_workload_annotations() {
 # Helper function to trigger policy reconciliation
 trigger_policy_reconciliation() {
     local policy_name=$1
-    
+
     echo "  Triggering reconciliation for policy: $policy_name"
     kubectl annotate optimizationpolicy $policy_name -n optipod-system test.optipod.io/trigger="$(date +%s)" --overwrite
 }
@@ -89,31 +89,31 @@ trigger_policy_reconciliation() {
 # Test function for policy weights
 run_policy_weights_test() {
     local test_name=$1
-    
+
     echo -e "${BLUE}--- Test: $test_name ---${NC}"
-    
+
     # Apply all policies with different weights
     echo "Applying policies with different weights..."
     kubectl apply -f hack/test-policy-weight-high.yaml    # weight: 200
     kubectl apply -f hack/test-policy-weight-default.yaml # weight: 100 (default)
     kubectl apply -f hack/test-policy-weight-low.yaml     # weight: 50
-    
+
     # Apply test workload
     echo "Applying test workload..."
     kubectl apply -f hack/test-workload-weight-test.yaml
-    
+
     # Wait for workload to be ready
     kubectl wait --for=condition=available deployment/weight-test-workload -n default --timeout=60s
-    
+
     # Trigger reconciliation on high priority policy
     trigger_policy_reconciliation "high-priority-policy"
-    
+
     # Check results
     test_passed=true
-    
+
     check_policy_selection_logs "high-priority-policy" "200" || test_passed=false
     check_workload_annotations "weight-test-workload" "high-priority-policy" || test_passed=false
-    
+
     if $test_passed; then
         echo -e "${GREEN}✓ Test PASSED: $test_name${NC}"
         ((TESTS_PASSED++))
@@ -121,21 +121,21 @@ run_policy_weights_test() {
         echo -e "${RED}✗ Test FAILED: $test_name${NC}"
         ((TESTS_FAILED++))
     fi
-    
+
     echo
 }
 
 # Test function for concurrent modification handling
 run_concurrent_modification_test() {
     local test_name=$1
-    
+
     echo -e "${BLUE}--- Test: $test_name ---${NC}"
-    
+
     echo "Checking for concurrent modification errors in logs..."
-    
+
     # Check recent logs for conflict errors
     conflict_errors=$(kubectl logs -n optipod-system deployment/optipod-controller-manager --since=5m 2>/dev/null | grep -i "object has been modified\|conflict\|failed to update" || echo "")
-    
+
     if [[ -n "$conflict_errors" ]]; then
         echo "    Found potential conflict errors:"
         echo "$conflict_errors" | sed 's/^/      /' | tail -3
@@ -145,19 +145,19 @@ run_concurrent_modification_test() {
         echo -e "    ${GREEN}✓${NC} No concurrent modification errors found"
         ((TESTS_PASSED++))
     fi
-    
+
     echo
 }
 
 # Test function for end-to-end integration
 run_integration_test() {
     local test_name=$1
-    
+
     echo -e "${BLUE}--- Test: $test_name ---${NC}"
-    
+
     # Create a simple policy and workload
     echo "Creating integration test policy and workload..."
-    
+
     cat <<EOF | kubectl apply -f -
 apiVersion: optipod.optipod.io/v1alpha1
 kind: OptimizationPolicy
@@ -235,24 +235,24 @@ EOF
 
     # Wait for workload to be ready
     kubectl wait --for=condition=available deployment/integration-test-workload -n default --timeout=60s
-    
+
     # Trigger reconciliation
     trigger_policy_reconciliation "integration-test-policy"
-    
+
     # Check results
     test_passed=true
-    
+
     # Check policy status
     echo "  Checking policy status..."
     policy_status=$(kubectl get optimizationpolicy integration-test-policy -n optipod-system -o jsonpath='{.status}' 2>/dev/null || echo "{}")
-    
+
     if echo "$policy_status" | grep -q "Ready.*True"; then
         echo -e "    ${GREEN}✓${NC} Policy is in Ready state"
     else
         echo -e "    ${YELLOW}!${NC} Policy not in Ready state"
         test_passed=false
     fi
-    
+
     # Check for workload discovery
     if echo "$policy_status" | grep -q "workloadsDiscovered"; then
         discovered=$(echo "$policy_status" | jq -r '.workloadsDiscovered // 0' 2>/dev/null || echo "0")
@@ -263,7 +263,7 @@ EOF
             echo -e "    ${YELLOW}!${NC} No workloads discovered"
         fi
     fi
-    
+
     if $test_passed; then
         echo -e "${GREEN}✓ Test PASSED: $test_name${NC}"
         ((TESTS_PASSED++))
@@ -271,7 +271,7 @@ EOF
         echo -e "${RED}✗ Test FAILED: $test_name${NC}"
         ((TESTS_FAILED++))
     fi
-    
+
     echo
 }
 

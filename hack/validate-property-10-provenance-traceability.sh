@@ -32,51 +32,51 @@ export COSIGN_EXPERIMENTAL=1
 if cosign verify-attestation --type slsaprovenance "$IMAGE" > /tmp/provenance.json 2>&1; then
     echo "✓ Provenance attestation found"
     echo ""
-    
+
     # Extract provenance data
     COMMIT_SHA=$(jq -r '.payload' /tmp/provenance.json | base64 -d | jq -r '.predicate.materials[0].digest.sha1 // empty' 2>/dev/null)
     WORKFLOW_RUN=$(jq -r '.payload' /tmp/provenance.json | base64 -d | jq -r '.predicate.builder.id // empty' 2>/dev/null | grep -oE '[0-9]+$')
     TIMESTAMP=$(jq -r '.payload' /tmp/provenance.json | base64 -d | jq -r '.predicate.metadata.buildStartedOn // empty' 2>/dev/null)
-    
+
     echo "Provenance details:"
     echo "  Commit SHA: ${COMMIT_SHA:-Not found}"
     echo "  Workflow Run ID: ${WORKFLOW_RUN:-Not found}"
     echo "  Build Timestamp: ${TIMESTAMP:-Not found}"
     echo ""
-    
+
     # Validate required fields
     MISSING=0
-    
+
     if [ -z "$COMMIT_SHA" ] || [ "$COMMIT_SHA" = "null" ]; then
         echo "✗ Commit SHA missing from provenance"
         MISSING=$((MISSING + 1))
     else
         echo "✓ Commit SHA present"
     fi
-    
+
     if [ -z "$WORKFLOW_RUN" ] || [ "$WORKFLOW_RUN" = "null" ]; then
         echo "✗ Workflow Run ID missing from provenance"
         MISSING=$((MISSING + 1))
     else
         echo "✓ Workflow Run ID present"
     fi
-    
+
     if [ -z "$TIMESTAMP" ] || [ "$TIMESTAMP" = "null" ]; then
         echo "✗ Timestamp missing from provenance"
         MISSING=$((MISSING + 1))
     else
         echo "✓ Timestamp present"
     fi
-    
+
     echo ""
     if [ $MISSING -eq 0 ]; then
         echo "✓ Property 10 validated: All required provenance data is present"
-        
+
         # Show full provenance for reference
         echo ""
         echo "Full provenance (first 50 lines):"
         jq -r '.payload' /tmp/provenance.json | base64 -d | jq . | head -50
-        
+
         rm -f /tmp/provenance.json
         exit 0
     else
@@ -90,7 +90,7 @@ else
     cat /tmp/provenance.json
     echo ""
     echo "✗ Property 10 failed: No provenance attestation found"
-    
+
     rm -f /tmp/provenance.json
     exit 1
 fi

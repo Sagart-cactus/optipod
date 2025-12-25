@@ -24,12 +24,12 @@ TESTS_FAILED=0
 check_policy_mode_logs() {
     local policy_name=$1
     local expected_mode=$2
-    
+
     echo "  Checking OptipPod logs for policy mode messages..."
-    
+
     # Get recent logs and check for policy mode related messages
     mode_logs=$(kubectl logs -n optipod-system deployment/optipod-controller-manager --since=2m 2>/dev/null | grep -i "$policy_name\|$expected_mode.*mode\|policy.*is.*in\|policy.*is.*disabled" || echo "")
-    
+
     if [[ -n "$mode_logs" ]]; then
         echo "    Found policy mode related log messages:"
         echo "$mode_logs" | sed 's/^/      /' | tail -5
@@ -44,12 +44,12 @@ check_policy_mode_logs() {
 check_workload_processing() {
     local workload_name=$1
     local expected_processed=$2  # "true" or "false"
-    
+
     echo "  Checking if workload $workload_name was processed..."
-    
+
     # Check if the workload has OptipPod managed annotation
     managed=$(kubectl get deployment $workload_name -n default -o jsonpath='{.metadata.annotations.optipod\.io/managed}' 2>/dev/null || echo "")
-    
+
     if [[ "$managed" == "true" ]]; then
         echo "    Workload is managed by OptipPod"
         if [[ "$expected_processed" == "true" ]]; then
@@ -75,13 +75,13 @@ check_workload_processing() {
 check_recommendations() {
     local workload_name=$1
     local expected_recommendations=$2  # "true" or "false"
-    
+
     echo "  Checking for OptipPod recommendations..."
-    
+
     # Check for recommendation annotations
     cpu_rec=$(kubectl get deployment $workload_name -n default -o jsonpath='{.metadata.annotations.optipod\.io/recommendation\.app\.cpu-request}' 2>/dev/null || echo "")
     memory_rec=$(kubectl get deployment $workload_name -n default -o jsonpath='{.metadata.annotations.optipod\.io/recommendation\.app\.memory-request}' 2>/dev/null || echo "")
-    
+
     if [[ -n "$cpu_rec" ]] && [[ -n "$memory_rec" ]]; then
         echo "    Recommendations found: CPU=$cpu_rec, Memory=$memory_rec"
         if [[ "$expected_recommendations" == "true" ]]; then
@@ -107,18 +107,18 @@ check_recommendations() {
 check_workload_updates() {
     local workload_name=$1
     local expected_updated=$2  # "true" or "false"
-    
+
     echo "  Checking if workload $workload_name was updated..."
-    
+
     # Store original resource values for comparison
     original_cpu=$(kubectl get deployment $workload_name -n default -o jsonpath='{.spec.template.spec.containers[0].resources.requests.cpu}')
     original_memory=$(kubectl get deployment $workload_name -n default -o jsonpath='{.spec.template.spec.containers[0].resources.requests.memory}')
-    
+
     echo "    Original resources: CPU=$original_cpu, Memory=$original_memory"
-    
+
     # Check if there's a last-applied annotation (indicates actual update)
     last_applied=$(kubectl get deployment $workload_name -n default -o jsonpath='{.metadata.annotations.optipod\.io/last-applied}' 2>/dev/null || echo "")
-    
+
     if [[ -n "$last_applied" ]]; then
         echo "    Workload was updated (last-applied: $last_applied)"
         if [[ "$expected_updated" == "true" ]]; then
@@ -146,26 +146,26 @@ run_policy_mode_test() {
     local policy_file=$2
     local workload_file=$3
     local mode=$4  # "Auto", "Recommend", or "Disabled"
-    
+
     echo -e "${BLUE}--- Test: $test_name ---${NC}"
-    
+
     # Apply policy and workload
     echo "Applying policy and workload..."
     kubectl apply -f "$policy_file"
     kubectl apply -f "$workload_file"
-    
+
     # Wait for workload to be ready
     workload_name=$(grep -A 5 "kind: Deployment" "$workload_file" | grep "name:" | awk '{print $2}')
     echo "Waiting for workload $workload_name to be ready..."
     kubectl wait --for=condition=available deployment/$workload_name -n default --timeout=60s
-    
+
     # Wait for OptipPod to process the workload
     echo "Waiting for OptipPod to process workload..."
     sleep 15
-    
+
     # Check results based on policy mode
     test_passed=true
-    
+
     case "$mode" in
         "Auto")
             echo "  Expected: Auto mode should generate recommendations AND apply updates"
@@ -189,15 +189,15 @@ run_policy_mode_test() {
             check_workload_updates "$workload_name" "false" || test_passed=false
             ;;
     esac
-    
+
     # Show current workload resources
     echo "  Current workload resources:"
     kubectl get deployment $workload_name -n default -o jsonpath='{.spec.template.spec.containers[0].resources}' | jq '.' 2>/dev/null || echo "    (Unable to parse resources)"
-    
+
     # Show current annotations
     echo "  Current OptipPod annotations:"
     kubectl get deployment $workload_name -n default -o jsonpath='{.metadata.annotations}' | tr ',' '\n' | grep optipod || echo "    (No OptipPod annotations found)"
-    
+
     if $test_passed; then
         echo -e "${GREEN}✓ Test PASSED: $test_name${NC}"
         ((TESTS_PASSED++))
@@ -205,12 +205,12 @@ run_policy_mode_test() {
         echo -e "${RED}✗ Test FAILED: $test_name${NC}"
         ((TESTS_FAILED++))
     fi
-    
+
     # Cleanup
     echo "Cleaning up test resources..."
     kubectl delete -f "$workload_file" --ignore-not-found=true
     kubectl delete -f "$policy_file" --ignore-not-found=true
-    
+
     echo
 }
 

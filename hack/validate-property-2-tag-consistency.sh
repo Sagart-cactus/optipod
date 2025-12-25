@@ -29,7 +29,8 @@ fi
 VERSION_NO_V="${VERSION#v}"
 MAJOR=$(echo "$VERSION_NO_V" | cut -d. -f1)
 MINOR=$(echo "$VERSION_NO_V" | cut -d. -f2)
-PATCH=$(echo "$VERSION_NO_V" | cut -d. -f3)
+# PATCH variable is defined but not used in this script
+# PATCH=$(echo "$VERSION_NO_V" | cut -d. -f3)
 
 EXPECTED_TAGS=(
     "$VERSION"
@@ -50,12 +51,12 @@ declare -A DIGESTS
 for tag in "${EXPECTED_TAGS[@]}"; do
     IMAGE="${REGISTRY}:${tag}"
     echo "Checking $IMAGE..."
-    
+
     if ! DIGEST=$(docker manifest inspect "$IMAGE" 2>/dev/null | jq -r '.config.digest'); then
         echo "✗ Tag $tag not found"
         exit 1
     fi
-    
+
     DIGESTS[$tag]="$DIGEST"
     echo "  Digest: $DIGEST"
 done

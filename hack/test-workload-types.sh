@@ -25,12 +25,12 @@ check_workload_discovery() {
     local workload_name=$1
     local workload_kind=$2
     local namespace=$3
-    
+
     echo "  Checking if OptipPod discovered $workload_kind/$workload_name..."
-    
+
     # Check OptipPod logs for workload discovery
     discovery_logs=$(kubectl logs -n optipod-system deployment/optipod-controller-manager --since=2m 2>/dev/null | grep -i "$workload_name\|$workload_kind" || echo "")
-    
+
     if [[ -n "$discovery_logs" ]]; then
         echo "    Found workload-related log messages:"
         echo "$discovery_logs" | sed 's/^/      /' | tail -3
@@ -46,9 +46,9 @@ check_workload_annotations() {
     local workload_name=$1
     local workload_kind=$2
     local namespace=$3
-    
+
     echo "  Checking OptipPod annotations on $workload_kind/$workload_name..."
-    
+
     # Get annotations based on workload type
     case $workload_kind in
         "Deployment")
@@ -65,10 +65,10 @@ check_workload_annotations() {
             return 1
             ;;
     esac
-    
+
     # Check for OptipPod annotations
     optipod_annotations=$(echo "$annotations" | tr ',' '\n' | grep optipod || echo "")
-    
+
     if [[ -n "$optipod_annotations" ]]; then
         echo "    Found OptipPod annotations:"
         echo "$optipod_annotations" | sed 's/^/      /'
@@ -84,9 +84,9 @@ check_workload_status() {
     local workload_name=$1
     local workload_kind=$2
     local namespace=$3
-    
+
     echo "  Checking $workload_kind/$workload_name status..."
-    
+
     case $workload_kind in
         "Deployment")
             # Check if deployment is ready
@@ -108,9 +108,9 @@ check_workload_status() {
             return 1
             ;;
     esac
-    
+
     echo "    Ready replicas: $ready_replicas/$desired_replicas"
-    
+
     if [[ "$ready_replicas" == "$desired_replicas" ]] && [[ "$ready_replicas" != "0" ]]; then
         echo -e "    ${GREEN}✓${NC} $workload_kind is ready"
         return 0
@@ -125,9 +125,9 @@ check_container_resources() {
     local workload_name=$1
     local workload_kind=$2
     local namespace=$3
-    
+
     echo "  Checking container resources in $workload_kind/$workload_name..."
-    
+
     case $workload_kind in
         "Deployment")
             containers=$(kubectl get deployment $workload_name -n $namespace -o jsonpath='{.spec.template.spec.containers[*].name}' 2>/dev/null || echo "")
@@ -143,10 +143,10 @@ check_container_resources() {
             return 1
             ;;
     esac
-    
+
     if [[ -n "$containers" ]]; then
         echo "    Found containers: $containers"
-        
+
         # Show resource configuration for each container
         for container in $containers; do
             case $workload_kind in
@@ -160,11 +160,11 @@ check_container_resources() {
                     resources=$(kubectl get daemonset $workload_name -n $namespace -o jsonpath="{.spec.template.spec.containers[?(@.name=='$container')].resources}" 2>/dev/null || echo "{}")
                     ;;
             esac
-            
+
             echo "      Container '$container' resources:"
             echo "$resources" | jq '.' 2>/dev/null || echo "        (Unable to parse resources)"
         done
-        
+
         echo -e "    ${GREEN}✓${NC} Container resources verified"
         return 0
     else
@@ -180,29 +180,29 @@ run_workload_type_test() {
     local workload_name=$3
     local workload_kind=$4
     local namespace=$5
-    
+
     echo -e "${BLUE}--- Test: $test_name ---${NC}"
-    
+
     # Apply workload
     echo "Applying $workload_kind workload..."
     kubectl apply -f "$workload_file"
-    
+
     # Wait for workload to be created
     echo "Waiting for $workload_kind to be created..."
     sleep 5
-    
+
     # Wait for OptipPod to process the workload
     echo "Waiting for OptipPod to process workload..."
     sleep 15
-    
+
     # Check results
     test_passed=true
-    
+
     check_workload_status "$workload_name" "$workload_kind" "$namespace" || test_passed=false
     check_container_resources "$workload_name" "$workload_kind" "$namespace" || test_passed=false
     check_workload_discovery "$workload_name" "$workload_kind" "$namespace" || test_passed=false
     check_workload_annotations "$workload_name" "$workload_kind" "$namespace" || test_passed=false
-    
+
     if $test_passed; then
         echo -e "${GREEN}✓ Test PASSED: $test_name${NC}"
         ((TESTS_PASSED++))
@@ -210,14 +210,14 @@ run_workload_type_test() {
         echo -e "${RED}✗ Test FAILED: $test_name${NC}"
         ((TESTS_FAILED++))
     fi
-    
+
     # Cleanup
     echo "Cleaning up $workload_kind..."
     kubectl delete -f "$workload_file" --ignore-not-found=true
-    
+
     # Wait for cleanup
     sleep 5
-    
+
     echo
 }
 

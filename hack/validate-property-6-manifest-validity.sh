@@ -39,13 +39,13 @@ echo ""
 if kubectl apply --dry-run=client -f "$MANIFEST" 2>&1 | tee /tmp/kubectl-output.txt; then
     echo ""
     echo "✓ Property 6 validated: Manifest is valid"
-    
+
     # Show resource summary
     echo ""
     echo "Resources in manifest:"
     kubectl apply --dry-run=client -f "$MANIFEST" -o json | jq -r '.items[] | "\(.kind)/\(.metadata.name)"' 2>/dev/null || \
         grep -E "^(apiVersion|kind|  name)" "$MANIFEST" | paste - - - | awk '{print $4"/"$6}'
-    
+
     rm -f /tmp/kubectl-output.txt /tmp/manifest.yaml
     exit 0
 else

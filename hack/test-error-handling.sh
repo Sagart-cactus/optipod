@@ -24,12 +24,12 @@ TESTS_FAILED=0
 check_policy_validation() {
     local policy_file=$1
     local expected_error_type=$2
-    
+
     echo "  Testing policy validation for $expected_error_type..."
-    
+
     # Try to apply the policy and capture output
     policy_output=$(kubectl apply -f "$policy_file" 2>&1 || echo "VALIDATION_FAILED")
-    
+
     if [[ "$policy_output" == *"VALIDATION_FAILED"* ]] || [[ "$policy_output" == *"error"* ]] || [[ "$policy_output" == *"invalid"* ]]; then
         echo "    Policy validation correctly rejected invalid configuration"
         echo "    Error message: $policy_output" | head -1
@@ -49,16 +49,16 @@ check_policy_validation() {
 check_error_logs() {
     local expected_error_pattern=$1
     local context_description=$2
-    
+
     echo "  Checking OptipPod logs for $context_description errors..."
-    
+
     # Get recent logs and check for error patterns
     error_logs=$(kubectl logs -n optipod-system deployment/optipod-controller-manager --since=2m 2>/dev/null | grep -i "error\|failed\|invalid" || echo "")
-    
+
     if [[ -n "$error_logs" ]]; then
         echo "    Found error-related log messages:"
         echo "$error_logs" | sed 's/^/      /' | tail -3
-        
+
         # Check if the expected error pattern is present
         if [[ "$error_logs" == *"$expected_error_pattern"* ]]; then
             echo -e "    ${GREEN}✓${NC} Expected error pattern found: $expected_error_pattern"
@@ -78,25 +78,25 @@ check_workload_error_handling() {
     local workload_file=$1
     local workload_name=$2
     local expected_error_type=$3
-    
+
     echo "  Testing workload error handling for $expected_error_type..."
-    
+
     # Apply workload
     workload_output=$(kubectl apply -f "$workload_file" 2>&1 || echo "WORKLOAD_FAILED")
-    
+
     if [[ "$workload_output" == *"WORKLOAD_FAILED"* ]] || [[ "$workload_output" == *"error"* ]] || [[ "$workload_output" == *"invalid"* ]]; then
         echo "    Workload correctly rejected due to invalid configuration"
         echo "    Error message: $workload_output" | head -1
         return 0
     elif [[ "$workload_output" == *"created"* ]] || [[ "$workload_output" == *"configured"* ]]; then
         echo "    Workload was created (may be handled at runtime)"
-        
+
         # Wait for OptipPod to process
         sleep 10
-        
+
         # Check for processing errors in logs
         check_error_logs "$expected_error_type" "workload processing"
-        
+
         # Clean up
         kubectl delete -f "$workload_file" --ignore-not-found=true 2>/dev/null
         return 0
@@ -110,19 +110,19 @@ check_workload_error_handling() {
 check_policy_status() {
     local policy_name=$1
     local expected_condition=$2
-    
+
     echo "  Checking policy status for error conditions..."
-    
+
     # Get policy status
     policy_status=$(kubectl get optimizationpolicy "$policy_name" -n optipod-system -o jsonpath='{.status}' 2>/dev/null || echo "{}")
-    
+
     if [[ -n "$policy_status" ]] && [[ "$policy_status" != "{}" ]]; then
         echo "    Policy status:"
         echo "$policy_status" | jq '.' 2>/dev/null || echo "    (Unable to parse status)"
-        
+
         # Check for error conditions
         conditions=$(echo "$policy_status" | jq -r '.conditions[]? | select(.type=="Ready" and .status=="False") | .message' 2>/dev/null || echo "")
-        
+
         if [[ -n "$conditions" ]]; then
             echo "    Found error conditions: $conditions"
             return 0
@@ -142,11 +142,11 @@ run_error_handling_test() {
     local test_type=$2
     local test_file=$3
     local expected_error=$4
-    
+
     echo -e "${BLUE}--- Test: $test_name ---${NC}"
-    
+
     test_passed=true
-    
+
     case $test_type in
         "policy-validation")
             check_policy_validation "$test_file" "$expected_error" || test_passed=false
@@ -169,7 +169,7 @@ run_error_handling_test() {
             test_passed=false
             ;;
     esac
-    
+
     if $test_passed; then
         echo -e "${GREEN}✓ Test PASSED: $test_name${NC}"
         ((TESTS_PASSED++))
@@ -177,7 +177,7 @@ run_error_handling_test() {
         echo -e "${RED}✗ Test FAILED: $test_name${NC}"
         ((TESTS_FAILED++))
     fi
-    
+
     echo
 }
 

@@ -399,7 +399,7 @@ spec:
       containers:
       - name: worker
         image: busybox:1.36
-        command: 
+        command:
         - sh
         - -c
         - |
