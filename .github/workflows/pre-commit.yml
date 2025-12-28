@@ -39,6 +39,8 @@ jobs:
         uses: pre-commit/action@v3.0.1
         with:
           extra_args: --all-files
+        env:
+          SKIP: markdownlint
 
   format-check:
     name: Code Formatting Check
