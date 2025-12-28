@@ -267,10 +267,39 @@ test-e2e-focus: setup-e2e manifests generate fmt vet ## Run focused e2e tests
 	@echo "Running focused e2e tests..."
 	KIND_CLUSTER_NAME=optipod-e2e-test go test ./test/e2e/... -v -ginkgo.v -ginkgo.focus="$(FOCUS)" -timeout=30m
 
+.PHONY: e2e-cluster
+e2e-cluster: kustomize ## Create clean Kind cluster for contract testing with consistent configuration
+	@echo "Creating clean Kind cluster for contract testing with consistent configuration..."
+	@echo "Cluster name: optipod-contract-e2e"
+	@command -v kind >/dev/null 2>&1 || { \
+		echo "Kind is not installed. Please install Kind manually."; \
+		exit 1; \
+	}
+	@command -v docker >/dev/null 2>&1 || { \
+		echo "Docker is not installed or not running. Please ensure Docker is available."; \
+		exit 1; \
+	}
+	@kind delete cluster --name optipod-contract-e2e || true
+	@kind create cluster --name optipod-contract-e2e
+
+.PHONY: test-e2e-contract
+test-e2e-contract: ## Run contract-based E2E tests with consistent configuration
+	@echo "Running contract E2E tests with consistent configuration..."
+	@echo "Environment: $(shell if [ "$$CI" = "true" ]; then echo "CI"; else echo "local"; fi)"
+	@echo "Cluster: optipod-contract-e2e"
+	@echo "Timeout: 10 minutes"
+	@echo "Note: Cluster creation is handled by the test suite BeforeSuite"
+	KIND_CLUSTER_NAME=optipod-contract-e2e go test ./test/e2e/contract/... -v -ginkgo.v -timeout=10m
+
 .PHONY: cleanup-e2e
 cleanup-e2e: ## Clean up e2e test environment
 	@echo "Cleaning up e2e test environment..."
 	@kind delete cluster --name optipod-e2e-test || true
+
+.PHONY: cleanup-contract-e2e
+cleanup-contract-e2e: ## Clean up contract e2e test environment
+	@echo "Cleaning up contract e2e test environment..."
+	@kind delete cluster --name optipod-contract-e2e || true
 
 ##@ Dependencies
 
