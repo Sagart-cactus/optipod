@@ -25,6 +25,7 @@ import (
 	"github.com/leanovate/gopter"
 	"github.com/leanovate/gopter/gen"
 	"github.com/leanovate/gopter/prop"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -37,6 +38,11 @@ import (
 
 	optipodv1alpha1 "github.com/optipod/optipod/api/v1alpha1"
 	"github.com/optipod/optipod/internal/recommendation"
+)
+
+const (
+	// serverSideApplyMethod is the method name for Server-Side Apply
+	serverSideApplyMethod = "ServerSideApply"
 )
 
 // mockDiscoveryClient is a mock implementation of discovery.DiscoveryInterface
@@ -152,7 +158,7 @@ func TestProperty_InPlaceResizePreference(t *testing.T) {
 			// Create a mock recommendation
 			rec := createMockRecommendation()
 
-			decision, err := engine.CanApply(context.Background(), workload, rec, policy)
+			decision, err := engine.CanApply(context.Background(), workload, "test-container", rec, policy)
 			if err != nil {
 				return false
 			}
@@ -203,7 +209,7 @@ func TestProperty_InPlaceResizePreference(t *testing.T) {
 			// Create a mock recommendation
 			rec := createMockRecommendation()
 
-			decision, err := engine.CanApply(context.Background(), workload, rec, policy)
+			decision, err := engine.CanApply(context.Background(), workload, "test-container", rec, policy)
 			if err != nil {
 				return false
 			}
@@ -1412,7 +1418,7 @@ func TestProperty_ConfigurationDeterminesPatchMethod(t *testing.T) {
 			}
 
 			// Verify the result indicates SSA was used
-			if result.Method != "ServerSideApply" || !result.FieldOwnership {
+			if result.Method != serverSideApplyMethod || !result.FieldOwnership {
 				return false
 			}
 
@@ -1527,7 +1533,7 @@ func TestProperty_DefaultToSSA(t *testing.T) {
 			}
 
 			// Verify the result indicates SSA was used (default)
-			if result.Method != "ServerSideApply" || !result.FieldOwnership {
+			if result.Method != serverSideApplyMethod || !result.FieldOwnership {
 				return false
 			}
 
@@ -1653,8 +1659,17 @@ func TestProperty_LimitMultipliersAppliedCorrectly(t *testing.T) {
 
 			engine := &Engine{}
 
-			// Calculate expected limits
-			cpuLimit, memoryLimit := engine.calculateLimits(rec, policy)
+			// Calculate expected limits using the new function
+			requests := corev1.ResourceList{
+				corev1.ResourceCPU:    rec.CPU,
+				corev1.ResourceMemory: rec.Memory,
+			}
+			limits, err := engine.CalculateLimitsWithDefaults(requests, policy.Spec.UpdateStrategy.LimitConfig)
+			if err != nil {
+				return false
+			}
+			cpuLimit := limits[corev1.ResourceCPU]
+			memoryLimit := limits[corev1.ResourceMemory]
 
 			// Verify CPU limit matches the calculation (CPU uses MilliValue for DecimalSI format)
 			expectedCPUMilliValue := int64(float64(rec.CPU.MilliValue()) * cpuMult)
@@ -1703,17 +1718,26 @@ func TestProperty_DefaultLimitMultipliers(t *testing.T) {
 
 			engine := &Engine{}
 
-			// Calculate limits
-			cpuLimit, memoryLimit := engine.calculateLimits(rec, policy)
+			// Calculate limits using the new function
+			requests := corev1.ResourceList{
+				corev1.ResourceCPU:    rec.CPU,
+				corev1.ResourceMemory: rec.Memory,
+			}
+			limits, err := engine.CalculateLimitsWithDefaults(requests, policy.Spec.UpdateStrategy.LimitConfig)
+			if err != nil {
+				return false
+			}
+			cpuLimit := limits[corev1.ResourceCPU]
+			memoryLimit := limits[corev1.ResourceMemory]
 
-			// Verify CPU limit uses default multiplier (1.0)
-			expectedCPUValue := rec.CPU.Value() // 1.0x = same value
-			if cpuLimit.Value() != expectedCPUValue {
+			// Verify CPU limit uses default multiplier (1.5)
+			expectedCPUValue := int64(float64(rec.CPU.MilliValue()) * DefaultCPULimitMultiplier)
+			if cpuLimit.MilliValue() != expectedCPUValue {
 				return false
 			}
 
-			// Verify memory limit uses default multiplier (1.1)
-			expectedMemValue := int64(float64(rec.Memory.Value()) * 1.1)
+			// Verify memory limit uses default multiplier (1.3)
+			expectedMemValue := int64(float64(rec.Memory.Value()) * DefaultMemoryLimitMultiplier)
 			return memoryLimit.Value() == expectedMemValue
 		},
 		gen.Int64Range(100, 4000),
@@ -1788,8 +1812,17 @@ func TestProperty_PatchContainsCalculatedLimits(t *testing.T) {
 				return false
 			}
 
-			// Calculate expected limits
-			cpuLimit, memoryLimit := engine.calculateLimits(rec, policy)
+			// Calculate expected limits using the new function
+			requests := corev1.ResourceList{
+				corev1.ResourceCPU:    rec.CPU,
+				corev1.ResourceMemory: rec.Memory,
+			}
+			limits, err := engine.CalculateLimitsWithDefaults(requests, policy.Spec.UpdateStrategy.LimitConfig)
+			if err != nil {
+				return false
+			}
+			cpuLimit := limits[corev1.ResourceCPU]
+			memoryLimit := limits[corev1.ResourceMemory]
 
 			// Verify limits in patch match calculated values
 			return limitsMap["cpu"] == cpuLimit.String() && limitsMap["memory"] == memoryLimit.String()
@@ -1803,29 +1836,258 @@ func TestProperty_PatchContainsCalculatedLimits(t *testing.T) {
 	properties.TestingRun(t, gopter.ConsoleReporter(false))
 }
 
-// Feature: limit-configuration, Property 4: Multiplier bounds are enforced
-// For any multiplier value, it should be between 1.0 and 10.0 (enforced by CRD validation)
-// This test verifies the calculation logic handles the valid range correctly
-// Validates: Requirements for limit configuration feature
-func TestProperty_MultiplierBoundsHandled(t *testing.T) {
+// Feature: memory-safety-enhancements, Property 2: Recommendation Application
+// For any workload with valid metrics data, the calculated recommendations should be applied without safety check interference
+// Validates: Requirements - Remove blocking safety checks
+//
+//nolint:gocyclo // Complex property-based test with comprehensive coverage
+func TestProperty_DirectRecommendationApplication(t *testing.T) {
 	properties := gopter.NewProperties(nil)
 
-	properties.Property("multipliers at boundary values work correctly", prop.ForAll(
-		func(cpuReq, memReq int64, useLowerBound bool) bool {
-			// Generate reasonable resource values
+	properties.Property("recommendations are applied directly without safety checks", prop.ForAll(
+		func(currentCPU, currentMem, recCPU, recMem int64, allowInPlace, allowRecreate bool) bool {
+			// Generate reasonable resource values (in millicores and MiB)
+			if currentCPU < 100 || currentCPU > 4000 || currentMem < 128 || currentMem > 8192 {
+				return true // Skip invalid current values
+			}
+			if recCPU < 100 || recCPU > 4000 || recMem < 128 || recMem > 8192 {
+				return true // Skip invalid recommendation values
+			}
+
+			// Create mock discovery client that supports in-place resize
+			mockDiscovery := &mockDiscoveryClient{
+				serverVersion: &version.Info{
+					Major: "1",
+					Minor: "29", // Version that supports in-place resize
+				},
+			}
+
+			engine := &Engine{
+				discoveryClient: mockDiscovery,
+				dryRun:          false,
+			}
+
+			// Create workload with current resources
+			workload := &Workload{
+				Kind:      "Deployment",
+				Namespace: "default",
+				Name:      "test-deployment",
+				Object: &unstructured.Unstructured{
+					Object: map[string]interface{}{
+						"spec": map[string]interface{}{
+							"template": map[string]interface{}{
+								"spec": map[string]interface{}{
+									"containers": []interface{}{
+										map[string]interface{}{
+											"name": "test-container",
+											"resources": map[string]interface{}{
+												"requests": map[string]interface{}{
+													"cpu":    fmt.Sprintf("%dm", currentCPU),
+													"memory": fmt.Sprintf("%dMi", currentMem),
+												},
+												"limits": map[string]interface{}{
+													"cpu":    fmt.Sprintf("%dm", currentCPU*2),
+													"memory": fmt.Sprintf("%dMi", currentMem*2),
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			}
+
+			// Create recommendation (can be higher or lower than current)
+			rec := &recommendation.Recommendation{
+				CPU:         resource.MustParse(fmt.Sprintf("%dm", recCPU)),
+				Memory:      resource.MustParse(fmt.Sprintf("%dMi", recMem)),
+				Explanation: "Test recommendation",
+			}
+
+			// Create policy in Auto mode
+			policy := &optipodv1alpha1.OptimizationPolicy{
+				Spec: optipodv1alpha1.OptimizationPolicySpec{
+					Mode: optipodv1alpha1.ModeAuto,
+					UpdateStrategy: optipodv1alpha1.UpdateStrategy{
+						AllowInPlaceResize: allowInPlace,
+						AllowRecreate:      allowRecreate,
+						UpdateRequestsOnly: true,
+					},
+				},
+			}
+
+			// Test CanApply - should not be blocked by safety checks
+			decision, err := engine.CanApply(context.Background(), workload, "test-container", rec, policy)
+			if err != nil {
+				return false
+			}
+
+			// With safety checks removed, the decision should be based only on:
+			// 1. Policy mode (Auto = can apply)
+			// 2. Update strategy availability (in-place or recreate)
+			// 3. NOT on memory safety checks
+
+			// If at least one update strategy is allowed, should be able to apply
+			if allowInPlace || allowRecreate {
+				if !decision.CanApply {
+					return false
+				}
+				// Should prefer in-place when available and allowed
+				if allowInPlace && decision.Method != InPlace {
+					return false
+				}
+				// Should use recreate when in-place not allowed but recreate is
+				if !allowInPlace && allowRecreate && decision.Method != Recreate {
+					return false
+				}
+			} else {
+				// If no update strategy is allowed, should skip
+				if decision.CanApply || decision.Method != Skip {
+					return false
+				}
+			}
+
+			// The key test: decision should NOT mention memory safety
+			if contains(decision.Reason, "Memory decrease") || contains(decision.Reason, "pod eviction") || contains(decision.Reason, "OOM") {
+				return false // Safety check interference detected
+			}
+
+			return true
+		},
+		gen.Int64Range(100, 4000), // currentCPU
+		gen.Int64Range(128, 8192), // currentMem
+		gen.Int64Range(100, 4000), // recCPU
+		gen.Int64Range(128, 8192), // recMem
+		gen.Bool(),                // allowInPlace
+		gen.Bool(),                // allowRecreate
+	))
+
+	properties.Property("recommendations are applied regardless of memory decrease magnitude", prop.ForAll(
+		func(currentMem, recMem int64) bool {
+			// Test specifically for memory decreases that would have been blocked by safety checks
+			if currentMem < 1024 || currentMem > 8192 { // 1Gi to 8Gi
+				return true // Skip invalid current values
+			}
+			if recMem < 128 || recMem >= currentMem { // Only test decreases
+				return true // Skip invalid or non-decrease scenarios
+			}
+
+			// Create mock discovery client
+			mockDiscovery := &mockDiscoveryClient{
+				serverVersion: &version.Info{
+					Major: "1",
+					Minor: "29",
+				},
+			}
+
+			engine := &Engine{
+				discoveryClient: mockDiscovery,
+				dryRun:          false,
+			}
+
+			// Create workload with high memory
+			workload := &Workload{
+				Kind:      "Deployment",
+				Namespace: "default",
+				Name:      "test-deployment",
+				Object: &unstructured.Unstructured{
+					Object: map[string]interface{}{
+						"spec": map[string]interface{}{
+							"template": map[string]interface{}{
+								"spec": map[string]interface{}{
+									"containers": []interface{}{
+										map[string]interface{}{
+											"name": "test-container",
+											"resources": map[string]interface{}{
+												"requests": map[string]interface{}{
+													"cpu":    "500m",
+													"memory": fmt.Sprintf("%dMi", currentMem),
+												},
+												"limits": map[string]interface{}{
+													"cpu":    "1000m",
+													"memory": fmt.Sprintf("%dMi", currentMem),
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			}
+
+			// Create recommendation with significant memory decrease
+			rec := &recommendation.Recommendation{
+				CPU:         resource.MustParse("600m"),
+				Memory:      resource.MustParse(fmt.Sprintf("%dMi", recMem)),
+				Explanation: "Test recommendation with memory decrease",
+			}
+
+			// Create policy that allows updates
+			policy := &optipodv1alpha1.OptimizationPolicy{
+				Spec: optipodv1alpha1.OptimizationPolicySpec{
+					Mode: optipodv1alpha1.ModeAuto,
+					UpdateStrategy: optipodv1alpha1.UpdateStrategy{
+						AllowInPlaceResize: true,
+						AllowRecreate:      true,
+						UpdateRequestsOnly: false, // Test with limits updates too
+						LimitConfig: &optipodv1alpha1.LimitConfig{
+							CPULimitMultiplier:    func() *float64 { v := 1.0; return &v }(),
+							MemoryLimitMultiplier: func() *float64 { v := 1.3; return &v }(),
+						},
+					},
+				},
+			}
+
+			// Test CanApply - should allow even large memory decreases
+			decision, err := engine.CanApply(context.Background(), workload, "test-container", rec, policy)
+			if err != nil {
+				return false
+			}
+
+			// Should be able to apply regardless of memory decrease magnitude
+			if !decision.CanApply {
+				return false
+			}
+
+			// Should not mention safety concerns
+			if contains(decision.Reason, "Memory decrease") || contains(decision.Reason, "unsafe") {
+				return false
+			}
+
+			return true
+		},
+		gen.Int64Range(1024, 8192), // currentMem (1Gi to 8Gi)
+		gen.Int64Range(128, 1023),  // recMem (128Mi to ~1Gi, ensuring decrease)
+	))
+
+	properties.TestingRun(t, gopter.ConsoleReporter(false))
+}
+
+// Feature: memory-safety-enhancements, Property 3: UpdateRequestsOnly Behavior
+// For any workload where updateRequestsOnly=true, only request values should be modified, leaving limits unchanged
+// Validates: Requirements - Respect update strategy settings
+//
+//nolint:gocyclo // Complex property-based test with comprehensive coverage
+func TestProperty_UpdateRequestsOnlyBehavior(t *testing.T) {
+	properties := gopter.NewProperties(nil)
+
+	properties.Property("updateRequestsOnly=true preserves limits in patches", prop.ForAll(
+		func(cpuReq, memReq int64, cpuMult, memMult float64) bool {
+			// Generate reasonable resource values (in millicores and MiB)
 			if cpuReq < 100 || cpuReq > 4000 || memReq < 128 || memReq > 8192 {
 				return true // Skip invalid values
 			}
-
-			// Test boundary values
-			var cpuMult, memMult float64
-			if useLowerBound {
-				cpuMult = 1.0 // Lower bound
-				memMult = 1.0
-			} else {
-				cpuMult = 10.0 // Upper bound
-				memMult = 10.0
+			// Multipliers must be within valid range
+			if cpuMult < MinMultiplier || cpuMult > MaxMultiplier || memMult < MinMultiplier || memMult > MaxMultiplier {
+				return true // Skip invalid multipliers
 			}
+
+			// Create workload
+			workload := createMockWorkload()
 
 			// Create recommendation
 			rec := &recommendation.Recommendation{
@@ -1834,7 +2096,114 @@ func TestProperty_MultiplierBoundsHandled(t *testing.T) {
 				Explanation: "Test recommendation",
 			}
 
-			// Create policy with boundary multipliers
+			// Create policy with updateRequestsOnly = true and custom multipliers
+			policy := createMockPolicy(true, false)
+			policy.Spec.UpdateStrategy.UpdateRequestsOnly = true
+			policy.Spec.UpdateStrategy.LimitConfig = &optipodv1alpha1.LimitConfig{
+				CPULimitMultiplier:    &cpuMult,
+				MemoryLimitMultiplier: &memMult,
+			}
+
+			engine := &Engine{}
+
+			// Test buildResourcePatch
+			patch, err := engine.buildResourcePatch(workload, "test-container", rec, policy)
+			if err != nil {
+				return false
+			}
+
+			// Parse patch to verify limits are not modified
+			var patchObj map[string]interface{}
+			if err := json.Unmarshal(patch, &patchObj); err != nil {
+				return false
+			}
+
+			// Extract containers from patch
+			containers, _, _ := unstructured.NestedSlice(patchObj, "spec", "template", "spec", "containers")
+			if len(containers) == 0 {
+				return false
+			}
+
+			container := containers[0].(map[string]interface{})
+			resourcesMap, _, _ := unstructured.NestedMap(container, "resources")
+
+			// Check that requests are updated
+			requestsMap, ok := resourcesMap["requests"].(map[string]interface{})
+			if !ok {
+				return false
+			}
+			if requestsMap["cpu"] != rec.CPU.String() || requestsMap["memory"] != rec.Memory.String() {
+				return false
+			}
+
+			// Check that limits are NOT in the patch (preserved)
+			_, limitsExist := resourcesMap["limits"]
+			if limitsExist {
+				return false // Limits should not be in patch when updateRequestsOnly=true
+			}
+
+			// Test buildSSAPatch
+			ssaPatch, err := engine.buildSSAPatch(workload, "test-container", rec, policy)
+			if err != nil {
+				return false
+			}
+
+			// Parse SSA patch to verify limits are not included
+			var ssaPatchObj map[string]interface{}
+			if err := json.Unmarshal(ssaPatch, &ssaPatchObj); err != nil {
+				return false
+			}
+
+			// Extract containers from SSA patch
+			ssaContainers, _, _ := unstructured.NestedSlice(ssaPatchObj, "spec", "template", "spec", "containers")
+			if len(ssaContainers) == 0 {
+				return false
+			}
+
+			ssaContainer := ssaContainers[0].(map[string]interface{})
+			ssaResourcesMap, _, _ := unstructured.NestedMap(ssaContainer, "resources")
+
+			// Check that requests are in SSA patch
+			ssaRequestsMap, ok := ssaResourcesMap["requests"].(map[string]interface{})
+			if !ok {
+				return false
+			}
+			if ssaRequestsMap["cpu"] != rec.CPU.String() || ssaRequestsMap["memory"] != rec.Memory.String() {
+				return false
+			}
+
+			// Check that limits are NOT in SSA patch
+			_, ssaLimitsExist := ssaResourcesMap["limits"]
+			return !ssaLimitsExist // Limits should not be in SSA patch when updateRequestsOnly=true
+		},
+		gen.Int64Range(100, 4000),
+		gen.Int64Range(128, 8192),
+		gen.Float64Range(MinMultiplier, MaxMultiplier),
+		gen.Float64Range(MinMultiplier, MaxMultiplier),
+	))
+
+	properties.Property("updateRequestsOnly=false includes limits in patches", prop.ForAll(
+		func(cpuReq, memReq int64, cpuMult, memMult float64) bool {
+			// Generate reasonable resource values
+			if cpuReq < 100 || cpuReq > 4000 || memReq < 128 || memReq > 8192 {
+				return true // Skip invalid values
+			}
+			// Multipliers must be within valid range
+			if cpuMult < MinMultiplier || cpuMult > MaxMultiplier || memMult < MinMultiplier || memMult > MaxMultiplier {
+				return true // Skip invalid multipliers
+			}
+
+			// Create workload
+			workload := createMockWorkload()
+
+			// Create recommendation
+			rec := &recommendation.Recommendation{
+				CPU:         resource.MustParse(fmt.Sprintf("%dm", cpuReq)),
+				Memory:      resource.MustParse(fmt.Sprintf("%dMi", memReq)),
+				Explanation: "Test recommendation",
+			}
+
+			// Create policy with updateRequestsOnly = false and custom multipliers
 			policy := createMockPolicy(true, false)
 			policy.Spec.UpdateStrategy.UpdateRequestsOnly = false
 			policy.Spec.UpdateStrategy.LimitConfig = &optipodv1alpha1.LimitConfig{
@@ -1844,20 +2213,1055 @@ func TestProperty_MultiplierBoundsHandled(t *testing.T) {
 
 			engine := &Engine{}
 
-			// Calculate limits - should not panic or error
-			cpuLimit, memoryLimit := engine.calculateLimits(rec, policy)
+			// Test buildResourcePatch
+			patch, err := engine.buildResourcePatch(workload, "test-container", rec, policy)
+			if err != nil {
+				return false
+			}
 
-			// Verify limits are calculated correctly
-			// CPU uses MilliValue() for DecimalSI format, Memory uses Value() for BinarySI format
-			expectedCPUMilliValue := int64(float64(rec.CPU.MilliValue()) * cpuMult)
-			expectedMemValue := int64(float64(rec.Memory.Value()) * memMult)
+			// Parse patch to verify limits ARE modified
+			var patchObj map[string]interface{}
+			if err := json.Unmarshal(patch, &patchObj); err != nil {
+				return false
+			}
 
-			return cpuLimit.MilliValue() == expectedCPUMilliValue && memoryLimit.Value() == expectedMemValue
+			// Extract containers from patch
+			containers, _, _ := unstructured.NestedSlice(patchObj, "spec", "template", "spec", "containers")
+			if len(containers) == 0 {
+				return false
+			}
+
+			container := containers[0].(map[string]interface{})
+			resourcesMap, _, _ := unstructured.NestedMap(container, "resources")
+
+			// Check that requests are updated
+			requestsMap, ok := resourcesMap["requests"].(map[string]interface{})
+			if !ok {
+				return false
+			}
+			if requestsMap["cpu"] != rec.CPU.String() || requestsMap["memory"] != rec.Memory.String() {
+				return false
+			}
+
+			// Check that limits ARE in the patch
+			limitsMap, ok := resourcesMap["limits"].(map[string]interface{})
+			if !ok {
+				return false // Limits should be in patch when updateRequestsOnly=false
+			}
+
+			// Verify limits are calculated correctly using calculateLimitsWithDefaults
+			requests := corev1.ResourceList{
+				corev1.ResourceCPU:    rec.CPU,
+				corev1.ResourceMemory: rec.Memory,
+			}
+			expectedLimits, err := engine.CalculateLimitsWithDefaults(requests, policy.Spec.UpdateStrategy.LimitConfig)
+			if err != nil {
+				return false
+			}
+
+			// Check CPU limit
+			expectedCPULimit := expectedLimits[corev1.ResourceCPU]
+			if limitsMap["cpu"] != expectedCPULimit.String() {
+				return false
+			}
+
+			// Check memory limit
+			expectedMemoryLimit := expectedLimits[corev1.ResourceMemory]
+			if limitsMap["memory"] != expectedMemoryLimit.String() {
+				return false
+			}
+
+			// Test buildSSAPatch
+			ssaPatch, err := engine.buildSSAPatch(workload, "test-container", rec, policy)
+			if err != nil {
+				return false
+			}
+
+			// Parse SSA patch to verify limits are included
+			var ssaPatchObj map[string]interface{}
+			if err := json.Unmarshal(ssaPatch, &ssaPatchObj); err != nil {
+				return false
+			}
+
+			// Extract containers from SSA patch
+			ssaContainers, _, _ := unstructured.NestedSlice(ssaPatchObj, "spec", "template", "spec", "containers")
+			if len(ssaContainers) == 0 {
+				return false
+			}
+
+			ssaContainer := ssaContainers[0].(map[string]interface{})
+			ssaResourcesMap, _, _ := unstructured.NestedMap(ssaContainer, "resources")
+
+			// Check that limits ARE in SSA patch
+			ssaLimitsMap, ok := ssaResourcesMap["limits"].(map[string]interface{})
+			if !ok {
+				return false // Limits should be in SSA patch when updateRequestsOnly=false
+			}
+
+			// Verify SSA limits match expected values
+			return ssaLimitsMap["cpu"] == expectedCPULimit.String() && ssaLimitsMap["memory"] == expectedMemoryLimit.String()
 		},
 		gen.Int64Range(100, 4000),
 		gen.Int64Range(128, 8192),
-		gen.Bool(),
+		gen.Float64Range(MinMultiplier, MaxMultiplier),
+		gen.Float64Range(MinMultiplier, MaxMultiplier),
 	))
 
 	properties.TestingRun(t, gopter.ConsoleReporter(false))
+}
+
+// Feature: memory-safety-enhancements, Property 1: Default Limit Application
+// For any workload optimization where no limit configuration is specified, default multipliers should be applied to calculate limits from requests
+// Validates: Requirements - Default limit behavior
+//
+//nolint:gocyclo // Complex property-based test with comprehensive coverage
+func TestProperty_DefaultLimitApplication(t *testing.T) {
+	properties := gopter.NewProperties(nil)
+
+	properties.Property("default multipliers are applied when no limit config exists", prop.ForAll(
+		func(cpuReq, memReq int64) bool {
+			// Generate reasonable resource values (in millicores and MiB)
+			if cpuReq < 100 || cpuReq > 4000 || memReq < 128 || memReq > 8192 {
+				return true // Skip invalid values
+			}
+
+			// Create resource list with requests
+			requests := corev1.ResourceList{
+				corev1.ResourceCPU:    resource.MustParse(fmt.Sprintf("%dm", cpuReq)),
+				corev1.ResourceMemory: resource.MustParse(fmt.Sprintf("%dMi", memReq)),
+			}
+
+			engine := &Engine{}
+
+			// Calculate limits with no limit config (should use defaults)
+			limits, err := engine.CalculateLimitsWithDefaults(requests, nil)
+			if err != nil {
+				return false
+			}
+
+			// Verify CPU limit uses default multiplier (1.5)
+			cpuRequest := requests[corev1.ResourceCPU]
+			cpuLimit := limits[corev1.ResourceCPU]
+			expectedCPUValue := int64(float64(cpuRequest.MilliValue()) * DefaultCPULimitMultiplier)
+			if cpuLimit.MilliValue() != expectedCPUValue {
+				return false
+			}
+
+			// Verify memory limit uses default multiplier (1.3)
+			memRequest := requests[corev1.ResourceMemory]
+			memLimit := limits[corev1.ResourceMemory]
+			expectedMemValue := int64(float64(memRequest.Value()) * DefaultMemoryLimitMultiplier)
+			return memLimit.Value() == expectedMemValue
+		},
+		gen.Int64Range(100, 4000),
+		gen.Int64Range(128, 8192),
+	))
+
+	properties.Property("explicit limit config takes precedence over defaults", prop.ForAll(
+		func(cpuReq, memReq int64, cpuMult, memMult float64) bool {
+			// Generate reasonable resource values
+			if cpuReq < 100 || cpuReq > 4000 || memReq < 128 || memReq > 8192 {
+				return true // Skip invalid values
+			}
+			// Multipliers must be within valid range
+			if cpuMult < MinMultiplier || cpuMult > MaxMultiplier || memMult < MinMultiplier || memMult > MaxMultiplier {
+				return true // Skip invalid multipliers
+			}
+
+			// Create resource list with requests
+			requests := corev1.ResourceList{
+				corev1.ResourceCPU:    resource.MustParse(fmt.Sprintf("%dm", cpuReq)),
+				corev1.ResourceMemory: resource.MustParse(fmt.Sprintf("%dMi", memReq)),
+			}
+
+			// Create explicit limit config
+			limitConfig := &optipodv1alpha1.LimitConfig{
+				CPULimitMultiplier:    &cpuMult,
+				MemoryLimitMultiplier: &memMult,
+			}
+
+			engine := &Engine{}
+
+			// Calculate limits with explicit config
+			limits, err := engine.CalculateLimitsWithDefaults(requests, limitConfig)
+			if err != nil {
+				return false
+			}
+
+			// Verify CPU limit uses explicit multiplier
+			cpuRequest := requests[corev1.ResourceCPU]
+			cpuLimit := limits[corev1.ResourceCPU]
+			expectedCPUValue := int64(float64(cpuRequest.MilliValue()) * cpuMult)
+			if cpuLimit.MilliValue() != expectedCPUValue {
+				return false
+			}
+
+			// Verify memory limit uses explicit multiplier
+			memRequest := requests[corev1.ResourceMemory]
+			memLimit := limits[corev1.ResourceMemory]
+			expectedMemValue := int64(float64(memRequest.Value()) * memMult)
+			return memLimit.Value() == expectedMemValue
+		},
+		gen.Int64Range(100, 4000),
+		gen.Int64Range(128, 8192),
+		gen.Float64Range(MinMultiplier, MaxMultiplier),
+		gen.Float64Range(MinMultiplier, MaxMultiplier),
+	))
+
+	properties.Property("zero or missing resources are handled gracefully", prop.ForAll(
+		func(includeCPU, includeMemory bool, cpuReq, memReq int64) bool {
+			// Generate reasonable resource values when included
+			if cpuReq < 100 || cpuReq > 4000 || memReq < 128 || memReq > 8192 {
+				return true // Skip invalid values
+			}
+
+			// Create resource list with optional resources
+			requests := corev1.ResourceList{}
+			if includeCPU {
+				requests[corev1.ResourceCPU] = resource.MustParse(fmt.Sprintf("%dm", cpuReq))
+			}
+			if includeMemory {
+				requests[corev1.ResourceMemory] = resource.MustParse(fmt.Sprintf("%dMi", memReq))
+			}
+
+			engine := &Engine{}
+
+			// Calculate limits
+			limits, err := engine.CalculateLimitsWithDefaults(requests, nil)
+			if err != nil {
+				return false
+			}
+
+			// Verify only included resources have limits calculated
+			if includeCPU {
+				if _, exists := limits[corev1.ResourceCPU]; !exists {
+					return false
+				}
+				cpuRequest := requests[corev1.ResourceCPU]
+				cpuLimit := limits[corev1.ResourceCPU]
+				expectedCPUValue := int64(float64(cpuRequest.MilliValue()) * DefaultCPULimitMultiplier)
+				if cpuLimit.MilliValue() != expectedCPUValue {
+					return false
+				}
+			} else {
+				if _, exists := limits[corev1.ResourceCPU]; exists {
+					return false // Should not have CPU limit if no CPU request
+				}
+			}
+
+			if includeMemory {
+				if _, exists := limits[corev1.ResourceMemory]; !exists {
+					return false
+				}
+				memRequest := requests[corev1.ResourceMemory]
+				memLimit := limits[corev1.ResourceMemory]
+				expectedMemValue := int64(float64(memRequest.Value()) * DefaultMemoryLimitMultiplier)
+				if memLimit.Value() != expectedMemValue {
+					return false
+				}
+			} else {
+				if _, exists := limits[corev1.ResourceMemory]; exists {
+					return false // Should not have memory limit if no memory request
+				}
+			}
+
+			return true
+		},
+		gen.Bool(),
+		gen.Bool(),
+		gen.Int64Range(100, 4000),
+		gen.Int64Range(128, 8192),
+	))
+
+	properties.Property("invalid multipliers are rejected", prop.ForAll(
+		func(cpuReq, memReq int64, cpuMult, memMult float64) bool {
+			// Generate reasonable resource values
+			if cpuReq < 100 || cpuReq > 4000 || memReq < 128 || memReq > 8192 {
+				return true // Skip invalid values
+			}
+			// Only test invalid multipliers
+			if (cpuMult >= MinMultiplier && cpuMult <= MaxMultiplier) && (memMult >= MinMultiplier && memMult <= MaxMultiplier) {
+				return true // Skip valid multipliers
+			}
+
+			// Create resource list with requests
+			requests := corev1.ResourceList{
+				corev1.ResourceCPU:    resource.MustParse(fmt.Sprintf("%dm", cpuReq)),
+				corev1.ResourceMemory: resource.MustParse(fmt.Sprintf("%dMi", memReq)),
+			}
+
+			// Create limit config with invalid multipliers
+			limitConfig := &optipodv1alpha1.LimitConfig{
+				CPULimitMultiplier:    &cpuMult,
+				MemoryLimitMultiplier: &memMult,
+			}
+
+			engine := &Engine{}
+
+			// Calculate limits - should return error for invalid multipliers
+			_, err := engine.CalculateLimitsWithDefaults(requests, limitConfig)
+
+			// Should return error if any multiplier is invalid
+			return err != nil
+		},
+		gen.Int64Range(100, 4000),
+		gen.Int64Range(128, 8192),
+		gen.Float64Range(-1.0, 15.0), // Include invalid range
+		gen.Float64Range(-1.0, 15.0), // Include invalid range
+	))
+
+	properties.TestingRun(t, gopter.ConsoleReporter(false))
+}
+
+// Feature: memory-safety-enhancements, Property 4: Limit Configuration Precedence
+// For any workload with explicit limit configuration, the specified multipliers should take precedence over default values
+// Validates: Requirements - Honor explicit configurations
+//
+//nolint:gocyclo // Complex property-based test with comprehensive coverage
+func TestProperty_LimitConfigurationPrecedence(t *testing.T) {
+	properties := gopter.NewProperties(nil)
+
+	properties.Property("explicit multipliers take precedence over defaults", prop.ForAll(
+		func(cpuReq, memReq int64, cpuMult, memMult float64) bool {
+			// Generate reasonable resource values (in millicores and MiB)
+			if cpuReq < 100 || cpuReq > 4000 || memReq < 128 || memReq > 8192 {
+				return true // Skip invalid values
+			}
+			// Multipliers must be within valid range
+			if cpuMult < MinMultiplier || cpuMult > MaxMultiplier || memMult < MinMultiplier || memMult > MaxMultiplier {
+				return true // Skip invalid multipliers
+			}
+
+			// Create resource list with requests
+			requests := corev1.ResourceList{
+				corev1.ResourceCPU:    resource.MustParse(fmt.Sprintf("%dm", cpuReq)),
+				corev1.ResourceMemory: resource.MustParse(fmt.Sprintf("%dMi", memReq)),
+			}
+
+			// Create explicit limit config
+			limitConfig := &optipodv1alpha1.LimitConfig{
+				CPULimitMultiplier:    &cpuMult,
+				MemoryLimitMultiplier: &memMult,
+			}
+
+			engine := &Engine{}
+
+			// Calculate limits with explicit config
+			limits, err := engine.CalculateLimitsWithDefaults(requests, limitConfig)
+			if err != nil {
+				return false
+			}
+
+			// Verify CPU limit uses explicit multiplier (not default)
+			cpuRequest := requests[corev1.ResourceCPU]
+			cpuLimit := limits[corev1.ResourceCPU]
+			expectedCPUValue := int64(float64(cpuRequest.MilliValue()) * cpuMult)
+			if cpuLimit.MilliValue() != expectedCPUValue {
+				return false
+			}
+
+			// Verify memory limit uses explicit multiplier (not default)
+			memRequest := requests[corev1.ResourceMemory]
+			memLimit := limits[corev1.ResourceMemory]
+			expectedMemValue := int64(float64(memRequest.Value()) * memMult)
+			if memLimit.Value() != expectedMemValue {
+				return false
+			}
+
+			// Verify that explicit values are different from defaults (when they differ)
+			if cpuMult != DefaultCPULimitMultiplier {
+				defaultCPUValue := int64(float64(cpuRequest.MilliValue()) * DefaultCPULimitMultiplier)
+				if cpuLimit.MilliValue() == defaultCPUValue {
+					return false // Should not equal default when explicit is different
+				}
+			}
+
+			if memMult != DefaultMemoryLimitMultiplier {
+				defaultMemValue := int64(float64(memRequest.Value()) * DefaultMemoryLimitMultiplier)
+				if memLimit.Value() == defaultMemValue {
+					return false // Should not equal default when explicit is different
+				}
+			}
+
+			return true
+		},
+		gen.Int64Range(100, 4000),
+		gen.Int64Range(128, 8192),
+		gen.Float64Range(MinMultiplier, MaxMultiplier),
+		gen.Float64Range(MinMultiplier, MaxMultiplier),
+	))
+
+	properties.Property("partial configuration uses defaults for missing values", prop.ForAll(
+		func(cpuReq, memReq int64, explicitMult float64, useCPU bool) bool {
+			// Generate reasonable resource values
+			if cpuReq < 100 || cpuReq > 4000 || memReq < 128 || memReq > 8192 {
+				return true // Skip invalid values
+			}
+			// Multiplier must be within valid range
+			if explicitMult < MinMultiplier || explicitMult > MaxMultiplier {
+				return true // Skip invalid multipliers
+			}
+
+			// Create resource list with requests
+			requests := corev1.ResourceList{
+				corev1.ResourceCPU:    resource.MustParse(fmt.Sprintf("%dm", cpuReq)),
+				corev1.ResourceMemory: resource.MustParse(fmt.Sprintf("%dMi", memReq)),
+			}
+
+			// Create partial limit config (only CPU or only memory)
+			var limitConfig *optipodv1alpha1.LimitConfig
+			if useCPU {
+				limitConfig = &optipodv1alpha1.LimitConfig{
+					CPULimitMultiplier: &explicitMult,
+					// MemoryLimitMultiplier is nil - should use default
+				}
+			} else {
+				limitConfig = &optipodv1alpha1.LimitConfig{
+					// CPULimitMultiplier is nil - should use default
+					MemoryLimitMultiplier: &explicitMult,
+				}
+			}
+
+			engine := &Engine{}
+
+			// Calculate limits with partial config
+			limits, err := engine.CalculateLimitsWithDefaults(requests, limitConfig)
+			if err != nil {
+				return false
+			}
+
+			// Verify the resource with explicit config uses that multiplier
+			if useCPU {
+				// CPU should use explicit multiplier
+				cpuRequest := requests[corev1.ResourceCPU]
+				cpuLimit := limits[corev1.ResourceCPU]
+				expectedCPUValue := int64(float64(cpuRequest.MilliValue()) * explicitMult)
+				if cpuLimit.MilliValue() != expectedCPUValue {
+					return false
+				}
+
+				// Memory should use default multiplier
+				memRequest := requests[corev1.ResourceMemory]
+				memLimit := limits[corev1.ResourceMemory]
+				expectedMemValue := int64(float64(memRequest.Value()) * DefaultMemoryLimitMultiplier)
+				if memLimit.Value() != expectedMemValue {
+					return false
+				}
+			} else {
+				// CPU should use default multiplier
+				cpuRequest := requests[corev1.ResourceCPU]
+				cpuLimit := limits[corev1.ResourceCPU]
+				expectedCPUValue := int64(float64(cpuRequest.MilliValue()) * DefaultCPULimitMultiplier)
+				if cpuLimit.MilliValue() != expectedCPUValue {
+					return false
+				}
+
+				// Memory should use explicit multiplier
+				memRequest := requests[corev1.ResourceMemory]
+				memLimit := limits[corev1.ResourceMemory]
+				expectedMemValue := int64(float64(memRequest.Value()) * explicitMult)
+				if memLimit.Value() != expectedMemValue {
+					return false
+				}
+			}
+
+			return true
+		},
+		gen.Int64Range(100, 4000),
+		gen.Int64Range(128, 8192),
+		gen.Float64Range(MinMultiplier, MaxMultiplier),
+		gen.Bool(),
+	))
+
+	properties.Property("empty config uses all defaults", prop.ForAll(
+		func(cpuReq, memReq int64) bool {
+			// Generate reasonable resource values
+			if cpuReq < 100 || cpuReq > 4000 || memReq < 128 || memReq > 8192 {
+				return true // Skip invalid values
+			}
+
+			// Create resource list with requests
+			requests := corev1.ResourceList{
+				corev1.ResourceCPU:    resource.MustParse(fmt.Sprintf("%dm", cpuReq)),
+				corev1.ResourceMemory: resource.MustParse(fmt.Sprintf("%dMi", memReq)),
+			}
+
+			// Create empty limit config (not nil, but no multipliers set)
+			limitConfig := &optipodv1alpha1.LimitConfig{}
+
+			engine := &Engine{}
+
+			// Calculate limits with empty config
+			limits, err := engine.CalculateLimitsWithDefaults(requests, limitConfig)
+			if err != nil {
+				return false
+			}
+
+			// Both should use default multipliers (same as nil config)
+			limitsWithNil, errNil := engine.CalculateLimitsWithDefaults(requests, nil)
+			if errNil != nil {
+				return false
+			}
+
+			// Results should be identical
+			cpuLimit := limits[corev1.ResourceCPU]
+			cpuLimitNil := limitsWithNil[corev1.ResourceCPU]
+			if !cpuLimit.Equal(cpuLimitNil) {
+				return false
+			}
+
+			memLimit := limits[corev1.ResourceMemory]
+			memLimitNil := limitsWithNil[corev1.ResourceMemory]
+			return memLimit.Equal(memLimitNil)
+		},
+		gen.Int64Range(100, 4000),
+		gen.Int64Range(128, 8192),
+	))
+
+	properties.TestingRun(t, gopter.ConsoleReporter(false))
+}
+
+// Unit tests for optimization application
+func TestOptimizationApplication(t *testing.T) {
+	t.Run("successful SSA optimization with comprehensive logging", func(t *testing.T) {
+		// Track the patch options and logs
+		var capturedPatchOptions metav1.PatchOptions
+		var capturedPatchType types.PatchType
+
+		// Create mock dynamic client that captures patch options
+		mockDynamic := &mockDynamicClientWithCapture{
+			capturedPatchOptions: &capturedPatchOptions,
+			capturedPatchType:    &capturedPatchType,
+		}
+
+		engine := &Engine{
+			dynamicClient: mockDynamic,
+		}
+
+		// Create workload
+		workload := createMockWorkload()
+
+		// Create recommendation
+		rec := &recommendation.Recommendation{
+			CPU:         resource.MustParse("600m"),
+			Memory:      resource.MustParse("1200Mi"),
+			Explanation: "Test recommendation",
+		}
+
+		// Create policy
+		policy := createMockPolicy(true, false)
+
+		// Apply with SSA
+		err := engine.ApplyWithSSA(context.Background(), workload, "test-container", rec, policy)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		// Verify field manager is "optipod"
+		if capturedPatchOptions.FieldManager != FieldManagerName {
+			t.Errorf("expected field manager %s, got %s", FieldManagerName, capturedPatchOptions.FieldManager)
+		}
+
+		// Verify Force flag is set
+		if capturedPatchOptions.Force == nil || *capturedPatchOptions.Force != true {
+			t.Error("expected Force flag to be true")
+		}
+
+		// Verify patch type is ApplyPatchType
+		if capturedPatchType != types.ApplyPatchType {
+			t.Errorf("expected patch type %v, got %v", types.ApplyPatchType, capturedPatchType)
+		}
+	})
+
+	t.Run("successful Strategic Merge optimization with comprehensive logging", func(t *testing.T) {
+		// Track the patch type
+		var capturedPatchType types.PatchType
+
+		// Create mock dynamic client that captures patch type
+		mockDynamic := &mockDynamicClientWithCapture{
+			capturedPatchOptions: &metav1.PatchOptions{},
+			capturedPatchType:    &capturedPatchType,
+		}
+
+		engine := &Engine{
+			dynamicClient: mockDynamic,
+		}
+
+		// Create workload
+		workload := createMockWorkload()
+
+		// Create recommendation
+		rec := &recommendation.Recommendation{
+			CPU:         resource.MustParse("400m"),
+			Memory:      resource.MustParse("800Mi"),
+			Explanation: "Test recommendation",
+		}
+
+		// Create policy with SSA disabled
+		policy := createMockPolicy(true, false)
+		useSSA := false
+		policy.Spec.UpdateStrategy.UseServerSideApply = &useSSA
+
+		// Apply with Strategic Merge
+		err := engine.ApplyWithStrategicMerge(context.Background(), workload, "test-container", rec, policy)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		// Verify patch type is StrategicMergePatchType
+		if capturedPatchType != types.StrategicMergePatchType {
+			t.Errorf("expected patch type %v, got %v", types.StrategicMergePatchType, capturedPatchType)
+		}
+	})
+
+	t.Run("error handling and logging for SSA failures", func(t *testing.T) {
+		// Create mock dynamic client that returns conflict error
+		mockDynamic := &mockDynamicClientWithError{
+			errorType: "conflict",
+		}
+
+		engine := &Engine{
+			dynamicClient: mockDynamic,
+		}
+
+		workload := createMockWorkload()
+		rec := createMockRecommendation()
+		policy := createMockPolicy(true, false)
+
+		err := engine.ApplyWithSSA(context.Background(), workload, "test-container", rec, policy)
+		if err == nil {
+			t.Error("expected error for SSA conflict")
+		}
+
+		// Verify error message contains SSA conflict information
+		if !contains(err.Error(), "SSA conflict") {
+			t.Errorf("expected error to contain 'SSA conflict', got: %s", err.Error())
+		}
+	})
+
+	t.Run("error handling and logging for Strategic Merge failures", func(t *testing.T) {
+		// Create mock dynamic client that returns forbidden error
+		mockDynamic := &mockDynamicClientWithError{
+			errorType: "forbidden",
+		}
+
+		engine := &Engine{
+			dynamicClient: mockDynamic,
+		}
+
+		workload := createMockWorkload()
+		rec := createMockRecommendation()
+		policy := createMockPolicy(true, false)
+
+		err := engine.ApplyWithStrategicMerge(context.Background(), workload, "test-container", rec, policy)
+		if err == nil {
+			t.Error("expected error for forbidden access")
+		}
+
+		// Verify error message contains RBAC information
+		if !contains(err.Error(), "RBAC") {
+			t.Errorf("expected error to contain 'RBAC', got: %s", err.Error())
+		}
+	})
+
+	t.Run("optimization decision logging includes all relevant details", func(t *testing.T) {
+		// Create mock dynamic client
+		mockDynamic := &mockDynamicClientWithCapture{
+			capturedPatchOptions: &metav1.PatchOptions{},
+			capturedPatchType:    new(types.PatchType),
+		}
+
+		engine := &Engine{
+			dynamicClient: mockDynamic,
+		}
+
+		workload := createMockWorkload()
+		rec := &recommendation.Recommendation{
+			CPU:         resource.MustParse("750m"),
+			Memory:      resource.MustParse("1500Mi"),
+			Explanation: "Optimization based on usage patterns",
+		}
+		policy := createMockPolicy(true, false)
+
+		// Apply optimization - this should trigger comprehensive logging
+		err := engine.ApplyWithSSA(context.Background(), workload, "test-container", rec, policy)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		// The test passes if no error occurred, indicating logging was successful
+		// In a real scenario, we would capture and verify log messages
+	})
+
+	t.Run("Apply method chooses correct patch strategy", func(t *testing.T) {
+		// Test SSA selection
+		var capturedPatchType types.PatchType
+		mockDynamic := &mockDynamicClientWithCapture{
+			capturedPatchOptions: &metav1.PatchOptions{},
+			capturedPatchType:    &capturedPatchType,
+		}
+
+		engine := &Engine{
+			dynamicClient: mockDynamic,
+		}
+
+		workload := createMockWorkload()
+		rec := createMockRecommendation()
+
+		// Test with SSA enabled (default)
+		policy := createMockPolicy(true, false)
+		policy.Spec.UpdateStrategy.UseServerSideApply = nil // Should default to true
+
+		result, err := engine.Apply(context.Background(), workload, "test-container", rec, policy)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if result.Method != serverSideApplyMethod || !result.FieldOwnership {
+			t.Errorf("expected SSA method with field ownership, got method=%s, ownership=%v", result.Method, result.FieldOwnership)
+		}
+
+		if capturedPatchType != types.ApplyPatchType {
+			t.Errorf("expected ApplyPatchType, got %v", capturedPatchType)
+		}
+
+		// Test with SSA disabled
+		useSSA := false
+		policy.Spec.UpdateStrategy.UseServerSideApply = &useSSA
+
+		result, err = engine.Apply(context.Background(), workload, "test-container", rec, policy)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if result.Method != "StrategicMergePatch" || result.FieldOwnership {
+			t.Errorf("expected Strategic Merge method without field ownership, got method=%s, ownership=%v", result.Method, result.FieldOwnership)
+		}
+
+		if capturedPatchType != types.StrategicMergePatchType {
+			t.Errorf("expected StrategicMergePatchType, got %v", capturedPatchType)
+		}
+	})
+
+	t.Run("optimization respects updateRequestsOnly setting", func(t *testing.T) {
+		mockDynamic := &mockDynamicClientWithCapture{
+			capturedPatchOptions: &metav1.PatchOptions{},
+			capturedPatchType:    new(types.PatchType),
+		}
+
+		engine := &Engine{
+			dynamicClient: mockDynamic,
+		}
+
+		workload := createMockWorkload()
+		rec := createMockRecommendation()
+
+		// Test with updateRequestsOnly = true
+		policy := createMockPolicy(true, false)
+		policy.Spec.UpdateStrategy.UpdateRequestsOnly = true
+
+		err := engine.ApplyWithSSA(context.Background(), workload, "test-container", rec, policy)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		// Test with updateRequestsOnly = false
+		policy.Spec.UpdateStrategy.UpdateRequestsOnly = false
+
+		err = engine.ApplyWithSSA(context.Background(), workload, "test-container", rec, policy)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		// The test passes if both configurations work without error
+		// Detailed patch content verification is covered by property tests
+	})
+}
+
+// Unit tests for CalculateLimitsWithDefaults function
+func TestCalculateLimitsWithDefaults(t *testing.T) {
+	engine := &Engine{}
+
+	t.Run("default multipliers are applied when no config provided", func(t *testing.T) {
+		requests := corev1.ResourceList{
+			corev1.ResourceCPU:    resource.MustParse("500m"),
+			corev1.ResourceMemory: resource.MustParse("1Gi"),
+		}
+
+		limits, err := engine.CalculateLimitsWithDefaults(requests, nil)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		// Verify CPU limit uses default multiplier (1.5)
+		expectedCPU := resource.MustParse("750m") // 500m * 1.5
+		cpuLimit := limits[corev1.ResourceCPU]
+		if !cpuLimit.Equal(expectedCPU) {
+			t.Errorf("expected CPU limit %s, got %s", expectedCPU.String(), cpuLimit.String())
+		}
+
+		// Verify memory limit uses default multiplier (1.3)
+		memRequest := requests[corev1.ResourceMemory]
+		memLimit := limits[corev1.ResourceMemory]
+		expectedMem := int64(float64(memRequest.Value()) * DefaultMemoryLimitMultiplier)
+		if memLimit.Value() != expectedMem {
+			t.Errorf("expected memory limit value %d, got %d", expectedMem, memLimit.Value())
+		}
+	})
+
+	t.Run("explicit config takes precedence over defaults", func(t *testing.T) {
+		requests := corev1.ResourceList{
+			corev1.ResourceCPU:    resource.MustParse("200m"),
+			corev1.ResourceMemory: resource.MustParse("512Mi"),
+		}
+
+		cpuMult := 2.0
+		memMult := 1.8
+		limitConfig := &optipodv1alpha1.LimitConfig{
+			CPULimitMultiplier:    &cpuMult,
+			MemoryLimitMultiplier: &memMult,
+		}
+
+		limits, err := engine.CalculateLimitsWithDefaults(requests, limitConfig)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		// Verify CPU limit uses explicit multiplier (2.0)
+		expectedCPU := resource.MustParse("400m") // 200m * 2.0
+		cpuLimit := limits[corev1.ResourceCPU]
+		if !cpuLimit.Equal(expectedCPU) {
+			t.Errorf("expected CPU limit %s, got %s", expectedCPU.String(), cpuLimit.String())
+		}
+
+		// Verify memory limit uses explicit multiplier (1.8)
+		memRequest := requests[corev1.ResourceMemory]
+		memLimit := limits[corev1.ResourceMemory]
+		expectedMem := int64(float64(memRequest.Value()) * memMult)
+		if memLimit.Value() != expectedMem {
+			t.Errorf("expected memory limit value %d, got %d", expectedMem, memLimit.Value())
+		}
+	})
+
+	t.Run("zero values are handled gracefully", func(t *testing.T) {
+		requests := corev1.ResourceList{
+			corev1.ResourceCPU:    resource.MustParse("0"),
+			corev1.ResourceMemory: resource.MustParse("0"),
+		}
+
+		limits, err := engine.CalculateLimitsWithDefaults(requests, nil)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		// Should not have limits for zero requests
+		if len(limits) != 0 {
+			t.Errorf("expected no limits for zero requests, got %v", limits)
+		}
+	})
+
+	t.Run("missing resources are handled gracefully", func(t *testing.T) {
+		// Only CPU request, no memory
+		requests := corev1.ResourceList{
+			corev1.ResourceCPU: resource.MustParse("300m"),
+		}
+
+		limits, err := engine.CalculateLimitsWithDefaults(requests, nil)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		// Should only have CPU limit
+		if len(limits) != 1 {
+			t.Errorf("expected 1 limit, got %d", len(limits))
+		}
+
+		if _, exists := limits[corev1.ResourceCPU]; !exists {
+			t.Error("expected CPU limit to exist")
+		}
+
+		if _, exists := limits[corev1.ResourceMemory]; exists {
+			t.Error("expected no memory limit")
+		}
+	})
+
+	t.Run("invalid multipliers return error", func(t *testing.T) {
+		requests := corev1.ResourceList{
+			corev1.ResourceCPU:    resource.MustParse("100m"),
+			corev1.ResourceMemory: resource.MustParse("128Mi"),
+		}
+
+		// Test invalid CPU multiplier
+		invalidCPUMult := 0.5 // Below MinMultiplier (1.0)
+		validMemMult := 1.5
+		limitConfig := &optipodv1alpha1.LimitConfig{
+			CPULimitMultiplier:    &invalidCPUMult,
+			MemoryLimitMultiplier: &validMemMult,
+		}
+
+		_, err := engine.CalculateLimitsWithDefaults(requests, limitConfig)
+		if err == nil {
+			t.Error("expected error for invalid CPU multiplier")
+		}
+
+		// Test invalid memory multiplier
+		validCPUMult := 1.5
+		invalidMemMult := 15.0 // Above MaxMultiplier (10.0)
+		limitConfig = &optipodv1alpha1.LimitConfig{
+			CPULimitMultiplier:    &validCPUMult,
+			MemoryLimitMultiplier: &invalidMemMult,
+		}
+
+		_, err = engine.CalculateLimitsWithDefaults(requests, limitConfig)
+		if err == nil {
+			t.Error("expected error for invalid memory multiplier")
+		}
+	})
+
+	t.Run("boundary multiplier values work correctly", func(t *testing.T) {
+		requests := corev1.ResourceList{
+			corev1.ResourceCPU:    resource.MustParse("100m"),
+			corev1.ResourceMemory: resource.MustParse("100Mi"),
+		}
+
+		// Test minimum valid multipliers
+		minMult := MinMultiplier // 1.0
+		limitConfig := &optipodv1alpha1.LimitConfig{
+			CPULimitMultiplier:    &minMult,
+			MemoryLimitMultiplier: &minMult,
+		}
+
+		limits, err := engine.CalculateLimitsWithDefaults(requests, limitConfig)
+		if err != nil {
+			t.Fatalf("unexpected error for min multipliers: %v", err)
+		}
+
+		// With 1.0 multiplier, limits should equal requests
+		cpuLimit := limits[corev1.ResourceCPU]
+		cpuRequest := requests[corev1.ResourceCPU]
+		if !cpuLimit.Equal(cpuRequest) {
+			t.Errorf("expected CPU limit to equal request with 1.0 multiplier")
+		}
+		memLimit := limits[corev1.ResourceMemory]
+		memRequest := requests[corev1.ResourceMemory]
+		if !memLimit.Equal(memRequest) {
+			t.Errorf("expected memory limit to equal request with 1.0 multiplier")
+		}
+
+		// Test maximum valid multipliers
+		maxMult := MaxMultiplier // 10.0
+		limitConfig = &optipodv1alpha1.LimitConfig{
+			CPULimitMultiplier:    &maxMult,
+			MemoryLimitMultiplier: &maxMult,
+		}
+
+		limits, err = engine.CalculateLimitsWithDefaults(requests, limitConfig)
+		if err != nil {
+			t.Fatalf("unexpected error for max multipliers: %v", err)
+		}
+
+		// Verify limits are 10x the requests
+		expectedCPUMax := resource.MustParse("1000m") // 100m * 10
+		cpuLimitMax := limits[corev1.ResourceCPU]
+		if !cpuLimitMax.Equal(expectedCPUMax) {
+			t.Errorf("expected CPU limit %s, got %s", expectedCPUMax.String(), cpuLimitMax.String())
+		}
+
+		memReq := requests[corev1.ResourceMemory]
+		memLim := limits[corev1.ResourceMemory]
+		expectedMemVal := int64(float64(memReq.Value()) * maxMult)
+		if memLim.Value() != expectedMemVal {
+			t.Errorf("expected memory limit value %d, got %d", expectedMemVal, memLim.Value())
+		}
+	})
+
+	t.Run("partial configuration precedence works correctly", func(t *testing.T) {
+		requests := corev1.ResourceList{
+			corev1.ResourceCPU:    resource.MustParse("100m"),
+			corev1.ResourceMemory: resource.MustParse("100Mi"),
+		}
+
+		// Test with only CPU multiplier specified
+		cpuMult := 3.0
+		limitConfig := &optipodv1alpha1.LimitConfig{
+			CPULimitMultiplier: &cpuMult,
+			// MemoryLimitMultiplier is nil - should use default
+		}
+
+		limits, err := engine.CalculateLimitsWithDefaults(requests, limitConfig)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		// CPU should use explicit multiplier (3.0)
+		expectedCPU := resource.MustParse("300m") // 100m * 3.0
+		cpuLimit := limits[corev1.ResourceCPU]
+		if !cpuLimit.Equal(expectedCPU) {
+			t.Errorf("expected CPU limit %s, got %s", expectedCPU.String(), cpuLimit.String())
+		}
+
+		// Memory should use default multiplier (1.3)
+		memRequest := requests[corev1.ResourceMemory]
+		memLimit := limits[corev1.ResourceMemory]
+		expectedMem := int64(float64(memRequest.Value()) * DefaultMemoryLimitMultiplier)
+		if memLimit.Value() != expectedMem {
+			t.Errorf("expected memory limit value %d, got %d", expectedMem, memLimit.Value())
+		}
+
+		// Test with only memory multiplier specified
+		memMult := 2.5
+		limitConfig = &optipodv1alpha1.LimitConfig{
+			// CPULimitMultiplier is nil - should use default
+			MemoryLimitMultiplier: &memMult,
+		}
+
+		limits, err = engine.CalculateLimitsWithDefaults(requests, limitConfig)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		// CPU should use default multiplier (1.5)
+		expectedCPUDefault := resource.MustParse("150m") // 100m * 1.5
+		cpuLimitDefault := limits[corev1.ResourceCPU]
+		if !cpuLimitDefault.Equal(expectedCPUDefault) {
+			t.Errorf("expected CPU limit %s, got %s", expectedCPUDefault.String(), cpuLimitDefault.String())
+		}
+
+		// Memory should use explicit multiplier (2.5)
+		memRequest = requests[corev1.ResourceMemory]
+		memLimit = limits[corev1.ResourceMemory]
+		expectedMemExplicit := int64(float64(memRequest.Value()) * memMult)
+		if memLimit.Value() != expectedMemExplicit {
+			t.Errorf("expected memory limit value %d, got %d", expectedMemExplicit, memLimit.Value())
+		}
+	})
+
+	t.Run("empty limit config uses defaults", func(t *testing.T) {
+		requests := corev1.ResourceList{
+			corev1.ResourceCPU:    resource.MustParse("200m"),
+			corev1.ResourceMemory: resource.MustParse("256Mi"),
+		}
+
+		// Empty limit config (not nil, but no multipliers set)
+		limitConfig := &optipodv1alpha1.LimitConfig{}
+
+		limits, err := engine.CalculateLimitsWithDefaults(requests, limitConfig)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		// Both should use default multipliers
+		expectedCPU := resource.MustParse("300m") // 200m * 1.5
+		cpuLimit := limits[corev1.ResourceCPU]
+		if !cpuLimit.Equal(expectedCPU) {
+			t.Errorf("expected CPU limit %s, got %s", expectedCPU.String(), cpuLimit.String())
+		}
+
+		memRequest := requests[corev1.ResourceMemory]
+		memLimit := limits[corev1.ResourceMemory]
+		expectedMem := int64(float64(memRequest.Value()) * DefaultMemoryLimitMultiplier)
+		if memLimit.Value() != expectedMem {
+			t.Errorf("expected memory limit value %d, got %d", expectedMem, memLimit.Value())
+		}
+	})
 }

@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -47,6 +48,28 @@ const (
 	// FieldManagerName is the field manager name used by optipod
 	FieldManagerName = "optipod"
 )
+
+// Default limit multiplier constants
+const (
+	// DefaultMemoryLimitMultiplier is the default multiplier for memory limits (30% buffer above requests)
+	DefaultMemoryLimitMultiplier = 1.3
+	// DefaultCPULimitMultiplier is the default multiplier for CPU limits (50% buffer above requests)
+	DefaultCPULimitMultiplier = 1.5
+	// MinMultiplier is the minimum allowed multiplier value
+	MinMultiplier = 1.0
+	// MaxMultiplier is the maximum allowed multiplier value
+	MaxMultiplier = 10.0
+	// noneValue represents the absence of a resource value
+	noneValue = "none"
+)
+
+// validateMultiplier validates that a multiplier is within the allowed range
+func validateMultiplier(multiplier float64, name string) error {
+	if multiplier < MinMultiplier || multiplier > MaxMultiplier {
+		return fmt.Errorf("%s multiplier %.2f is out of range [%.1f, %.1f]", name, multiplier, MinMultiplier, MaxMultiplier)
+	}
+	return nil
+}
 
 // ApplyMethod defines how resource changes should be applied
 type ApplyMethod string
@@ -97,82 +120,162 @@ func NewEngine(c client.Client, dynamicClient dynamic.Interface, discoveryClient
 func (e *Engine) CanApply(
 	ctx context.Context,
 	workload *Workload,
+	containerName string,
 	rec *recommendation.Recommendation,
 	policy *optipodv1alpha1.OptimizationPolicy,
 ) (*ApplyDecision, error) {
+	log := ctrl.LoggerFrom(ctx)
+	startTime := time.Now()
+
+	defer func() {
+		duration := time.Since(startTime).Seconds()
+		observability.RecordOptimizationDecisionDuration(policy.Name, workload.Kind, duration)
+	}()
+
+	log.Info("Evaluating optimization applicability",
+		"workload", fmt.Sprintf("%s/%s", workload.Namespace, workload.Name),
+		"container", containerName,
+		"policy", policy.Name,
+		"policyMode", string(policy.Spec.Mode),
+		"globalDryRun", e.dryRun,
+		"allowInPlaceResize", policy.Spec.UpdateStrategy.AllowInPlaceResize,
+		"allowRecreate", policy.Spec.UpdateStrategy.AllowRecreate,
+	)
+
 	// Check policy mode
 	if policy.Spec.Mode == optipodv1alpha1.ModeRecommend {
-		return &ApplyDecision{
+		decision := &ApplyDecision{
 			CanApply: false,
 			Method:   Skip,
 			Reason:   "Policy is in Recommend mode",
-		}, nil
+		}
+		log.Info("Optimization decision made",
+			"workload", fmt.Sprintf("%s/%s", workload.Namespace, workload.Name),
+			"container", containerName,
+			"canApply", decision.CanApply,
+			"method", string(decision.Method),
+			"reason", decision.Reason,
+		)
+		return decision, nil
 	}
 
 	if policy.Spec.Mode == optipodv1alpha1.ModeDisabled {
-		return &ApplyDecision{
+		decision := &ApplyDecision{
 			CanApply: false,
 			Method:   Skip,
 			Reason:   "Policy is disabled",
-		}, nil
+		}
+		log.Info("Optimization decision made",
+			"workload", fmt.Sprintf("%s/%s", workload.Namespace, workload.Name),
+			"container", containerName,
+			"canApply", decision.CanApply,
+			"method", string(decision.Method),
+			"reason", decision.Reason,
+		)
+		return decision, nil
 	}
 
 	// Check global dry-run
 	if e.dryRun {
-		return &ApplyDecision{
+		decision := &ApplyDecision{
 			CanApply: false,
 			Method:   Skip,
 			Reason:   "Global dry-run mode is enabled",
-		}, nil
+		}
+		log.Info("Optimization decision made",
+			"workload", fmt.Sprintf("%s/%s", workload.Namespace, workload.Name),
+			"container", containerName,
+			"canApply", decision.CanApply,
+			"method", string(decision.Method),
+			"reason", decision.Reason,
+		)
+		return decision, nil
 	}
 
 	// Get current container resources
-	currentResources, err := e.getCurrentResources(workload)
+	_, err := e.getCurrentResources(workload)
 	if err != nil {
+		log.Error(err, "Failed to get current resources during applicability check",
+			"workload", fmt.Sprintf("%s/%s", workload.Namespace, workload.Name),
+			"container", containerName,
+		)
 		return nil, fmt.Errorf("failed to get current resources: %w", err)
-	}
-
-	// Check for memory decrease safety
-	if e.isUnsafeMemoryDecrease(currentResources, rec) {
-		return &ApplyDecision{
-			CanApply: false,
-			Method:   Skip,
-			Reason:   "Memory decrease could cause pod eviction or OOM",
-		}, nil
 	}
 
 	// Detect in-place resize capability
 	inPlaceSupported, err := e.detectInPlaceResize(ctx)
 	if err != nil {
+		log.Error(err, "Failed to detect in-place resize capability",
+			"workload", fmt.Sprintf("%s/%s", workload.Namespace, workload.Name),
+			"container", containerName,
+		)
 		return nil, fmt.Errorf("failed to detect in-place resize capability: %w", err)
 	}
+
+	log.Info("In-place resize capability detected",
+		"workload", fmt.Sprintf("%s/%s", workload.Namespace, workload.Name),
+		"container", containerName,
+		"inPlaceSupported", inPlaceSupported,
+	)
 
 	// Determine apply method based on support and policy
 	if inPlaceSupported && policy.Spec.UpdateStrategy.AllowInPlaceResize {
 		// In-place is supported and allowed - prefer it
-		return &ApplyDecision{
+		decision := &ApplyDecision{
 			CanApply: true,
 			Method:   InPlace,
 			Reason:   "In-place resize is supported and allowed",
-		}, nil
+		}
+		log.Info("Optimization decision made",
+			"workload", fmt.Sprintf("%s/%s", workload.Namespace, workload.Name),
+			"container", containerName,
+			"canApply", decision.CanApply,
+			"method", string(decision.Method),
+			"reason", decision.Reason,
+			"inPlaceSupported", inPlaceSupported,
+			"allowInPlaceResize", policy.Spec.UpdateStrategy.AllowInPlaceResize,
+		)
+		return decision, nil
 	}
 
 	// In-place is either not supported or not allowed by policy
 	// Check if recreate is allowed
 	if policy.Spec.UpdateStrategy.AllowRecreate {
-		return &ApplyDecision{
+		decision := &ApplyDecision{
 			CanApply: true,
 			Method:   Recreate,
 			Reason:   "Using recreate strategy",
-		}, nil
+		}
+		log.Info("Optimization decision made",
+			"workload", fmt.Sprintf("%s/%s", workload.Namespace, workload.Name),
+			"container", containerName,
+			"canApply", decision.CanApply,
+			"method", string(decision.Method),
+			"reason", decision.Reason,
+			"inPlaceSupported", inPlaceSupported,
+			"allowInPlaceResize", policy.Spec.UpdateStrategy.AllowInPlaceResize,
+			"allowRecreate", policy.Spec.UpdateStrategy.AllowRecreate,
+		)
+		return decision, nil
 	}
 
 	// Neither in-place nor recreate is available
-	return &ApplyDecision{
+	decision := &ApplyDecision{
 		CanApply: false,
 		Method:   Skip,
 		Reason:   "No update strategy available",
-	}, nil
+	}
+	log.Info("Optimization decision made",
+		"workload", fmt.Sprintf("%s/%s", workload.Namespace, workload.Name),
+		"container", containerName,
+		"canApply", decision.CanApply,
+		"method", string(decision.Method),
+		"reason", decision.Reason,
+		"inPlaceSupported", inPlaceSupported,
+		"allowInPlaceResize", policy.Spec.UpdateStrategy.AllowInPlaceResize,
+		"allowRecreate", policy.Spec.UpdateStrategy.AllowRecreate,
+	)
+	return decision, nil
 }
 
 // detectInPlaceResize detects if in-place pod resize is supported
@@ -286,23 +389,6 @@ func (e *Engine) getCurrentResources(workload *Workload) (map[string]corev1.Reso
 	return resources, nil
 }
 
-// isUnsafeMemoryDecrease checks if a memory decrease could be unsafe
-func (e *Engine) isUnsafeMemoryDecrease(
-	currentResources map[string]corev1.ResourceRequirements,
-	rec *recommendation.Recommendation,
-) bool {
-	// For each container, check if we're decreasing memory below current limits
-	for _, reqs := range currentResources {
-		if memLimit, ok := reqs.Limits[corev1.ResourceMemory]; ok {
-			// If recommended memory is less than current limit, it could be unsafe
-			if rec.Memory.Cmp(memLimit) < 0 {
-				return true
-			}
-		}
-	}
-	return false
-}
-
 // ApplyResult contains information about the apply operation
 type ApplyResult struct {
 	Method         string // "ServerSideApply" or "StrategicMergePatch"
@@ -353,16 +439,99 @@ func (e *Engine) ApplyWithStrategicMerge(
 	rec *recommendation.Recommendation,
 	policy *optipodv1alpha1.OptimizationPolicy,
 ) error {
+	log := ctrl.LoggerFrom(ctx)
+
+	// Get current resources for before/after comparison
+	currentResources, err := e.getCurrentResources(workload)
+	if err != nil {
+		log.Error(err, "Failed to get current resources for logging",
+			"workload", fmt.Sprintf("%s/%s", workload.Namespace, workload.Name),
+			"container", containerName,
+		)
+		// Continue with empty current resources for logging
+		currentResources = make(map[string]corev1.ResourceRequirements)
+	}
+
+	currentReqs := currentResources[containerName]
+	beforeCPU := "0"
+	beforeMemory := "0"
+	beforeCPULimit := noneValue
+	beforeMemoryLimit := noneValue
+
+	if currentReqs.Requests != nil {
+		if cpu, exists := currentReqs.Requests[corev1.ResourceCPU]; exists {
+			beforeCPU = cpu.String()
+		}
+		if memory, exists := currentReqs.Requests[corev1.ResourceMemory]; exists {
+			beforeMemory = memory.String()
+		}
+	}
+	if currentReqs.Limits != nil {
+		if cpu, exists := currentReqs.Limits[corev1.ResourceCPU]; exists {
+			beforeCPULimit = cpu.String()
+		}
+		if memory, exists := currentReqs.Limits[corev1.ResourceMemory]; exists {
+			beforeMemoryLimit = memory.String()
+		}
+	}
+
+	log.Info("Starting optimization with Strategic Merge Patch",
+		"workload", fmt.Sprintf("%s/%s", workload.Namespace, workload.Name),
+		"kind", workload.Kind,
+		"container", containerName,
+		"policy", policy.Name,
+		"updateRequestsOnly", policy.Spec.UpdateStrategy.UpdateRequestsOnly,
+		"beforeCPURequest", beforeCPU,
+		"beforeMemoryRequest", beforeMemory,
+		"beforeCPULimit", beforeCPULimit,
+		"beforeMemoryLimit", beforeMemoryLimit,
+		"afterCPURequest", rec.CPU.String(),
+		"afterMemoryRequest", rec.Memory.String(),
+		"reason", "Direct recommendation application without safety checks",
+	)
+
 	// Build JSON patch for resource requests
 	patch, err := e.buildResourcePatch(workload, containerName, rec, policy)
 	if err != nil {
+		log.Error(err, "Failed to build Strategic Merge patch",
+			"workload", fmt.Sprintf("%s/%s", workload.Namespace, workload.Name),
+			"container", containerName,
+			"reason", "Patch construction failed",
+			"beforeCPURequest", beforeCPU,
+			"beforeMemoryRequest", beforeMemory,
+			"targetCPURequest", rec.CPU.String(),
+			"targetMemoryRequest", rec.Memory.String(),
+		)
 		return fmt.Errorf("failed to build patch: %w", err)
 	}
 
 	// Get the appropriate GVR for the workload
 	gvr, err := e.getGVR(workload.Kind)
 	if err != nil {
+		log.Error(err, "Failed to get GVR for Strategic Merge patch",
+			"workload", fmt.Sprintf("%s/%s", workload.Namespace, workload.Name),
+			"kind", workload.Kind,
+			"reason", "GVR resolution failed",
+		)
 		return fmt.Errorf("failed to get GVR: %w", err)
+	}
+
+	// Calculate expected limits for logging
+	expectedLimits := make(map[string]string)
+	if !policy.Spec.UpdateStrategy.UpdateRequestsOnly {
+		requests := corev1.ResourceList{
+			corev1.ResourceCPU:    rec.CPU,
+			corev1.ResourceMemory: rec.Memory,
+		}
+		limits, limitErr := e.CalculateLimitsWithDefaults(requests, policy.Spec.UpdateStrategy.LimitConfig)
+		if limitErr == nil {
+			if cpuLimit, exists := limits[corev1.ResourceCPU]; exists {
+				expectedLimits["cpu"] = cpuLimit.String()
+			}
+			if memoryLimit, exists := limits[corev1.ResourceMemory]; exists {
+				expectedLimits["memory"] = memoryLimit.String()
+			}
+		}
 	}
 
 	// Apply the patch
@@ -375,6 +544,20 @@ func (e *Engine) ApplyWithStrategicMerge(
 	)
 
 	if err != nil {
+		log.Error(err, "Strategic Merge Patch failed",
+			"workload", fmt.Sprintf("%s/%s", workload.Namespace, workload.Name),
+			"container", containerName,
+			"reason", "Patch application failed",
+			"beforeCPURequest", beforeCPU,
+			"beforeMemoryRequest", beforeMemory,
+			"beforeCPULimit", beforeCPULimit,
+			"beforeMemoryLimit", beforeMemoryLimit,
+			"targetCPURequest", rec.CPU.String(),
+			"targetMemoryRequest", rec.Memory.String(),
+			"targetCPULimit", expectedLimits["cpu"],
+			"targetMemoryLimit", expectedLimits["memory"],
+			"updateRequestsOnly", policy.Spec.UpdateStrategy.UpdateRequestsOnly,
+		)
 		// Record failed Strategic Merge patch
 		observability.RecordSSAPatch(
 			policy.Name,
@@ -384,12 +567,41 @@ func (e *Engine) ApplyWithStrategicMerge(
 			"failure",
 			"StrategicMergePatch",
 		)
+		// Record optimization failure
+		observability.RecordOptimizationFailure(
+			policy.Name,
+			workload.Namespace,
+			workload.Name,
+			workload.Kind,
+			"StrategicMergePatch",
+			"PatchApplicationFailed",
+		)
 		// Check for RBAC errors
 		if errors.IsForbidden(err) {
 			return fmt.Errorf("RBAC: insufficient permissions to update workload: %w", err)
 		}
 		return fmt.Errorf("failed to patch workload: %w", err)
 	}
+
+	// Record resource change magnitudes
+	e.recordResourceChangeMagnitudes(policy.Name, workload.Namespace, workload.Name, beforeCPU, beforeMemory, rec)
+
+	log.Info("Successfully applied resource changes via Strategic Merge Patch",
+		"workload", fmt.Sprintf("%s/%s", workload.Namespace, workload.Name),
+		"container", containerName,
+		"method", "StrategicMergePatch",
+		"policy", policy.Name,
+		"reason", "Optimization completed successfully",
+		"beforeCPURequest", beforeCPU,
+		"beforeMemoryRequest", beforeMemory,
+		"beforeCPULimit", beforeCPULimit,
+		"beforeMemoryLimit", beforeMemoryLimit,
+		"afterCPURequest", rec.CPU.String(),
+		"afterMemoryRequest", rec.Memory.String(),
+		"afterCPULimit", expectedLimits["cpu"],
+		"afterMemoryLimit", expectedLimits["memory"],
+		"updateRequestsOnly", policy.Spec.UpdateStrategy.UpdateRequestsOnly,
+	)
 
 	// Record successful Strategic Merge patch
 	observability.RecordSSAPatch(
@@ -398,6 +610,15 @@ func (e *Engine) ApplyWithStrategicMerge(
 		workload.Name,
 		workload.Kind,
 		"success",
+		"StrategicMergePatch",
+	)
+
+	// Record optimization success
+	observability.RecordOptimizationSuccess(
+		policy.Name,
+		workload.Namespace,
+		workload.Name,
+		workload.Kind,
 		"StrategicMergePatch",
 	)
 
@@ -414,14 +635,55 @@ func (e *Engine) ApplyWithSSA(
 ) error {
 	log := ctrl.LoggerFrom(ctx)
 
-	log.Info("Applying resource changes using Server-Side Apply",
+	// Get current resources for before/after comparison
+	currentResources, err := e.getCurrentResources(workload)
+	if err != nil {
+		log.Error(err, "Failed to get current resources for logging",
+			"workload", fmt.Sprintf("%s/%s", workload.Namespace, workload.Name),
+			"container", containerName,
+		)
+		// Continue with empty current resources for logging
+		currentResources = make(map[string]corev1.ResourceRequirements)
+	}
+
+	currentReqs := currentResources[containerName]
+	beforeCPU := "0"
+	beforeMemory := "0"
+	beforeCPULimit := noneValue
+	beforeMemoryLimit := noneValue
+
+	if currentReqs.Requests != nil {
+		if cpu, exists := currentReqs.Requests[corev1.ResourceCPU]; exists {
+			beforeCPU = cpu.String()
+		}
+		if memory, exists := currentReqs.Requests[corev1.ResourceMemory]; exists {
+			beforeMemory = memory.String()
+		}
+	}
+	if currentReqs.Limits != nil {
+		if cpu, exists := currentReqs.Limits[corev1.ResourceCPU]; exists {
+			beforeCPULimit = cpu.String()
+		}
+		if memory, exists := currentReqs.Limits[corev1.ResourceMemory]; exists {
+			beforeMemoryLimit = memory.String()
+		}
+	}
+
+	log.Info("Starting optimization with Server-Side Apply",
 		"workload", fmt.Sprintf("%s/%s", workload.Namespace, workload.Name),
 		"kind", workload.Kind,
 		"container", containerName,
+		"policy", policy.Name,
 		"fieldManager", "optipod",
 		"force", true,
-		"cpu", rec.CPU.String(),
-		"memory", rec.Memory.String(),
+		"updateRequestsOnly", policy.Spec.UpdateStrategy.UpdateRequestsOnly,
+		"beforeCPURequest", beforeCPU,
+		"beforeMemoryRequest", beforeMemory,
+		"beforeCPULimit", beforeCPULimit,
+		"beforeMemoryLimit", beforeMemoryLimit,
+		"afterCPURequest", rec.CPU.String(),
+		"afterMemoryRequest", rec.Memory.String(),
+		"reason", "Direct recommendation application without safety checks",
 	)
 
 	// Build SSA patch
@@ -429,6 +691,12 @@ func (e *Engine) ApplyWithSSA(
 	if err != nil {
 		log.Error(err, "Failed to build SSA patch",
 			"workload", fmt.Sprintf("%s/%s", workload.Namespace, workload.Name),
+			"container", containerName,
+			"reason", "SSA patch construction failed",
+			"beforeCPURequest", beforeCPU,
+			"beforeMemoryRequest", beforeMemory,
+			"targetCPURequest", rec.CPU.String(),
+			"targetMemoryRequest", rec.Memory.String(),
 		)
 		return fmt.Errorf("failed to build SSA patch: %w", err)
 	}
@@ -439,8 +707,27 @@ func (e *Engine) ApplyWithSSA(
 		log.Error(err, "Failed to get GVR",
 			"workload", fmt.Sprintf("%s/%s", workload.Namespace, workload.Name),
 			"kind", workload.Kind,
+			"reason", "GVR resolution failed",
 		)
 		return fmt.Errorf("failed to get GVR: %w", err)
+	}
+
+	// Calculate expected limits for logging
+	expectedLimits := make(map[string]string)
+	if !policy.Spec.UpdateStrategy.UpdateRequestsOnly {
+		requests := corev1.ResourceList{
+			corev1.ResourceCPU:    rec.CPU,
+			corev1.ResourceMemory: rec.Memory,
+		}
+		limits, limitErr := e.CalculateLimitsWithDefaults(requests, policy.Spec.UpdateStrategy.LimitConfig)
+		if limitErr == nil {
+			if cpuLimit, exists := limits[corev1.ResourceCPU]; exists {
+				expectedLimits["cpu"] = cpuLimit.String()
+			}
+			if memoryLimit, exists := limits[corev1.ResourceMemory]; exists {
+				expectedLimits["memory"] = memoryLimit.String()
+			}
+		}
 	}
 
 	// Apply using Server-Side Apply
@@ -459,6 +746,17 @@ func (e *Engine) ApplyWithSSA(
 		log.Error(err, "Server-Side Apply failed",
 			"workload", fmt.Sprintf("%s/%s", workload.Namespace, workload.Name),
 			"fieldManager", "optipod",
+			"container", containerName,
+			"reason", "SSA patch application failed",
+			"beforeCPURequest", beforeCPU,
+			"beforeMemoryRequest", beforeMemory,
+			"beforeCPULimit", beforeCPULimit,
+			"beforeMemoryLimit", beforeMemoryLimit,
+			"targetCPURequest", rec.CPU.String(),
+			"targetMemoryRequest", rec.Memory.String(),
+			"targetCPULimit", expectedLimits["cpu"],
+			"targetMemoryLimit", expectedLimits["memory"],
+			"updateRequestsOnly", policy.Spec.UpdateStrategy.UpdateRequestsOnly,
 		)
 		// Record failed SSA patch
 		observability.RecordSSAPatch(
@@ -469,14 +767,37 @@ func (e *Engine) ApplyWithSSA(
 			"failure",
 			"ServerSideApply",
 		)
+		// Record optimization failure
+		observability.RecordOptimizationFailure(
+			policy.Name,
+			workload.Namespace,
+			workload.Name,
+			workload.Kind,
+			"ServerSideApply",
+			"SSAPatchApplicationFailed",
+		)
 		return e.handleSSAError(err)
 	}
+
+	// Record resource change magnitudes
+	e.recordResourceChangeMagnitudes(policy.Name, workload.Namespace, workload.Name, beforeCPU, beforeMemory, rec)
 
 	log.Info("Successfully applied resource changes via SSA",
 		"workload", fmt.Sprintf("%s/%s", workload.Namespace, workload.Name),
 		"container", containerName,
-		"cpu", rec.CPU.String(),
-		"memory", rec.Memory.String(),
+		"method", "ServerSideApply",
+		"fieldManager", "optipod",
+		"policy", policy.Name,
+		"reason", "Optimization completed successfully",
+		"beforeCPURequest", beforeCPU,
+		"beforeMemoryRequest", beforeMemory,
+		"beforeCPULimit", beforeCPULimit,
+		"beforeMemoryLimit", beforeMemoryLimit,
+		"afterCPURequest", rec.CPU.String(),
+		"afterMemoryRequest", rec.Memory.String(),
+		"afterCPULimit", expectedLimits["cpu"],
+		"afterMemoryLimit", expectedLimits["memory"],
+		"updateRequestsOnly", policy.Spec.UpdateStrategy.UpdateRequestsOnly,
 	)
 
 	// Record successful SSA patch
@@ -486,6 +807,15 @@ func (e *Engine) ApplyWithSSA(
 		workload.Name,
 		workload.Kind,
 		"success",
+		"ServerSideApply",
+	)
+
+	// Record optimization success
+	observability.RecordOptimizationSuccess(
+		policy.Name,
+		workload.Namespace,
+		workload.Name,
+		workload.Kind,
 		"ServerSideApply",
 	)
 
@@ -515,27 +845,77 @@ func boolPtr(b bool) *bool {
 	return &b
 }
 
-// calculateLimits calculates resource limits based on recommendations and policy configuration
-func (e *Engine) calculateLimits(rec *recommendation.Recommendation, policy *optipodv1alpha1.OptimizationPolicy) (resource.Quantity, resource.Quantity) {
-	// Default multipliers
-	cpuMultiplier := 1.0    // CPU limit = recommendation (no headroom by default)
-	memoryMultiplier := 1.1 // Memory limit = recommendation * 1.1 (10% headroom by default)
+// CalculateLimitsWithDefaults calculates resource limits with proper configuration precedence.
+//
+// Precedence rules (highest to lowest):
+// 1. Explicit limit configuration multipliers (limitConfig.CPULimitMultiplier, limitConfig.MemoryLimitMultiplier)
+// 2. Default multipliers (DefaultCPULimitMultiplier, DefaultMemoryLimitMultiplier)
+//
+// The function handles partial configurations where only some resources have explicit configs.
+// For example, if only CPU multiplier is specified, memory will use the default multiplier.
+// This maintains backward compatibility with existing configurations.
+func (e *Engine) CalculateLimitsWithDefaults(requests corev1.ResourceList, limitConfig *optipodv1alpha1.LimitConfig) (corev1.ResourceList, error) {
+	limits := make(corev1.ResourceList)
 
-	// Override with policy configuration if provided
-	if policy.Spec.UpdateStrategy.LimitConfig != nil {
-		if policy.Spec.UpdateStrategy.LimitConfig.CPULimitMultiplier != nil {
-			cpuMultiplier = *policy.Spec.UpdateStrategy.LimitConfig.CPULimitMultiplier
-		}
-		if policy.Spec.UpdateStrategy.LimitConfig.MemoryLimitMultiplier != nil {
-			memoryMultiplier = *policy.Spec.UpdateStrategy.LimitConfig.MemoryLimitMultiplier
+	// Determine CPU multiplier with explicit precedence handling
+	cpuMultiplier, usingDefaultCPU := e.getCPUMultiplier(limitConfig)
+	if err := validateMultiplier(cpuMultiplier, "CPU"); err != nil {
+		return nil, err
+	}
+
+	// Determine memory multiplier with explicit precedence handling
+	memoryMultiplier, usingDefaultMemory := e.getMemoryMultiplier(limitConfig)
+	if err := validateMultiplier(memoryMultiplier, "memory"); err != nil {
+		return nil, err
+	}
+
+	// Calculate CPU limit if CPU request exists and is not zero
+	if cpuRequest, exists := requests[corev1.ResourceCPU]; exists && !cpuRequest.IsZero() {
+		cpuLimit := multiplyQuantity(cpuRequest, cpuMultiplier)
+		limits[corev1.ResourceCPU] = cpuLimit
+
+		// Record default multiplier usage if applicable
+		if usingDefaultCPU {
+			observability.RecordDefaultMultiplierUsage("", "cpu", fmt.Sprintf("%.1f", cpuMultiplier))
 		}
 	}
 
-	// Calculate limits by multiplying recommendations
-	cpuLimit := multiplyQuantity(rec.CPU, cpuMultiplier)
-	memoryLimit := multiplyQuantity(rec.Memory, memoryMultiplier)
+	// Calculate memory limit if memory request exists and is not zero
+	if memoryRequest, exists := requests[corev1.ResourceMemory]; exists && !memoryRequest.IsZero() {
+		memoryLimit := multiplyQuantity(memoryRequest, memoryMultiplier)
+		limits[corev1.ResourceMemory] = memoryLimit
 
-	return cpuLimit, memoryLimit
+		// Record default multiplier usage if applicable
+		if usingDefaultMemory {
+			observability.RecordDefaultMultiplierUsage("", "memory", fmt.Sprintf("%.1f", memoryMultiplier))
+		}
+	}
+
+	return limits, nil
+}
+
+// getCPUMultiplier returns the CPU multiplier to use, with explicit precedence handling.
+// Returns (multiplier, usingDefault) where usingDefault indicates if default was used.
+func (e *Engine) getCPUMultiplier(limitConfig *optipodv1alpha1.LimitConfig) (float64, bool) {
+	// Explicit configuration takes precedence over defaults
+	if limitConfig != nil && limitConfig.CPULimitMultiplier != nil {
+		return *limitConfig.CPULimitMultiplier, false
+	}
+
+	// Fall back to default multiplier
+	return DefaultCPULimitMultiplier, true
+}
+
+// getMemoryMultiplier returns the memory multiplier to use, with explicit precedence handling.
+// Returns (multiplier, usingDefault) where usingDefault indicates if default was used.
+func (e *Engine) getMemoryMultiplier(limitConfig *optipodv1alpha1.LimitConfig) (float64, bool) {
+	// Explicit configuration takes precedence over defaults
+	if limitConfig != nil && limitConfig.MemoryLimitMultiplier != nil {
+		return *limitConfig.MemoryLimitMultiplier, false
+	}
+
+	// Fall back to default multiplier
+	return DefaultMemoryLimitMultiplier, true
 }
 
 // multiplyQuantity multiplies a resource quantity by a factor
@@ -609,10 +989,23 @@ func (e *Engine) buildResourcePatch(
 
 		// Update limits only if configured to do so
 		if !policy.Spec.UpdateStrategy.UpdateRequestsOnly {
-			cpuLimit, memoryLimit := e.calculateLimits(rec, policy)
+			// Use CalculateLimitsWithDefaults for consistent limit calculation
+			requests := corev1.ResourceList{
+				corev1.ResourceCPU:    rec.CPU,
+				corev1.ResourceMemory: rec.Memory,
+			}
+			limits, err := e.CalculateLimitsWithDefaults(requests, policy.Spec.UpdateStrategy.LimitConfig)
+			if err != nil {
+				return nil, fmt.Errorf("failed to calculate limits: %w", err)
+			}
+
 			limitsMap := make(map[string]interface{})
-			limitsMap["cpu"] = cpuLimit.String()
-			limitsMap["memory"] = memoryLimit.String()
+			if cpuLimit, exists := limits[corev1.ResourceCPU]; exists {
+				limitsMap["cpu"] = cpuLimit.String()
+			}
+			if memoryLimit, exists := limits[corev1.ResourceMemory]; exists {
+				limitsMap["memory"] = memoryLimit.String()
+			}
 			resourcesMap["limits"] = limitsMap
 		}
 
@@ -697,11 +1090,24 @@ func (e *Engine) buildSSAPatch(
 
 	// Include limits if configured
 	if !policy.Spec.UpdateStrategy.UpdateRequestsOnly {
-		cpuLimit, memoryLimit := e.calculateLimits(rec, policy)
-		resources["limits"] = map[string]interface{}{
-			"cpu":    cpuLimit.String(),
-			"memory": memoryLimit.String(),
+		// Use CalculateLimitsWithDefaults for consistent limit calculation
+		requests := corev1.ResourceList{
+			corev1.ResourceCPU:    rec.CPU,
+			corev1.ResourceMemory: rec.Memory,
 		}
+		limits, err := e.CalculateLimitsWithDefaults(requests, policy.Spec.UpdateStrategy.LimitConfig)
+		if err != nil {
+			return nil, fmt.Errorf("failed to calculate limits: %w", err)
+		}
+
+		limitsMap := make(map[string]interface{})
+		if cpuLimit, exists := limits[corev1.ResourceCPU]; exists {
+			limitsMap["cpu"] = cpuLimit.String()
+		}
+		if memoryLimit, exists := limits[corev1.ResourceMemory]; exists {
+			limitsMap["memory"] = memoryLimit.String()
+		}
+		resources["limits"] = limitsMap
 	}
 
 	// Build minimal patch with only resource fields
@@ -734,4 +1140,27 @@ func (e *Engine) buildSSAPatch(
 	}
 
 	return patchBytes, nil
+}
+
+// recordResourceChangeMagnitudes records the magnitude of resource changes for metrics
+func (e *Engine) recordResourceChangeMagnitudes(policyName, namespace, workloadName, beforeCPU, beforeMemory string, rec *recommendation.Recommendation) {
+	// Parse before CPU and calculate change percentage
+	if beforeCPU != "0" && beforeCPU != "" {
+		if beforeCPUQuantity, err := resource.ParseQuantity(beforeCPU); err == nil && !beforeCPUQuantity.IsZero() {
+			beforeCPUValue := beforeCPUQuantity.MilliValue()
+			afterCPUValue := rec.CPU.MilliValue()
+			changePercent := float64(afterCPUValue-beforeCPUValue) / float64(beforeCPUValue) * 100
+			observability.RecordResourceChangeMagnitude(policyName, namespace, workloadName, "cpu", changePercent)
+		}
+	}
+
+	// Parse before memory and calculate change percentage
+	if beforeMemory != "0" && beforeMemory != "" {
+		if beforeMemoryQuantity, err := resource.ParseQuantity(beforeMemory); err == nil && !beforeMemoryQuantity.IsZero() {
+			beforeMemoryValue := beforeMemoryQuantity.Value()
+			afterMemoryValue := rec.Memory.Value()
+			changePercent := float64(afterMemoryValue-beforeMemoryValue) / float64(beforeMemoryValue) * 100
+			observability.RecordResourceChangeMagnitude(policyName, namespace, workloadName, "memory", changePercent)
+		}
+	}
 }

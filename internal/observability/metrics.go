@@ -104,6 +104,53 @@ var (
 		},
 		[]string{"policy", "namespace", "workload", "kind", "status", "patch_type"},
 	)
+
+	// OptimizationSuccessTotal tracks successful optimizations
+	OptimizationSuccessTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "optipod_optimization_success_total",
+			Help: "Total number of successful optimizations",
+		},
+		[]string{"policy", "namespace", "workload", "kind", "method"},
+	)
+
+	// OptimizationFailureTotal tracks failed optimizations
+	OptimizationFailureTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "optipod_optimization_failure_total",
+			Help: "Total number of failed optimizations",
+		},
+		[]string{"policy", "namespace", "workload", "kind", "method", "reason"},
+	)
+
+	// ResourceChangesMagnitude tracks the magnitude of resource changes
+	ResourceChangesMagnitude = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "optipod_resource_changes_magnitude",
+			Help:    "Magnitude of resource changes in percentage",
+			Buckets: []float64{-90, -75, -50, -25, -10, -5, 0, 5, 10, 25, 50, 75, 100, 200, 500},
+		},
+		[]string{"policy", "namespace", "workload", "resource_type"},
+	)
+
+	// DefaultMultiplierUsage tracks usage of default multipliers
+	DefaultMultiplierUsage = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "optipod_default_multiplier_usage_total",
+			Help: "Total number of times default multipliers were used",
+		},
+		[]string{"policy", "resource_type", "multiplier_value"},
+	)
+
+	// OptimizationDecisionDuration tracks time spent making optimization decisions
+	OptimizationDecisionDuration = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "optipod_optimization_decision_duration_seconds",
+			Help:    "Duration of optimization decision making in seconds",
+			Buckets: prometheus.DefBuckets,
+		},
+		[]string{"policy", "workload_kind"},
+	)
 )
 
 func init() {
@@ -124,9 +171,39 @@ func RegisterMetrics() {
 	_ = metrics.Registry.Register(RecommendationsTotal)
 	_ = metrics.Registry.Register(ApplicationsTotal)
 	_ = metrics.Registry.Register(SSAPatchTotal)
+	_ = metrics.Registry.Register(OptimizationSuccessTotal)
+	_ = metrics.Registry.Register(OptimizationFailureTotal)
+	_ = metrics.Registry.Register(ResourceChangesMagnitude)
+	_ = metrics.Registry.Register(DefaultMultiplierUsage)
+	_ = metrics.Registry.Register(OptimizationDecisionDuration)
 }
 
 // RecordSSAPatch records an SSA patch operation
 func RecordSSAPatch(policy, namespace, workload, kind, status, patchType string) {
 	SSAPatchTotal.WithLabelValues(policy, namespace, workload, kind, status, patchType).Inc()
+}
+
+// RecordOptimizationSuccess records a successful optimization
+func RecordOptimizationSuccess(policy, namespace, workload, kind, method string) {
+	OptimizationSuccessTotal.WithLabelValues(policy, namespace, workload, kind, method).Inc()
+}
+
+// RecordOptimizationFailure records a failed optimization
+func RecordOptimizationFailure(policy, namespace, workload, kind, method, reason string) {
+	OptimizationFailureTotal.WithLabelValues(policy, namespace, workload, kind, method, reason).Inc()
+}
+
+// RecordResourceChangeMagnitude records the magnitude of a resource change
+func RecordResourceChangeMagnitude(policy, namespace, workload, resourceType string, changePercent float64) {
+	ResourceChangesMagnitude.WithLabelValues(policy, namespace, workload, resourceType).Observe(changePercent)
+}
+
+// RecordDefaultMultiplierUsage records usage of default multipliers
+func RecordDefaultMultiplierUsage(policy, resourceType, multiplierValue string) {
+	DefaultMultiplierUsage.WithLabelValues(policy, resourceType, multiplierValue).Inc()
+}
+
+// RecordOptimizationDecisionDuration records the duration of optimization decision making
+func RecordOptimizationDecisionDuration(policy, workloadKind string, duration float64) {
+	OptimizationDecisionDuration.WithLabelValues(policy, workloadKind).Observe(duration)
 }

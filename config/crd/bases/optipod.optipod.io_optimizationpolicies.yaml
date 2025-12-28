@@ -307,6 +307,53 @@ spec:
                     description: AllowRecreate enables pod recreation when in-place
                       resize is not available
                     type: boolean
+                  allowUnsafeMemoryDecrease:
+                    default: false
+                    description: |-
+                      AllowUnsafeMemoryDecrease disables memory safety checks when true
+                      When false (default), OptipPod will block memory decreases that could cause pod eviction or OOM.
+                      When true, OptipPod will apply all memory recommendations regardless of safety concerns.
+                      Use with caution in production environments.
+                    type: boolean
+                  gradualDecreaseConfig:
+                    description: |-
+                      GradualDecreaseConfig configures gradual memory reduction for safer optimization
+                      When enabled, large memory decreases are applied incrementally over multiple reconciliations
+                    properties:
+                      enabled:
+                        default: false
+                        description: |-
+                          Enabled activates gradual decrease functionality
+                          When true, large memory decreases are applied incrementally over multiple reconciliations
+                        type: boolean
+                      maximumTotalDecrease:
+                        default: 70
+                        description: |-
+                          MaximumTotalDecrease is the maximum total percentage decrease from original value
+                          Must be between 1 and 90. Default is 70 (70% maximum total decrease).
+                          This prevents excessive optimization that could destabilize workloads.
+                        maximum: 90
+                        minimum: 1
+                        type: integer
+                      memoryDecreasePercentage:
+                        default: 10
+                        description: |-
+                          MemoryDecreasePercentage is the maximum percentage to decrease memory per reconciliation
+                          Must be between 1 and 50. Default is 10 (10% per reconciliation).
+                        maximum: 50
+                        minimum: 1
+                        type: integer
+                      minimumDecreaseThreshold:
+                        anyOf:
+                        - type: integer
+                        - type: string
+                        description: |-
+                          MinimumDecreaseThreshold is the minimum decrease amount to trigger gradual reduction
+                          Decreases smaller than this threshold are applied immediately.
+                          Default is 100Mi.
+                        pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                        x-kubernetes-int-or-string: true
+                    type: object
                   limitConfig:
                     description: LimitConfig defines how resource limits are calculated
                       from recommendations
