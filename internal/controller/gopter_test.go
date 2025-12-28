@@ -80,7 +80,7 @@ type mockApplicationEngine struct {
 	applyResult    *application.ApplyResult
 }
 
-func (m *mockApplicationEngine) CanApply(ctx context.Context, workload *application.Workload, rec *recommendation.Recommendation, policy *optipodv1alpha1.OptimizationPolicy) (*application.ApplyDecision, error) {
+func (m *mockApplicationEngine) CanApply(ctx context.Context, workload *application.Workload, containerName string, rec *recommendation.Recommendation, policy *optipodv1alpha1.OptimizationPolicy) (*application.ApplyDecision, error) {
 	m.canApplyCalled = true
 	if m.decision != nil {
 		return m.decision, nil

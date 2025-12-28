@@ -509,15 +509,60 @@ func (r *OptimizationPolicyReconciler) processWorkloadsWithPolicySelection(ctx c
 				"policy", bestPolicy.Name,
 				"weight", bestPolicy.GetWeight())
 
-			_, err := r.WorkloadProcessor.ProcessWorkload(ctx, &workload, bestPolicy)
+			status, err := r.WorkloadProcessor.ProcessWorkload(ctx, &workload, bestPolicy)
 			if err != nil {
 				log.Error(err, "Failed to process workload",
 					"workload", fmt.Sprintf("%s/%s", workload.Namespace, workload.Name),
 					"policy", bestPolicy.Name)
-				r.Recorder.Event(triggeringPolicy, corev1.EventTypeWarning, "ProcessingFailed",
-					fmt.Sprintf("Failed to process workload %s/%s: %v", workload.Namespace, workload.Name, err))
+
+				// Emit detailed event for processing failure
+				if r.EventRecorder != nil {
+					r.EventRecorder.RecordWorkloadUpdateFailure(triggeringPolicy, workload.Name, workload.Namespace, err)
+				} else {
+					r.Recorder.Event(triggeringPolicy, corev1.EventTypeWarning, "ProcessingFailed",
+						fmt.Sprintf("Failed to process workload %s/%s: %v", workload.Namespace, workload.Name, err))
+				}
 				observability.ReconciliationErrors.WithLabelValues(triggeringPolicy.Name, "processing_error").Inc()
 				continue
+			}
+
+			// Emit events based on processing outcome
+			if status != nil {
+				switch status.Status {
+				case StatusApplied:
+					if r.EventRecorder != nil {
+						method := "Unknown"
+						if status.LastApplyMethod != "" {
+							method = status.LastApplyMethod
+						}
+						r.EventRecorder.RecordWorkloadUpdateSuccess(triggeringPolicy, workload.Name, workload.Namespace, method)
+					} else {
+						r.Recorder.Event(triggeringPolicy, corev1.EventTypeNormal, "OptimizationApplied",
+							fmt.Sprintf("Successfully applied optimization to workload %s/%s", workload.Namespace, workload.Name))
+					}
+				case StatusRecommended:
+					if r.EventRecorder != nil {
+						containerCount := len(status.Recommendations)
+						r.EventRecorder.RecordRecommendationGenerated(triggeringPolicy, workload.Name, workload.Namespace, containerCount)
+					} else {
+						r.Recorder.Event(triggeringPolicy, corev1.EventTypeNormal, "RecommendationGenerated",
+							fmt.Sprintf("Generated recommendations for workload %s/%s", workload.Namespace, workload.Name))
+					}
+				case StatusSkipped:
+					if r.EventRecorder != nil {
+						r.EventRecorder.RecordWorkloadSkipped(triggeringPolicy, workload.Name, workload.Namespace, status.Reason)
+					} else {
+						r.Recorder.Event(triggeringPolicy, corev1.EventTypeNormal, "WorkloadSkipped",
+							fmt.Sprintf("Skipped workload %s/%s: %s", workload.Namespace, workload.Name, status.Reason))
+					}
+				case StatusError:
+					if r.EventRecorder != nil {
+						r.EventRecorder.RecordWorkloadUpdateFailure(triggeringPolicy, workload.Name, workload.Namespace, fmt.Errorf("%s", status.Reason))
+					} else {
+						r.Recorder.Event(triggeringPolicy, corev1.EventTypeWarning, "ProcessingError",
+							fmt.Sprintf("Error processing workload %s/%s: %s", workload.Namespace, workload.Name, status.Reason))
+					}
+				}
 			}
 			processedCount++
 		}

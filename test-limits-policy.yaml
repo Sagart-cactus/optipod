@@ -1,0 +1,41 @@
+# Test OptimizationPolicy with LimitConfig to handle stress-overutilized case
+apiVersion: optipod.optipod.io/v1alpha1
+kind: OptimizationPolicy
+metadata:
+  name: test-limits-policy
+  namespace: default
+spec:
+  mode: Auto
+
+  selector:
+    namespaces:
+      allow:
+        - default
+    workloadTypes:
+      include:
+        - Deployment
+
+  metricsConfig:
+    provider: metrics-server
+    rollingWindow: 5m
+    percentile: P90
+    safetyFactor: 1.2
+
+  resourceBounds:
+    cpu:
+      min: "10m"
+      max: "4000m"
+    memory:
+      min: "32Mi"
+      max: "8Gi"
+
+  updateStrategy:
+    allowInPlaceResize: true
+    allowRecreate: false
+    updateRequestsOnly: false  # Update both requests AND limits
+    useServerSideApply: true
+    limitConfig:
+      cpuLimitMultiplier: 1.5      # CPU limit = recommendation * 1.5
+      memoryLimitMultiplier: 1.3   # Memory limit = recommendation * 1.3
+
+  reconciliationInterval: 1m

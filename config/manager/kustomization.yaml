@@ -6,4 +6,4 @@ kind: Kustomization
 images:
 - name: controller
   newName: optipod-controller
-  newTag: e2e
+  newTag: contract-e2e

@@ -216,6 +216,19 @@ type UpdateStrategy struct {
 	// LimitConfig defines how resource limits are calculated from recommendations
 	// +optional
 	LimitConfig *LimitConfig `json:"limitConfig,omitempty"`
+
+	// AllowUnsafeMemoryDecrease disables memory safety checks when true
+	// When false (default), OptipPod will block memory decreases that could cause pod eviction or OOM.
+	// When true, OptipPod will apply all memory recommendations regardless of safety concerns.
+	// Use with caution in production environments.
+	// +kubebuilder:default=false
+	// +optional
+	AllowUnsafeMemoryDecrease *bool `json:"allowUnsafeMemoryDecrease,omitempty"`
+
+	// GradualDecreaseConfig configures gradual memory reduction for safer optimization
+	// When enabled, large memory decreases are applied incrementally over multiple reconciliations
+	// +optional
+	GradualDecreaseConfig *GradualDecreaseConfig `json:"gradualDecreaseConfig,omitempty"`
 }
 
 // LimitConfig defines how resource limits are calculated from recommendations
@@ -237,6 +250,38 @@ type LimitConfig struct {
 	// +kubebuilder:validation:Maximum=10.0
 	// +optional
 	MemoryLimitMultiplier *float64 `json:"memoryLimitMultiplier,omitempty"`
+}
+
+// GradualDecreaseConfig defines parameters for gradual memory reduction
+type GradualDecreaseConfig struct {
+	// Enabled activates gradual decrease functionality
+	// When true, large memory decreases are applied incrementally over multiple reconciliations
+	// +kubebuilder:default=false
+	// +optional
+	Enabled bool `json:"enabled,omitempty"`
+
+	// MemoryDecreasePercentage is the maximum percentage to decrease memory per reconciliation
+	// Must be between 1 and 50. Default is 10 (10% per reconciliation).
+	// +kubebuilder:default=10
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=50
+	// +optional
+	MemoryDecreasePercentage *int `json:"memoryDecreasePercentage,omitempty"`
+
+	// MinimumDecreaseThreshold is the minimum decrease amount to trigger gradual reduction
+	// Decreases smaller than this threshold are applied immediately.
+	// Default is 100Mi.
+	// +optional
+	MinimumDecreaseThreshold *resource.Quantity `json:"minimumDecreaseThreshold,omitempty"`
+
+	// MaximumTotalDecrease is the maximum total percentage decrease from original value
+	// Must be between 1 and 90. Default is 70 (70% maximum total decrease).
+	// This prevents excessive optimization that could destabilize workloads.
+	// +kubebuilder:default=70
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=90
+	// +optional
+	MaximumTotalDecrease *int `json:"maximumTotalDecrease,omitempty"`
 }
 
 // OptimizationPolicyStatus defines the observed state of OptimizationPolicy.
@@ -550,6 +595,13 @@ func (r *OptimizationPolicy) validateOptimizationPolicy() error {
 		return fmt.Errorf("weight must be between 1 and 1000, got %d", *r.Spec.Weight)
 	}
 
+	// Validate gradual decrease config if provided
+	if r.Spec.UpdateStrategy.GradualDecreaseConfig != nil {
+		if err := validateGradualDecreaseConfig(r.Spec.UpdateStrategy.GradualDecreaseConfig); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
@@ -702,4 +754,36 @@ func GetActiveWorkloadTypes(filter *WorkloadTypeFilter) WorkloadTypeSet {
 	}
 
 	return activeTypes
+}
+
+// validateGradualDecreaseConfig validates gradual decrease configuration
+func validateGradualDecreaseConfig(config *GradualDecreaseConfig) error {
+	if config == nil {
+		return nil
+	}
+
+	// Validate memory decrease percentage
+	if config.MemoryDecreasePercentage != nil {
+		percentage := *config.MemoryDecreasePercentage
+		if percentage < 1 || percentage > 50 {
+			return fmt.Errorf("gradualDecreaseConfig.memoryDecreasePercentage must be between 1 and 50, got %d", percentage)
+		}
+	}
+
+	// Validate maximum total decrease
+	if config.MaximumTotalDecrease != nil {
+		maxDecrease := *config.MaximumTotalDecrease
+		if maxDecrease < 1 || maxDecrease > 90 {
+			return fmt.Errorf("gradualDecreaseConfig.maximumTotalDecrease must be between 1 and 90, got %d", maxDecrease)
+		}
+	}
+
+	// Validate minimum decrease threshold
+	if config.MinimumDecreaseThreshold != nil {
+		if config.MinimumDecreaseThreshold.IsZero() || config.MinimumDecreaseThreshold.Sign() < 0 {
+			return fmt.Errorf("gradualDecreaseConfig.minimumDecreaseThreshold must be positive")
+		}
+	}
+
+	return nil
 }

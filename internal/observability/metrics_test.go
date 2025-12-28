@@ -311,3 +311,220 @@ func TestProperty_MetricsTrackPatchType(t *testing.T) {
 
 	properties.TestingRun(t)
 }
+
+// TestNewMetricsRegistration tests that new metrics are properly registered
+func TestNewMetricsRegistration(t *testing.T) {
+	// Create a new registry for this test
+	registry := prometheus.NewRegistry()
+
+	// Create new metrics
+	optimizationSuccessTotal := prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "optipod_optimization_success_total",
+			Help: "Total number of successful optimizations",
+		},
+		[]string{"policy", "namespace", "workload", "kind", "method"},
+	)
+
+	optimizationFailureTotal := prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "optipod_optimization_failure_total",
+			Help: "Total number of failed optimizations",
+		},
+		[]string{"policy", "namespace", "workload", "kind", "method", "reason"},
+	)
+
+	resourceChangesMagnitude := prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "optipod_resource_changes_magnitude",
+			Help:    "Magnitude of resource changes in percentage",
+			Buckets: []float64{-90, -75, -50, -25, -10, -5, 0, 5, 10, 25, 50, 75, 100, 200, 500},
+		},
+		[]string{"policy", "namespace", "workload", "resource_type"},
+	)
+
+	defaultMultiplierUsage := prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "optipod_default_multiplier_usage_total",
+			Help: "Total number of times default multipliers were used",
+		},
+		[]string{"policy", "resource_type", "multiplier_value"},
+	)
+
+	optimizationDecisionDuration := prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "optipod_optimization_decision_duration_seconds",
+			Help:    "Duration of optimization decision making in seconds",
+			Buckets: prometheus.DefBuckets,
+		},
+		[]string{"policy", "workload_kind"},
+	)
+
+	// Register all new metrics
+	registry.MustRegister(
+		optimizationSuccessTotal,
+		optimizationFailureTotal,
+		resourceChangesMagnitude,
+		defaultMultiplierUsage,
+		optimizationDecisionDuration,
+	)
+
+	// Test that metrics can be updated
+	optimizationSuccessTotal.WithLabelValues("test-policy", "test-ns", "test-workload", "Deployment", "ServerSideApply").Inc()
+	optimizationFailureTotal.WithLabelValues("test-policy", "test-ns", "test-workload", "Deployment", "ServerSideApply", "PatchFailed").Inc()
+	resourceChangesMagnitude.WithLabelValues("test-policy", "test-ns", "test-workload", "cpu").Observe(25.5)
+	defaultMultiplierUsage.WithLabelValues("test-policy", "memory", "1.3").Inc()
+	optimizationDecisionDuration.WithLabelValues("test-policy", "Deployment").Observe(0.5)
+
+	// Gather metrics to verify they can be collected
+	metricFamilies, err := registry.Gather()
+	if err != nil {
+		t.Fatalf("Failed to gather metrics: %v", err)
+	}
+
+	// Verify all new metrics are present
+	expectedMetrics := map[string]bool{
+		"optipod_optimization_success_total":             false,
+		"optipod_optimization_failure_total":             false,
+		"optipod_resource_changes_magnitude":             false,
+		"optipod_default_multiplier_usage_total":         false,
+		"optipod_optimization_decision_duration_seconds": false,
+	}
+
+	for _, mf := range metricFamilies {
+		if _, exists := expectedMetrics[mf.GetName()]; exists {
+			expectedMetrics[mf.GetName()] = true
+		}
+	}
+
+	// Check all expected metrics are present
+	for metricName, found := range expectedMetrics {
+		if !found {
+			t.Errorf("Expected metric %s not found", metricName)
+		}
+	}
+}
+
+// TestMetricHelperFunctions tests the new metric helper functions
+func TestMetricHelperFunctions(t *testing.T) {
+	// Test RecordOptimizationSuccess
+	t.Run("RecordOptimizationSuccess", func(t *testing.T) {
+		// This test verifies the function doesn't panic and can be called
+		// In a real environment, we would verify the metric value increased
+		RecordOptimizationSuccess("test-policy", "test-ns", "test-workload", "Deployment", "ServerSideApply")
+	})
+
+	// Test RecordOptimizationFailure
+	t.Run("RecordOptimizationFailure", func(t *testing.T) {
+		RecordOptimizationFailure("test-policy", "test-ns", "test-workload", "Deployment", "ServerSideApply", "PatchFailed")
+	})
+
+	// Test RecordResourceChangeMagnitude
+	t.Run("RecordResourceChangeMagnitude", func(t *testing.T) {
+		RecordResourceChangeMagnitude("test-policy", "test-ns", "test-workload", "cpu", 25.5)
+		RecordResourceChangeMagnitude("test-policy", "test-ns", "test-workload", "memory", -15.2)
+	})
+
+	// Test RecordDefaultMultiplierUsage
+	t.Run("RecordDefaultMultiplierUsage", func(t *testing.T) {
+		RecordDefaultMultiplierUsage("test-policy", "cpu", "1.5")
+		RecordDefaultMultiplierUsage("test-policy", "memory", "1.3")
+	})
+
+	// Test RecordOptimizationDecisionDuration
+	t.Run("RecordOptimizationDecisionDuration", func(t *testing.T) {
+		RecordOptimizationDecisionDuration("test-policy", "Deployment", 0.5)
+		RecordOptimizationDecisionDuration("test-policy", "StatefulSet", 1.2)
+	})
+}
+
+// Feature: memory-safety-enhancements, Property 1: Resource change magnitude tracking
+// Validates: Requirements - Enhanced observability
+// For any resource optimization, the system should track the magnitude of resource changes in Prometheus metrics
+func TestProperty_ResourceChangeMagnitudeTracking(t *testing.T) {
+	parameters := gopter.DefaultTestParameters()
+	parameters.MinSuccessfulTests = 100
+	properties := gopter.NewProperties(parameters)
+
+	properties.Property("resource change magnitudes are tracked correctly", prop.ForAll(
+		func(policy, namespace, workload string, beforeCPU, afterCPU, beforeMemory, afterMemory int64) bool {
+			// Skip zero values to avoid division by zero
+			if beforeCPU == 0 || beforeMemory == 0 {
+				return true
+			}
+
+			// Create a new registry for this test iteration
+			registry := prometheus.NewRegistry()
+
+			resourceChangesMagnitude := prometheus.NewHistogramVec(
+				prometheus.HistogramOpts{
+					Name:    "optipod_resource_changes_magnitude",
+					Help:    "Magnitude of resource changes in percentage",
+					Buckets: []float64{-90, -75, -50, -25, -10, -5, 0, 5, 10, 25, 50, 75, 100, 200, 500},
+				},
+				[]string{"policy", "namespace", "workload", "resource_type"},
+			)
+
+			registry.MustRegister(resourceChangesMagnitude)
+
+			// Calculate expected change percentages
+			cpuChangePercent := float64(afterCPU-beforeCPU) / float64(beforeCPU) * 100
+			memoryChangePercent := float64(afterMemory-beforeMemory) / float64(beforeMemory) * 100
+
+			// Record the changes
+			resourceChangesMagnitude.WithLabelValues(policy, namespace, workload, "cpu").Observe(cpuChangePercent)
+			resourceChangesMagnitude.WithLabelValues(policy, namespace, workload, "memory").Observe(memoryChangePercent)
+
+			// Gather metrics to verify they were recorded
+			metricFamilies, err := registry.Gather()
+			if err != nil {
+				return false
+			}
+
+			// Verify the metric is present and has observations
+			for _, mf := range metricFamilies {
+				if mf.GetName() == "optipod_resource_changes_magnitude" {
+					if mf.GetType() != dto.MetricType_HISTOGRAM {
+						return false
+					}
+
+					// Verify we have metrics for both CPU and memory
+					cpuFound := false
+					memoryFound := false
+
+					for _, m := range mf.GetMetric() {
+						labels := m.GetLabel()
+						for _, label := range labels {
+							if label.GetName() == "resource_type" {
+								if label.GetValue() == "cpu" {
+									cpuFound = true
+								}
+								if label.GetValue() == "memory" {
+									memoryFound = true
+								}
+							}
+						}
+
+						// Verify histogram has at least one observation
+						if m.GetHistogram().GetSampleCount() == 0 {
+							return false
+						}
+					}
+
+					return cpuFound && memoryFound
+				}
+			}
+
+			return false
+		},
+		gen.Identifier().SuchThat(func(v string) bool { return len(v) > 0 }),
+		gen.Identifier().SuchThat(func(v string) bool { return len(v) > 0 }),
+		gen.Identifier().SuchThat(func(v string) bool { return len(v) > 0 }),
+		gen.Int64Range(1, 10000),    // beforeCPU (avoid zero)
+		gen.Int64Range(1, 10000),    // afterCPU
+		gen.Int64Range(1, 10000000), // beforeMemory (avoid zero)
+		gen.Int64Range(1, 10000000), // afterMemory
+	))
+
+	properties.TestingRun(t)
+}

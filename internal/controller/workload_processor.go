@@ -42,7 +42,7 @@ import (
 
 // ApplicationEngine defines the interface for applying resource changes
 type ApplicationEngine interface {
-	CanApply(ctx context.Context, workload *application.Workload, rec *recommendation.Recommendation, policy *optipodv1alpha1.OptimizationPolicy) (*application.ApplyDecision, error)
+	CanApply(ctx context.Context, workload *application.Workload, containerName string, rec *recommendation.Recommendation, policy *optipodv1alpha1.OptimizationPolicy) (*application.ApplyDecision, error)
 	Apply(ctx context.Context, workload *application.Workload, containerName string, rec *recommendation.Recommendation, policy *optipodv1alpha1.OptimizationPolicy) (*application.ApplyResult, error)
 }
 
@@ -228,7 +228,7 @@ func (wp *WorkloadProcessor) ProcessWorkload(
 			}
 
 			// Check if we can apply
-			decision, err := wp.applicationEngine.CanApply(ctx, appWorkload, appRec, policy)
+			decision, err := wp.applicationEngine.CanApply(ctx, appWorkload, rec.Container, appRec, policy)
 			if err != nil {
 				status.Status = StatusError
 				status.Reason = fmt.Sprintf("Failed to determine if changes can be applied: %v", err)
@@ -499,31 +499,35 @@ func (wp *WorkloadProcessor) addRecommendationAnnotations(ctx context.Context, w
 
 // calculateLimitsForAnnotation calculates resource limits for annotation display
 func (wp *WorkloadProcessor) calculateLimitsForAnnotation(cpuRequest, memoryRequest *resource.Quantity, policy *optipodv1alpha1.OptimizationPolicy) (resource.Quantity, resource.Quantity) {
-	// Default multipliers
-	cpuMultiplier := 1.0    // CPU limit = recommendation (no headroom by default)
-	memoryMultiplier := 1.1 // Memory limit = recommendation * 1.1 (10% headroom by default)
-
-	// Override with policy configuration if provided
-	if policy.Spec.UpdateStrategy.LimitConfig != nil {
-		if policy.Spec.UpdateStrategy.LimitConfig.CPULimitMultiplier != nil {
-			cpuMultiplier = *policy.Spec.UpdateStrategy.LimitConfig.CPULimitMultiplier
-		}
-		if policy.Spec.UpdateStrategy.LimitConfig.MemoryLimitMultiplier != nil {
-			memoryMultiplier = *policy.Spec.UpdateStrategy.LimitConfig.MemoryLimitMultiplier
-		}
+	// Use the same logic as the engine for consistency
+	requests := corev1.ResourceList{
+		corev1.ResourceCPU:    *cpuRequest,
+		corev1.ResourceMemory: *memoryRequest,
 	}
 
-	// Calculate limits - use MilliValue for CPU to preserve millicores
-	cpuMilliValue := cpuRequest.MilliValue()
-	cpuLimitMilliValue := int64(float64(cpuMilliValue) * cpuMultiplier)
-	cpuLimit := resource.NewMilliQuantity(cpuLimitMilliValue, cpuRequest.Format)
+	// Create a temporary engine to use calculateLimitsWithDefaults
+	engine := &application.Engine{}
+	limits, err := engine.CalculateLimitsWithDefaults(requests, policy.Spec.UpdateStrategy.LimitConfig)
+	if err != nil {
+		// Fallback to default multipliers if calculation fails
+		cpuMultiplier := application.DefaultCPULimitMultiplier
+		memoryMultiplier := application.DefaultMemoryLimitMultiplier
 
-	// For memory, use Value and preserve format
-	memoryValue := memoryRequest.Value()
-	memoryLimitValue := int64(float64(memoryValue) * memoryMultiplier)
-	memoryLimit := resource.NewQuantity(memoryLimitValue, memoryRequest.Format)
+		cpuMilliValue := cpuRequest.MilliValue()
+		cpuLimitMilliValue := int64(float64(cpuMilliValue) * cpuMultiplier)
+		cpuLimit := resource.NewMilliQuantity(cpuLimitMilliValue, cpuRequest.Format)
 
-	return *cpuLimit, *memoryLimit
+		memoryValue := memoryRequest.Value()
+		memoryLimitValue := int64(float64(memoryValue) * memoryMultiplier)
+		memoryLimit := resource.NewQuantity(memoryLimitValue, memoryRequest.Format)
+
+		return *cpuLimit, *memoryLimit
+	}
+
+	// Return calculated limits
+	cpuLimit := limits[corev1.ResourceCPU]
+	memoryLimit := limits[corev1.ResourceMemory]
+	return cpuLimit, memoryLimit
 }
 
 // getWorkloadObject returns the workload as a client.Object for updating
