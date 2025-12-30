@@ -6,7 +6,7 @@ module.exports = {
   css: [
     './css/*.css'
   ],
-  output: './dist/css/',
+  output: process.env.OUTPUT_DIR ? `${process.env.OUTPUT_DIR}/css/` : './dist/css/',
   safelist: [
     // Keep animation classes
     /^reveal/,

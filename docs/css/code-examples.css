@@ -1,0 +1,246 @@
+/* Enhanced Code Examples Styles */
+
+.enhanced-code-examples {
+  background: #0f172a;
+  border-radius: 18px;
+  overflow: hidden;
+  box-shadow: 0 20px 40px rgb(15 23 42 / 30%);
+  border: 1px solid rgb(255 255 255 / 10%);
+}
+
+/* Tab Navigation */
+.code-tabs {
+  display: flex;
+  background: rgb(255 255 255 / 5%);
+  border-bottom: 1px solid rgb(255 255 255 / 10%);
+  padding: 0;
+  margin: 0;
+}
+
+.code-tab {
+  background: none;
+  border: none;
+  color: rgb(255 255 255 / 60%);
+  padding: 12px 20px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border-bottom: 2px solid transparent;
+  font-family: inherit;
+}
+
+.code-tab:hover {
+  color: rgb(255 255 255 / 80%);
+  background: rgb(255 255 255 / 5%);
+}
+
+.code-tab.active {
+  color: #e2e8f0;
+  background: rgb(249 115 22 / 10%);
+  border-bottom-color: var(--accent);
+}
+
+/* Code Container */
+.code-container {
+  position: relative;
+  transition: opacity 0.3s ease;
+}
+
+.code-container.updating {
+  opacity: 0.7;
+}
+
+/* Copy Button */
+.copy-button {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  background: rgb(255 255 255 / 10%);
+  border: 1px solid rgb(255 255 255 / 20%);
+  color: rgb(255 255 255 / 80%);
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s ease;
+  z-index: 10;
+  backdrop-filter: blur(8px);
+}
+
+.copy-button:hover {
+  background: rgb(255 255 255 / 15%);
+  border-color: rgb(255 255 255 / 30%);
+  color: #fff;
+  transform: translateY(-1px);
+}
+
+.copy-button.copied {
+  background: rgb(16 185 129 / 20%);
+  border-color: rgb(16 185 129 / 40%);
+  color: #10b981;
+}
+
+.copy-icon {
+  transition: transform 0.2s ease;
+}
+
+.copy-button:hover .copy-icon {
+  transform: scale(1.1);
+}
+
+/* Enhanced Code Block */
+.code-block.enhanced {
+  background: #0f172a;
+  color: #e2e8f0;
+  border-radius: 0;
+  padding: 22px;
+  padding-top: 50px; /* Space for copy button */
+  font-family: "JetBrains Mono", "Fira Code", "SF Mono", Monaco, Inconsolata, "Roboto Mono", monospace;
+  font-size: 0.85rem;
+  line-height: 1.6;
+  overflow-x: auto;
+  margin: 0;
+  border: none;
+  box-shadow: none;
+}
+
+.code-block.enhanced code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  border-radius: 0;
+  font-size: inherit;
+  line-height: inherit;
+}
+
+/* Prism.js Theme Overrides */
+
+/* Scrollbar styling for code blocks */
+.code-block.enhanced::-webkit-scrollbar {
+  height: 8px;
+}
+
+.code-block.enhanced::-webkit-scrollbar-track {
+  background: rgb(255 255 255 / 5%);
+  border-radius: 4px;
+}
+
+.code-block.enhanced::-webkit-scrollbar-thumb {
+  background: rgb(255 255 255 / 20%);
+  border-radius: 4px;
+}
+
+.code-block.enhanced::-webkit-scrollbar-thumb:hover {
+  background: rgb(255 255 255 / 30%);
+}
+
+/* Line highlighting for important sections */
+
+/* Responsive design */
+@media (width <= 768px) {
+  .code-tabs {
+    flex-wrap: wrap;
+  }
+
+  .code-tab {
+    padding: 10px 16px;
+    font-size: 0.85rem;
+  }
+
+  .code-container {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .copy-button {
+    position: static;
+    align-self: flex-end;
+    margin: 10px 12px 0;
+    padding: 6px 10px;
+    font-size: 0.75rem;
+  }
+
+  .code-block.enhanced {
+    padding: 18px;
+    padding-top: 18px;
+    font-size: 0.8rem;
+  }
+}
+
+@media (width <= 480px) {
+  .enhanced-code-examples {
+    margin: 0 -24px;
+    border-radius: 0;
+  }
+
+  .code-tab {
+    flex: 1;
+    text-align: center;
+    padding: 8px 12px;
+    font-size: 0.8rem;
+  }
+
+  .copy-button {
+    position: static;
+    margin: 12px 12px 0;
+    width: calc(100% - 24px);
+    justify-content: center;
+  }
+
+  .code-block.enhanced {
+    padding: 16px;
+    padding-top: 16px;
+  }
+}
+
+/* Focus states for accessibility */
+.code-tab:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.copy-button:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Animation for tab switching */
+@keyframes code-slide-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.code-container:not(.updating) .code-block.enhanced {
+  animation: code-slide-in 0.3s ease-out;
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  .code-tab,
+  .copy-button,
+  .copy-icon,
+  .code-container {
+    transition: none;
+  }
+
+  .code-container:not(.updating) .code-block.enhanced {
+    animation: none;
+  }
+
+  .copy-button:hover {
+    transform: none;
+  }
+}
