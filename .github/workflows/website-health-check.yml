@@ -1,0 +1,77 @@
+name: Website Health Check
+
+on:
+  schedule:
+    # Run health check every 6 hours
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
+
+jobs:
+  health-check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check website availability
+        run: |
+          echo "Checking website health..."
+
+          # Check if the website is accessible
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://sagart-cactus.github.io/optipod/ || echo "000")
+
+          if [ "$HTTP_STATUS" = "200" ]; then
+            echo "✅ Website is accessible (HTTP $HTTP_STATUS)"
+          else
+            echo "❌ Website is not accessible (HTTP $HTTP_STATUS)"
+            exit 1
+          fi
+
+      - name: Check critical page elements
+        run: |
+          echo "Checking critical page elements..."
+
+          # Download the page content
+          PAGE_CONTENT=$(curl -s https://sagart-cactus.github.io/optipod/)
+
+          # Check for critical elements
+          if echo "$PAGE_CONTENT" | grep -q "<title>"; then
+            echo "✅ Page title found"
+          else
+            echo "❌ Page title missing"
+            exit 1
+          fi
+
+          if echo "$PAGE_CONTENT" | grep -q "OptipOd"; then
+            echo "✅ OptipOd branding found"
+          else
+            echo "❌ OptipOd branding missing"
+            exit 1
+          fi
+
+          if echo "$PAGE_CONTENT" | grep -q "GitHub"; then
+            echo "✅ GitHub links found"
+          else
+            echo "❌ GitHub links missing"
+            exit 1
+          fi
+
+      - name: Performance check
+        run: |
+          echo "Running basic performance check..."
+
+          # Measure response time
+          RESPONSE_TIME=$(curl -s -o /dev/null -w "%{time_total}" https://sagart-cactus.github.io/optipod/)
+
+          echo "Response time: ${RESPONSE_TIME}s"
+
+          # Check if response time is acceptable (under 5 seconds)
+          if (( $(echo "$RESPONSE_TIME < 5.0" | bc -l) )); then
+            echo "✅ Response time is acceptable"
+          else
+            echo "⚠️ Response time is slow (${RESPONSE_TIME}s)"
+          fi
+
+      - name: Health check summary
+        if: always()
+        run: |
+          echo "Health check completed at: $(date)"
+          echo "For detailed performance metrics, check Lighthouse CI reports in deployment workflow."
