@@ -1,0 +1,23 @@
+User-agent: *
+Allow: /
+
+# Sitemap location
+Sitemap: https://sagart-cactus.github.io/optipod/sitemap.xml
+
+# Crawl-delay for respectful crawling
+Crawl-delay: 1
+
+# Disallow common non-content paths
+Disallow: /node_modules/
+Disallow: /dist/
+Disallow: /.git/
+Disallow: /.github/
+Disallow: /package.json
+Disallow: /package-lock.json
+Disallow: /*.log
+
+# Allow important files
+Allow: /css/
+Allow: /js/
+Allow: /images/
+Allow: /favicon.ico

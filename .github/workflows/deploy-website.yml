@@ -1,0 +1,183 @@
+name: Deploy Landing Page
+
+on:
+  push:
+    branches: [main]
+    paths: ['website/**']
+  pull_request:
+    branches: [main]
+    paths: ['website/**']
+  workflow_dispatch:
+
+# Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
+# However, do NOT cancel in-progress runs as we want to allow these production deployments to complete.
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: website/package-lock.json
+
+      - name: Install dependencies
+        working-directory: website
+        run: npm ci
+
+      - name: Verify website structure
+        working-directory: website
+        run: |
+          echo "Checking required files..."
+          test -f index.html || (echo "Error: index.html not found" && exit 1)
+          test -f package.json || (echo "Error: package.json not found" && exit 1)
+          test -d css || (echo "Error: css directory not found" && exit 1)
+          test -d js || (echo "Error: js directory not found" && exit 1)
+          echo "All required files found ✓"
+
+      - name: Validate HTML
+        working-directory: website
+        run: npm run validate:html
+
+      - name: Validate CSS (with warnings)
+        working-directory: website
+        run: npm run validate:css || echo "⚠️ CSS validation found issues but continuing..."
+
+      - name: Validate JavaScript (with warnings)
+        working-directory: website
+        run: npm run validate:js || echo "⚠️ JavaScript validation found issues but continuing..."
+
+      - name: Validate Links
+        working-directory: website
+        run: npm run validate:links || echo "⚠️ Link validation found issues but continuing..."
+
+      - name: Run Lighthouse CI
+        working-directory: website
+        run: npm run lighthouse || echo "⚠️ Lighthouse CI found issues but continuing..."
+        env:
+          LHCI_GITHUB_APP_TOKEN: ${{ secrets.LHCI_GITHUB_APP_TOKEN }}
+
+      - name: Build website
+        working-directory: website
+        run: npm run build
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: website-build
+          path: website/dist/
+          retention-days: 1
+
+  deploy:
+    # Only deploy on main branch pushes (not PRs)
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: website-build
+          path: ./dist
+
+      - name: Verify build artifacts
+        run: |
+          echo "Verifying build artifacts..."
+          test -f ./dist/index.html || (echo "Error: Built index.html not found" && exit 1)
+          test -d ./dist/css || echo "Warning: CSS directory not found in build"
+          test -d ./dist/js || echo "Warning: JS directory not found in build"
+          echo "Build artifacts verified ✓"
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: Upload to GitHub Pages
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./dist
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+      - name: Deployment Success Notification
+        if: success()
+        run: |
+          echo "🚀 Website successfully deployed to GitHub Pages!"
+          echo "URL: ${{ steps.deployment.outputs.page_url }}"
+          echo "Deployment completed at: $(date)"
+
+      - name: Deployment Failure Notification
+        if: failure()
+        run: |
+          echo "❌ Website deployment failed!"
+          echo "Please check the logs above for details."
+          echo "The previous version remains active."
+
+  # Rollback job that can be triggered manually if needed
+  rollback:
+    if: failure() && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    needs: [build, deploy]
+    environment:
+      name: github-pages-rollback
+
+    steps:
+      - name: Checkout previous commit
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Get previous commit
+        id: previous
+        run: |
+          PREV_COMMIT=$(git rev-parse HEAD~1)
+          echo "previous-commit=$PREV_COMMIT" >> $GITHUB_OUTPUT
+          echo "Rolling back to commit: $PREV_COMMIT"
+
+      - name: Setup Node.js for rollback
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: website/package-lock.json
+
+      - name: Checkout previous version
+        run: git checkout ${{ steps.previous.outputs.previous-commit }}
+
+      - name: Install dependencies for rollback
+        working-directory: website
+        run: npm ci
+
+      - name: Build previous version
+        working-directory: website
+        run: npm run build
+
+      - name: Deploy rollback version
+        uses: actions/deploy-pages@v4
+        with:
+          artifact_name: rollback-build
+
+      - name: Rollback Notification
+        run: |
+          echo "🔄 Rollback completed!"
+          echo "Reverted to commit: ${{ steps.previous.outputs.previous-commit }}"

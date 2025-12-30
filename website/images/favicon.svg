@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+  <!-- Favicon version with website colors -->
+  <defs>
+    <style type="text/css">
+      .hexagon { fill: #f97316; } /* Website's accent color */
+      .cube { fill: #ffffff; }
+      .arrow { fill: #ea580c; } /* Darker orange */
+    </style>
+  </defs>
+
+  <!-- Simplified hexagon container -->
+  <path class="hexagon" d="M16 2L28 9v14L16 30L4 23V9L16 2z"/>
+
+  <!-- Simplified cube inside -->
+  <g transform="translate(16,16)">
+    <!-- Cube faces -->
+    <path class="cube" d="M-6 -3L0 -6L6 -3v6L0 6L-6 3z"/>
+    <path class="cube" d="M-6 -3L0 -6L6 -3L0 0L-6 -3z" opacity="0.8"/>
+    <path class="cube" d="M6 -3v6L0 6V0L6 -3z" opacity="0.6"/>
+
+    <!-- Optimization arrow -->
+    <path class="arrow" d="M-2 -2L0 -4L2 -2v4L-2 2v-4z"/>
+  </g>
+</svg>

@@ -1,0 +1,101 @@
+name: Rollback Landing Page
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit_sha:
+        description: 'Commit SHA to rollback to (leave empty for previous commit)'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages-rollback"
+  cancel-in-progress: false
+
+jobs:
+  rollback:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 10  # Fetch more history for rollback options
+
+      - name: Determine rollback target
+        id: target
+        run: |
+          if [ -n "${{ github.event.inputs.commit_sha }}" ]; then
+            TARGET_COMMIT="${{ github.event.inputs.commit_sha }}"
+            echo "Using specified commit: $TARGET_COMMIT"
+          else
+            TARGET_COMMIT=$(git rev-parse HEAD~1)
+            echo "Using previous commit: $TARGET_COMMIT"
+          fi
+          echo "target-commit=$TARGET_COMMIT" >> $GITHUB_OUTPUT
+
+      - name: Validate target commit
+        run: |
+          if ! git cat-file -e ${{ steps.target.outputs.target-commit }}; then
+            echo "Error: Commit ${{ steps.target.outputs.target-commit }} does not exist"
+            exit 1
+          fi
+
+          # Check if website directory exists in target commit
+          if ! git ls-tree ${{ steps.target.outputs.target-commit }} | grep -q "website/"; then
+            echo "Error: website directory not found in target commit"
+            exit 1
+          fi
+
+      - name: Checkout target commit
+        run: git checkout ${{ steps.target.outputs.target-commit }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: website/package-lock.json
+
+      - name: Install dependencies
+        working-directory: website
+        run: npm ci
+
+      - name: Build rollback version
+        working-directory: website
+        run: npm run build
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: Upload to GitHub Pages
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: website/dist
+
+      - name: Deploy rollback to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+      - name: Rollback Success Notification
+        if: success()
+        run: |
+          echo "🔄 Rollback completed successfully!"
+          echo "Reverted to commit: ${{ steps.target.outputs.target-commit }}"
+          echo "URL: ${{ steps.deployment.outputs.page_url }}"
+          echo "Rollback completed at: $(date)"
+
+      - name: Rollback Failure Notification
+        if: failure()
+        run: |
+          echo "❌ Rollback failed!"
+          echo "Please check the logs above for details."
+          echo "The current version remains active."
