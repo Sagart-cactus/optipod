@@ -1,3 +1,5 @@
+const outputDir = process.env.OUTPUT_DIR || './dist'
+
 module.exports = {
   content: [
     './index.html',
@@ -6,7 +8,7 @@ module.exports = {
   css: [
     './css/*.css'
   ],
-  output: process.env.OUTPUT_DIR ? `${process.env.OUTPUT_DIR}/css/` : './dist/css/',
+  output: `${outputDir}/css/`,
   safelist: [
     // Keep animation classes
     /^reveal/,

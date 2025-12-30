@@ -18,9 +18,9 @@ try {
   // 1. Validate build artifacts exist
   console.log('📁 Validating build artifacts...')
   const requiredFiles = [
-    '../docs/index.html',
-    '../docs/js/bundle.min.js',
-    '../docs/css/styles.min.css'
+    'dist/index.html',
+    'dist/js/bundle.min.js',
+    'dist/css/styles.min.css'
   ]
 
   let artifactsValid = true
@@ -40,9 +40,9 @@ try {
 
   // 2. Analyze bundle sizes
   console.log('📊 Analyzing bundle sizes...')
-  const bundleStats = fs.statSync('../docs/js/bundle.min.js')
-  const cssStats = fs.statSync('../docs/css/styles.min.css')
-  const htmlStats = fs.statSync('../docs/index.html')
+  const bundleStats = fs.statSync('dist/js/bundle.min.js')
+  const cssStats = fs.statSync('dist/css/styles.min.css')
+  const htmlStats = fs.statSync('dist/index.html')
 
   results.optimizations = {
     jsBundle: {
@@ -64,7 +64,7 @@ try {
 
   // 3. Check for critical CSS
   console.log('🎨 Checking critical CSS optimization...')
-  const htmlContent = fs.readFileSync('../docs/index.html', 'utf8')
+  const htmlContent = fs.readFileSync('dist/index.html', 'utf8')
   const hasCriticalCSS = htmlContent.includes('<style>')
   const hasResourceHints = htmlContent.includes('rel="preload"') || htmlContent.includes('rel="preconnect"') || htmlContent.includes('dns-prefetch')
 
@@ -130,7 +130,7 @@ try {
 
   // 6. Check JavaScript integration
   console.log('⚡ Validating JavaScript integration...')
-  const jsContent = fs.readFileSync('../docs/js/bundle.min.js', 'utf8')
+  const jsContent = fs.readFileSync('dist/js/bundle.min.js', 'utf8')
   const jsChecks = {
     analytics: jsContent.includes('Analytics'),
     githubStats: jsContent.includes('GitHubStats'),
@@ -180,8 +180,8 @@ try {
   }
 
   // 9. Save results
-  fs.writeFileSync('../docs/performance-report.json', JSON.stringify(results, null, 2))
-  console.log('📄 Performance report saved to docs/performance-report.json')
+  fs.writeFileSync('dist/performance-report.json', JSON.stringify(results, null, 2))
+  console.log('📄 Performance report saved to dist/performance-report.json')
 
   // 10. Final validation summary
   console.log('\n🎯 Final Validation Summary:')

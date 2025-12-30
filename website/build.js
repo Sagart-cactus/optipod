@@ -8,7 +8,7 @@ console.log('🚀 Starting asset optimization pipeline...')
 
 const outputDir = process.env.OUTPUT_DIR
   ? path.resolve(process.env.OUTPUT_DIR)
-  : path.resolve('..', 'docs')
+  : path.resolve('dist')
 
 // Load content configuration for version information
 let versionInfo = ''

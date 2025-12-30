@@ -36,20 +36,20 @@ try {
   // Test 1: Build artifacts exist and are optimized
   console.log('\n📦 Testing build artifacts...')
 
-  const docsExists = fs.existsSync('../docs')
-  addTest('Docs directory exists', docsExists)
+  const distExists = fs.existsSync('dist')
+  addTest('Dist directory exists', distExists)
 
-  if (docsExists) {
-    const htmlExists = fs.existsSync('../docs/index.html')
-    const jsExists = fs.existsSync('../docs/js/bundle.min.js')
-    const cssExists = fs.existsSync('../docs/css/styles.min.css')
+  if (distExists) {
+    const htmlExists = fs.existsSync('dist/index.html')
+    const jsExists = fs.existsSync('dist/js/bundle.min.js')
+    const cssExists = fs.existsSync('dist/css/styles.min.css')
 
     addTest('HTML file built', htmlExists)
     addTest('JavaScript bundle built', jsExists)
     addTest('CSS bundle built', cssExists)
 
     if (jsExists) {
-      const jsStats = fs.statSync('../docs/js/bundle.min.js')
+      const jsStats = fs.statSync('dist/js/bundle.min.js')
       const jsOptimized = jsStats.size < 100000 // Less than 100KB
       addTest('JavaScript bundle optimized', jsOptimized, `Size: ${(jsStats.size / 1024).toFixed(2)}KB`)
     }
@@ -58,8 +58,8 @@ try {
   // Test 2: Component integration
   console.log('\n🧩 Testing component integration...')
 
-  if (fs.existsSync('../docs/js/bundle.min.js')) {
-    const bundleContent = fs.readFileSync('../docs/js/bundle.min.js', 'utf8')
+  if (fs.existsSync('dist/js/bundle.min.js')) {
+    const bundleContent = fs.readFileSync('dist/js/bundle.min.js', 'utf8')
 
     const components = ['Analytics', 'GitHubStats', 'FeaturesGrid', 'ComparisonTable', 'CodeExamples']
     components.forEach(component => {
@@ -71,8 +71,8 @@ try {
   // Test 3: HTML structure and SEO
   console.log('\n🔍 Testing HTML structure and SEO...')
 
-  if (fs.existsSync('../docs/index.html')) {
-    const htmlContent = fs.readFileSync('../docs/index.html', 'utf8')
+  if (fs.existsSync('dist/index.html')) {
+    const htmlContent = fs.readFileSync('dist/index.html', 'utf8')
 
     // SEO tests
     addTest('Meta description present', htmlContent.includes('name="description"'))
@@ -96,8 +96,8 @@ try {
   console.log('\n👤 Testing user journey components...')
 
   // Check if all interactive elements are present
-  if (fs.existsSync('../docs/index.html')) {
-    const htmlContent = fs.readFileSync('../docs/index.html', 'utf8')
+  if (fs.existsSync('dist/index.html')) {
+    const htmlContent = fs.readFileSync('dist/index.html', 'utf8')
 
     addTest('Navigation links present', htmlContent.includes('nav-links'))
     addTest('CTA buttons present', htmlContent.includes('btn-primary'))
@@ -110,8 +110,8 @@ try {
   // Test 5: Analytics integration
   console.log('\n📊 Testing analytics integration...')
 
-  if (fs.existsSync('../docs/js/bundle.min.js')) {
-    const bundleContent = fs.readFileSync('../docs/js/bundle.min.js', 'utf8')
+  if (fs.existsSync('dist/js/bundle.min.js')) {
+    const bundleContent = fs.readFileSync('dist/js/bundle.min.js', 'utf8')
 
     addTest('Analytics class present', bundleContent.includes('Analytics'))
     addTest('Event tracking present', bundleContent.includes('trackEvent'))
@@ -122,8 +122,8 @@ try {
   // Test 6: GitHub integration
   console.log('\n🐙 Testing GitHub integration...')
 
-  if (fs.existsSync('../docs/js/bundle.min.js')) {
-    const bundleContent = fs.readFileSync('../docs/js/bundle.min.js', 'utf8')
+  if (fs.existsSync('dist/js/bundle.min.js')) {
+    const bundleContent = fs.readFileSync('dist/js/bundle.min.js', 'utf8')
 
     addTest('GitHub API integration present', bundleContent.includes('api.github.com'))
     addTest('Stats animation present', bundleContent.includes('animateCounter'))
@@ -133,8 +133,8 @@ try {
   // Test 7: Interactive features
   console.log('\n🎮 Testing interactive features...')
 
-  if (fs.existsSync('../docs/js/bundle.min.js')) {
-    const bundleContent = fs.readFileSync('../docs/js/bundle.min.js', 'utf8')
+  if (fs.existsSync('dist/js/bundle.min.js')) {
+    const bundleContent = fs.readFileSync('dist/js/bundle.min.js', 'utf8')
 
     addTest('Feature expansion present', bundleContent.includes('expandFeature'))
     addTest('Table expansion present', bundleContent.includes('expandRow'))
@@ -145,8 +145,8 @@ try {
   // Test 8: Performance optimizations
   console.log('\n⚡ Testing performance optimizations...')
 
-  if (fs.existsSync('../docs/index.html')) {
-    const htmlContent = fs.readFileSync('../docs/index.html', 'utf8')
+  if (fs.existsSync('dist/index.html')) {
+    const htmlContent = fs.readFileSync('dist/index.html', 'utf8')
 
     // Check for performance optimizations
     const hasMinifiedJS = htmlContent.includes('.min.js')
@@ -177,8 +177,8 @@ try {
   }
 
   // Save detailed results
-  fs.writeFileSync('../docs/integration-test-results.json', JSON.stringify(testResults, null, 2))
-  console.log('📄 Detailed results saved to docs/integration-test-results.json')
+  fs.writeFileSync('dist/integration-test-results.json', JSON.stringify(testResults, null, 2))
+  console.log('📄 Detailed results saved to dist/integration-test-results.json')
 
   // Exit with appropriate code
   if (successRate >= 85) {
