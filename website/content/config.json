@@ -28,15 +28,15 @@
   },
   "build": {
     "version": "v1.2.0",
-    "buildDate": "2025-12-30T09:31:51.815Z",
-    "commitHash": "4eba095",
-    "branch": "feat/fix-github-pages-deploy",
+    "buildDate": "2025-12-30T09:39:23.048Z",
+    "commitHash": "ca4f008",
+    "branch": "feat/fix-all-the-website-issues",
     "releaseDate": "2025-12-28T16:44:00Z",
     "downloadUrl": "https://github.com/Sagart-cactus/optipod/releases/tag/v1.2.0"
   },
   "maintenance": {
-    "lastUpdated": "2025-12-30T09:31:51.815Z",
-    "nextReview": "2026-01-29T09:31:51.816Z",
+    "lastUpdated": "2025-12-30T09:39:23.048Z",
+    "nextReview": "2026-01-29T09:39:23.049Z",
     "maintainer": "OptipOd Team"
   }
 }
