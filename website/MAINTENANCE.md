@@ -127,11 +127,11 @@ The build process includes:
 
 ### Build Artifacts
 
-Generated files are placed in the repository root `docs/` directory:
+Generated files are placed in the `dist/` directory:
 
-- `docs/css/`: Optimized CSS files
-- `docs/js/`: Minified JavaScript bundles
-- `docs/images/`: Compressed images in multiple formats
+- `dist/css/`: Optimized CSS files
+- `dist/js/`: Minified JavaScript bundles
+- `dist/images/`: Compressed images in multiple formats
 
 ## Troubleshooting
 
