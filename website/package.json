@@ -29,7 +29,7 @@
     "optimize:js:minify": "terser dist/js/bundle.js -o dist/js/bundle.min.js --compress --mangle --source-map",
     "lighthouse": "lhci autorun",
     "test": "npm run validate && npm run lighthouse",
-    "clean": "rimraf dist",
+    "clean": "rimraf dist ../docs/css ../docs/js ../docs/images ../docs/index.html ../docs/optimization-report.json ../docs/critical.css ../docs/performance-report.json ../docs/integration-test-results.json",
     "prebuild": "npm run clean"
   },
   "keywords": [
