@@ -657,7 +657,7 @@ Check which tool currently owns the resource fields:
 kubectl get deployment <name> -n <namespace> -o yaml | grep -A 50 managedFields
 
 # Check OptiPod logs
-kubectl logs -n optipod-system deployment/optipod-manager
+kubectl logs -n optipod-system deployment/optipod-controller-manager
 
 # Check for SSA conflict events
 kubectl get events -n <namespace> --field-selector reason=SSAConflict
