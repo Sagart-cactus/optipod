@@ -64,7 +64,7 @@ kubectl apply -f https://github.com/Sagart-cactus/optipod/releases/download/v1.0
 
 ```bash
 kubectl get pods -n optipod-system
-kubectl logs -n optipod-system deployment/optipod-manager
+kubectl logs -n optipod-system deployment/optipod-controller-manager
 ```
 
 ### Create Your First Policy

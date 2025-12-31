@@ -369,7 +369,7 @@ kubectl get deployment web-app -n production -o yaml | grep -A 50 managedFields 
 
 ```bash
 # View OptiPod logs
-kubectl logs -n optipod-system deployment/optipod-manager
+kubectl logs -n optipod-system deployment/optipod-controller-manager
 
 # Check for SSA conflict events
 kubectl get events -n production --field-selector reason=SSAConflict
@@ -536,7 +536,7 @@ kubectl describe optimizationpolicy api-optimizer -n production
 
 If you encounter issues with ArgoCD integration:
 
-1. Check OptiPod logs: `kubectl logs -n optipod-system deployment/optipod-manager`
+1. Check OptiPod logs: `kubectl logs -n optipod-system deployment/optipod-controller-manager`
 2. Check ArgoCD application status: `argocd app get <app-name>`
 3. Inspect managedFields: `kubectl get deployment <name> -o yaml | grep -A 50 managedFields`
 4. Review events: `kubectl get events -n <namespace>`
