@@ -8,7 +8,7 @@
 class Analytics {
   constructor () {
     this.isInitialized = false
-    this.trackingId = 'G-XXXXXXXXXX' // Replace with actual GA4 tracking ID
+    this.trackingId = 'G-TQVREE7K74' // Replace with actual GA4 tracking ID
     this.debugMode = false // Set to true for development
     this.consentGiven = false
 
