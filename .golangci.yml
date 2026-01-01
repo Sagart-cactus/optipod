@@ -39,6 +39,9 @@ linters:
       - linters:
           - lll
         path: test/*
+      - linters:
+          - gocyclo
+        text: "validateOptimizationPolicy"
     paths:
       - third_party$
       - builtin$
