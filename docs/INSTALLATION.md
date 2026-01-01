@@ -9,8 +9,8 @@ This guide provides detailed instructions for installing and configuring OptiPod
 - **Kubernetes Cluster**: Version 1.29 or higher
 - **kubectl**: Configured to access your cluster
 - **Metrics Provider**: One of the following:
-  - Kubernetes metrics-server (recommended)
-  - Prometheus (basic support, in development)
+  - Kubernetes metrics-server (recommended for most use cases)
+  - Prometheus (recommended for advanced monitoring setups)
   - Custom metrics provider (planned)
 
 ### Optional
@@ -140,8 +140,8 @@ data:
   # Default metrics provider
   metrics-provider: "metrics-server"
   
-  # Prometheus URL (if using Prometheus)
-  prometheus-url: "http://prometheus-k8s.monitoring.svc:9090"
+  # Prometheus URL (when using Prometheus provider)
+  prometheus-url: "http://prometheus-kube-prometheus-prometheus.monitoring.svc.cluster.local:9090"
   
   # Default reconciliation interval
   reconciliation-interval: "5m"
@@ -166,10 +166,12 @@ Available flags (set in deployment args):
 | `--leader-elect` | `true` | Enable leader election |
 | `--metrics-bind-address` | `:8080` | Metrics endpoint address |
 | `--health-probe-bind-address` | `:8081` | Health probe address |
-| `--metrics-provider` | `metrics-server` | Metrics backend (metrics-server, prometheus, custom) |
-| `--prometheus-url` | `http://prometheus-k8s.monitoring.svc:9090` | Prometheus URL (when using Prometheus) |
+| `--metrics-provider` | `metrics-server` | **Global** metrics backend (metrics-server, prometheus, custom) |
+| `--prometheus-url` | `http://prometheus-kube-prometheus-prometheus.monitoring.svc.cluster.local:9090` | Prometheus URL (when using Prometheus) |
 | `--dry-run` | `false` | Global dry-run mode |
 | `--reconciliation-interval` | `5m` | Default reconciliation interval |
+
+> **⚠️ Important**: The `--metrics-provider` flag sets the metrics backend **globally** for all optimization policies. While individual policies have a `metricsConfig.provider` field, it must currently match the global setting. Per-policy provider selection is planned for a future release.
 
 ### RBAC Configuration
 
@@ -193,13 +195,13 @@ RoleBindings in `config/rbac/`.
 
 #### Prometheus
 
-1. Ensure Prometheus is deployed and accessible
+1. Ensure Prometheus is deployed and accessible in your cluster
 2. Configure the Prometheus URL in the ConfigMap or via `--prometheus-url` flag
 3. Verify connectivity:
 
 ```bash
 kubectl exec -n optipod-system deployment/optipod-controller-manager -- \
-  curl http://prometheus-k8s.monitoring.svc:9090/-/healthy
+  curl http://prometheus-kube-prometheus-prometheus.monitoring.svc.cluster.local:9090/-/healthy
 ```
 
 Required Prometheus metrics:

@@ -242,28 +242,47 @@ func main() {
 		})
 	case metrics.ProviderTypeMetricsServer:
 		metricsProvider, err = metrics.NewProvider(metrics.ProviderConfig{
-			Type:             metrics.ProviderTypeMetricsServer,
-			Clientset:        clientset,
-			MetricsClientset: metricsClientset,
-			MaxSamples:       operatorConfig.GetMetricsMaxSamples(),
-			SampleInterval:   operatorConfig.GetMetricsSampleInterval(),
+			Type:                             metrics.ProviderTypeMetricsServer,
+			Clientset:                        clientset,
+			MetricsClientset:                 metricsClientset,
+			MaxSamples:                       operatorConfig.GetMetricsMaxSamples(),
+			SampleInterval:                   operatorConfig.GetMetricsSampleInterval(),
+			MetricsServerSamplingInterval:    operatorConfig.GetMetricsServerSamplingInterval(),
+			MetricsServerMaxSamplesPerTarget: operatorConfig.GetMetricsServerMaxSamplesPerTarget(),
+			MetricsServerMinSamplesRequired:  operatorConfig.GetMetricsServerMinSamplesRequired(),
+			MetricsServerTargetTTL:           operatorConfig.GetMetricsServerTargetTTL(),
 		})
 	default:
 		// Default to metrics-server with fallback
 		setupLog.Info("Unknown metrics provider, defaulting to metrics-server",
 			"provider", operatorConfig.GetMetricsProvider())
 		metricsProvider, err = metrics.NewProvider(metrics.ProviderConfig{
-			Type:             metrics.ProviderTypeMetricsServer,
-			Clientset:        clientset,
-			MetricsClientset: metricsClientset,
-			MaxSamples:       operatorConfig.GetMetricsMaxSamples(),
-			SampleInterval:   operatorConfig.GetMetricsSampleInterval(),
+			Type:                             metrics.ProviderTypeMetricsServer,
+			Clientset:                        clientset,
+			MetricsClientset:                 metricsClientset,
+			MaxSamples:                       operatorConfig.GetMetricsMaxSamples(),
+			SampleInterval:                   operatorConfig.GetMetricsSampleInterval(),
+			MetricsServerSamplingInterval:    operatorConfig.GetMetricsServerSamplingInterval(),
+			MetricsServerMaxSamplesPerTarget: operatorConfig.GetMetricsServerMaxSamplesPerTarget(),
+			MetricsServerMinSamplesRequired:  operatorConfig.GetMetricsServerMinSamplesRequired(),
+			MetricsServerTargetTTL:           operatorConfig.GetMetricsServerTargetTTL(),
 		})
 	}
 
 	if err != nil {
 		setupLog.Error(err, "unable to create metrics provider")
 		os.Exit(1)
+	}
+
+	if samplerProvider, ok := metricsProvider.(interface {
+		Sampler() *metrics.MetricsServerSampler
+	}); ok {
+		if sampler := samplerProvider.Sampler(); sampler != nil {
+			if err := mgr.Add(sampler); err != nil {
+				setupLog.Error(err, "unable to register metrics-server sampler")
+				os.Exit(1)
+			}
+		}
 	}
 
 	// Initialize recommendation engine

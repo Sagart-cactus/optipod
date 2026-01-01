@@ -189,17 +189,20 @@ selector:
 **Enum**: `metrics-server`, `prometheus`, `custom`  
 **Description**: Metrics backend to use
 
+> **⚠️ Current Limitation**: While this field is required for validation, the actual metrics provider is currently configured globally at the controller level via `--metrics-provider` flag. Per-policy provider selection is planned for a future release.
+
 **Current Status**:
 
-- `metrics-server`: ✅ Fully supported and recommended
-- `prometheus`: 🚧 In development (basic support available)
+- `metrics-server`: ✅ Fully supported and production-ready
+- `prometheus`: ✅ Fully supported and production-ready  
 - `custom`: 📋 Planned for future release
+- **Per-policy provider selection**: 🚧 Work in progress
 
 **Example**:
 
 ```yaml
 metricsConfig:
-  provider: metrics-server  # Recommended for current version
+  provider: prometheus  # Note: Must match controller's --metrics-provider setting
 ```
 
 #### metricsConfig.rollingWindow
@@ -252,10 +255,29 @@ metricsConfig:
   safetyFactor: 1.3  # 30% safety margin
 ```
 
+#### metricsConfig.metricsServer.minSamplesRequired
+
+**Type**: `integer`  
+**Optional**: Yes  
+**Description**: Per-policy minimum number of cached samples required before OptiPod will compute/apply recommendations when using `metrics-server`
+
+If omitted, OptiPod uses the operator-wide default (`--metrics-server-min-samples-required`).
+
+**Example**:
+
+```yaml
+metricsConfig:
+  provider: metrics-server
+  metricsServer:
+    minSamplesRequired: 120
+```
+
 ### resourceBounds (required)
 
 **Type**: `object`  
 **Description**: Min/max constraints for CPU and memory recommendations
+
+> **🔒 Bounds Enforcement**: OptipPod strictly enforces these bounds. Recommendations will never exceed the `max` values, ensuring predictable resource usage. When `limitConfig` is used, limits are calculated as `request × multiplier`, but the underlying requests are always bounded by these values.
 
 #### resourceBounds.cpu (required)
 
@@ -273,7 +295,7 @@ metricsConfig:
 resourceBounds:
   cpu:
     min: "100m"   # 0.1 CPU cores
-    max: "4000m"  # 4 CPU cores
+    max: "4000m"  # 4 CPU cores (requests will never exceed this)
 ```
 
 #### resourceBounds.memory (required)
@@ -292,7 +314,7 @@ resourceBounds:
 resourceBounds:
   memory:
     min: "128Mi"  # 128 mebibytes
-    max: "8Gi"    # 8 gibibytes
+    max: "8Gi"    # 8 gibibytes (requests will never exceed this)
 ```
 
 **Validation**: `min` must be less than or equal to `max` for both CPU and memory.
@@ -307,7 +329,7 @@ resourceBounds:
 **Type**: `boolean`  
 **Default**: `true`  
 **Optional**: Yes  
-**Description**: Enable in-place pod resize when supported (Kubernetes 1.29+)
+**Description**: Enable in-place pod resize when supported by the cluster
 
 **Example**:
 
@@ -392,6 +414,92 @@ updateStrategy:
 
 **See Also**: [ArgoCD Integration Guide](ARGOCD_INTEGRATION.md) for GitOps setup
 
+#### updateStrategy.limitConfig
+
+**Type**: `object`  
+**Optional**: Yes  
+**Description**: Controls how resource limits are derived from recommendations (when `updateRequestsOnly` is `false`)
+
+> **🔒 Bounds Interaction**: Limits are calculated as `request × multiplier`. Since requests are bounded by `resourceBounds.max`, the effective maximum limit is `resourceBounds.max × multiplier`. This ensures predictable resource usage even with custom multipliers.
+
+**Fields**:
+
+- `cpuLimitMultiplier` (`float64`, default `1.0`, min `1.0`, max `10.0`): CPU limit = recommended CPU × multiplier
+- `memoryLimitMultiplier` (`float64`, default `1.1`, min `1.0`, max `10.0`): Memory limit = recommended memory × multiplier
+
+**Example with Bounds**:
+
+```yaml
+resourceBounds:
+  cpu:
+    max: "2000m"  # Requests never exceed 2000m
+updateStrategy:
+  updateRequestsOnly: false
+  limitConfig:
+    cpuLimitMultiplier: 1.5  # Limits never exceed 3000m (2000m × 1.5)
+    memoryLimitMultiplier: 1.2
+```
+
+#### updateStrategy.allowUnsafeMemoryDecrease
+
+**Type**: `boolean`  
+**Default**: `false`  
+**Optional**: Yes  
+**Description**: Work-in-progress (WIP) toggle for memory-decrease safety gating
+
+**Status**: This field is part of the CRD schema and is validated, but it is **not currently enforced by the controller/engine**. Setting it today has **no effect**.
+
+**Warning**: Use with caution in production environments.
+
+**Example**:
+
+```yaml
+updateStrategy:
+  allowUnsafeMemoryDecrease: true
+```
+
+#### updateStrategy.gradualDecreaseConfig
+
+**Type**: `object`  
+**Optional**: Yes  
+**Description**: Work-in-progress (WIP) configuration for gradually applying large memory decreases over multiple reconciliations
+
+**Status**: The configuration is part of the CRD schema and validated, but it is **not currently implemented in the controller/engine**. Setting it today has **no effect**.
+
+**Fields**:
+
+- `enabled` (`boolean`, default `false`): Enable gradual decreases
+- `memoryDecreasePercentage` (`integer`, default `10`, min `1`, max `50`): Max percent decrease per reconciliation
+- `minimumDecreaseThreshold` (`Quantity`, optional): Decreases smaller than this apply immediately (default `100Mi`)
+- `maximumTotalDecrease` (`integer`, default `70`, min `1`, max `90`): Guardrail on total percent decrease
+
+**Example**:
+
+```yaml
+updateStrategy:
+  gradualDecreaseConfig:
+    enabled: true
+    memoryDecreasePercentage: 10
+    minimumDecreaseThreshold: 256Mi
+    maximumTotalDecrease: 70
+```
+
+### weight
+
+**Type**: `integer`  
+**Default**: `100`  
+**Minimum**: `1`  
+**Maximum**: `1000`  
+**Optional**: Yes  
+**Description**: Priority used when multiple OptimizationPolicies match the same workload; higher weight wins
+
+**Example**:
+
+```yaml
+spec:
+  weight: 200
+```
+
 ### reconciliationInterval
 
 **Type**: `Duration`  
@@ -402,7 +510,8 @@ updateStrategy:
 **Example**:
 
 ```yaml
-reconciliationInterval: 10m
+spec:
+  reconciliationInterval: 10m
 ```
 
 ## Status Fields
@@ -473,48 +582,7 @@ status:
 **Type**: `Time`  
 **Description**: Timestamp of the last policy reconciliation
 
-### workloads
-
-**Type**: `[]WorkloadStatus`  
-**Description**: Per-workload optimization status
-
-#### WorkloadStatus Fields
-
-- `name` (string): Workload name
-- `namespace` (string): Workload namespace
-- `kind` (string): Workload kind (Deployment, StatefulSet, DaemonSet)
-- `lastRecommendation` (Time): Timestamp of last recommendation
-- `lastApplied` (Time): Timestamp of last applied change
-- `lastApplyMethod` (string): Patch method used ("ServerSideApply" or "StrategicMergePatch")
-- `fieldOwnership` (boolean): Whether OptiPod owns resource fields via SSA
-- `recommendations` ([]ContainerRecommendation): Per-container recommendations
-- `status` (string): Current state (Applied, Skipped, Error, Pending)
-- `reason` (string): Additional context
-
-**Example**:
-
-```yaml
-status:
-  workloads:
-  - name: web-deployment
-    namespace: production
-    kind: Deployment
-    lastRecommendation: "2024-01-15T10:05:00Z"
-    lastApplied: "2024-01-15T10:05:00Z"
-    lastApplyMethod: "ServerSideApply"
-    fieldOwnership: true
-    recommendations:
-    - container: nginx
-      cpu: "500m"
-      memory: "512Mi"
-      explanation: "P90 usage: 416m CPU, 426Mi memory; applied 1.2x safety factor"
-    - container: sidecar
-      cpu: "100m"
-      memory: "128Mi"
-      explanation: "P90 usage: 83m CPU, 106Mi memory; applied 1.2x safety factor"
-    status: Applied
-    reason: "Successfully updated resource requests"
-```
+**Note**: The CRD status currently exposes summary fields (counts/timestamp). It does not include per-workload recommendation details.
 
 ## Complete Example
 
@@ -864,8 +932,8 @@ kubectl describe optimizationpolicy <name> | grep -A 5 "Events:"
 
 #### Symptoms
 
-- Policy shows recommendations in status
-- Workload resources not updated
+- Policy is in `Auto` mode, but workload resources are not updated
+- Or policy is in `Recommend` mode, but you can’t find recommendation annotations on workloads
 
 #### Diagnosis
 
@@ -873,15 +941,21 @@ kubectl describe optimizationpolicy <name> | grep -A 5 "Events:"
 # Check policy mode
 kubectl get optimizationpolicy <name> -o jsonpath='{.spec.mode}'
 
-# Check workload status
-kubectl get optimizationpolicy <name> -o jsonpath='{.status.workloads[*].status}'
+# Check policy summary status
+kubectl get optimizationpolicy <name> -o jsonpath='{.status.workloadsDiscovered}{" discovered, "}{.status.workloadsProcessed}{" processed\n"}'
+
+# Check controller logs for errors or skipped workloads
+kubectl logs -n optipod-system deployment/optipod-controller-manager --since=10m
+
+# Check that OptiPod wrote recommendation annotations to a workload
+kubectl get deployment <workload> -n <namespace> -o yaml | grep -E 'optipod.io/(managed|policy|last-|recommendation)'
 ```
 
 #### Common Causes
 
 1. **Recommend mode**: Policy is in Recommend mode (recommendations not auto-applied)
 1. **Update strategy**: Changes require pod recreation but `allowRecreate: false`
-1. **In-place resize unavailable**: Kubernetes < 1.29 and `allowRecreate: false`
+1. **In-place resize unavailable**: Cluster doesn’t support in-place resize and `allowRecreate: false`
 1. **Bounds violation**: Recommendation exceeds min/max bounds
 
 #### Solutions

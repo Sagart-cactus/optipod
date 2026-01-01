@@ -219,7 +219,8 @@ class FeaturesGrid {
         <h6>Supported providers:</h6>
         <ul>
           <li><strong>Metrics-server:</strong> Fully supported and production-ready</li>
-          <li><strong>Prometheus:</strong> In active development</li>
+          <li><strong>Prometheus:</strong> Fully supported and production-ready</li>
+          <li><strong>Per-policy providers:</strong> Planned for next release</li>
           <li><strong>Custom providers:</strong> Plugin architecture planned</li>
         </ul>
         <p><strong>Result:</strong> Works with your existing monitoring infrastructure.</p>

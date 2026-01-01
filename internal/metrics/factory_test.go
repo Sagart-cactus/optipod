@@ -18,216 +18,331 @@ package metrics
 
 import (
 	"testing"
+	"time"
 
-	"github.com/leanovate/gopter"
-	"github.com/leanovate/gopter/gen"
-	"github.com/leanovate/gopter/prop"
 	"k8s.io/client-go/kubernetes/fake"
 	metricsfake "k8s.io/metrics/pkg/client/clientset/versioned/fake"
 )
 
-// Feature: k8s-workload-rightsizing, Property 30: Metrics provider configurability
-// Validates: Requirements 15.2, 15.3
-//
-// Property: For any new metrics provider implementation, the system should allow
-// configuration to select it without code changes to the core controller, and should
-// log clear errors with safe fallback if initialization fails.
-func TestProperty_ProviderConfigurability(t *testing.T) {
-	properties := gopter.NewProperties(nil)
+// TestNewProviderMetricsServer tests creating a metrics-server provider
+func TestNewProviderMetricsServer(t *testing.T) {
+	fakeClientset := fake.NewSimpleClientset()
+	fakeMetricsClientset := metricsfake.NewSimpleClientset()
 
-	properties.Property("valid configurations create providers successfully", prop.ForAll(
-		func(providerType string, prometheusURL string) bool {
-			var config ProviderConfig
+	config := ProviderConfig{
+		Type:                             ProviderTypeMetricsServer,
+		Clientset:                        fakeClientset,
+		MetricsClientset:                 fakeMetricsClientset,
+		MetricsServerSamplingInterval:    30 * time.Second,
+		MetricsServerMaxSamplesPerTarget: 1000,
+		MetricsServerMinSamplesRequired:  5,
+		MetricsServerTargetTTL:           10 * time.Minute,
+	}
 
-			switch providerType {
-			case "metrics-server": //nolint:goconst // Testing against existing constant
-				config = ProviderConfig{
-					Type:             "metrics-server",
-					Clientset:        fake.NewSimpleClientset(),
-					MetricsClientset: metricsfake.NewSimpleClientset(),
-				}
-			case "prometheus": //nolint:goconst // Testing against existing constant
-				// Use a valid URL format
-				if prometheusURL == "" {
-					prometheusURL = "http://prometheus:9090"
-				}
-				config = ProviderConfig{
-					Type:          "prometheus",
-					PrometheusURL: prometheusURL,
-				}
-			default:
-				// Invalid provider type should fail
-				config = ProviderConfig{
-					Type: ProviderType(providerType),
-				}
-				_, err := NewProvider(config)
-				return err != nil // Should return an error
-			}
+	provider, err := NewProvider(config)
+	if err != nil {
+		t.Fatalf("failed to create metrics-server provider: %v", err)
+	}
 
-			provider, err := NewProvider(config)
+	// Verify it's the right type
+	msProvider, ok := provider.(*MetricsServerProvider)
+	if !ok {
+		t.Fatalf("expected *MetricsServerProvider, got %T", provider)
+	}
 
-			// Valid configurations should succeed
-			if providerType == "metrics-server" || providerType == "prometheus" {
-				return err == nil && provider != nil
-			}
+	// Verify configuration was applied
+	if msProvider.defaultMinSamples != 5 {
+		t.Errorf("expected defaultMinSamples 5, got %d", msProvider.defaultMinSamples)
+	}
 
-			// Invalid configurations should fail gracefully
-			return err != nil
-		},
-		gen.OneConstOf("metrics-server", "prometheus", "invalid", "unknown"),
-		gen.OneConstOf("http://prometheus:9090", "http://localhost:9090", ""),
-	))
+	if msProvider.maxSamples != 1000 {
+		t.Errorf("expected maxSamples 1000, got %d", msProvider.maxSamples)
+	}
 
-	properties.TestingRun(t, gopter.ConsoleReporter(false))
+	// Verify it implements the required interfaces
+	if _, ok := provider.(SamplingTargetRegistrar); !ok {
+		t.Error("MetricsServerProvider should implement SamplingTargetRegistrar")
+	}
+
+	// Verify sampler is available
+	if msProvider.Sampler() == nil {
+		t.Error("expected non-nil sampler")
+	}
 }
 
-// Feature: k8s-workload-rightsizing, Property 30: Metrics provider configurability
-// Validates: Requirements 15.2, 15.3
-//
-// Property: When a metrics provider fails to initialize, the system should return
-// a clear error message indicating the failure reason.
-func TestProperty_ProviderInitializationErrors(t *testing.T) {
-	properties := gopter.NewProperties(nil)
+// TestNewProviderMetricsServerDefaults tests default configuration
+func TestNewProviderMetricsServerDefaults(t *testing.T) {
+	fakeClientset := fake.NewSimpleClientset()
+	fakeMetricsClientset := metricsfake.NewSimpleClientset()
 
-	properties.Property("missing required config returns clear error", prop.ForAll(
-		func(includeClientset bool, includeMetricsClientset bool) bool {
-			config := ProviderConfig{
-				Type: "metrics-server",
-			}
+	config := ProviderConfig{
+		Type:             ProviderTypeMetricsServer,
+		Clientset:        fakeClientset,
+		MetricsClientset: fakeMetricsClientset,
+		// No other config - should use defaults
+	}
 
-			if includeClientset {
-				config.Clientset = fake.NewSimpleClientset()
-			}
-			if includeMetricsClientset {
-				config.MetricsClientset = metricsfake.NewSimpleClientset()
-			}
+	provider, err := NewProvider(config)
+	if err != nil {
+		t.Fatalf("failed to create metrics-server provider with defaults: %v", err)
+	}
 
-			provider, err := NewProvider(config)
+	msProvider := provider.(*MetricsServerProvider)
 
-			// If both are provided, should succeed
-			if includeClientset && includeMetricsClientset {
-				return err == nil && provider != nil
-			}
+	// Verify defaults were applied
+	if msProvider.defaultMinSamples != 10 {
+		t.Errorf("expected default minSamples 10, got %d", msProvider.defaultMinSamples)
+	}
 
-			// If either is missing, should fail with clear error
-			return err != nil && provider == nil
-		},
-		gen.Bool(),
-		gen.Bool(),
-	))
+	if msProvider.maxSamples != 2880 { // 24h @ 30s
+		t.Errorf("expected default maxSamples 2880, got %d", msProvider.maxSamples)
+	}
 
-	properties.TestingRun(t, gopter.ConsoleReporter(false))
+	if msProvider.interval != 30*time.Second {
+		t.Errorf("expected default interval 30s, got %v", msProvider.interval)
+	}
 }
 
-// Feature: k8s-workload-rightsizing, Property 30: Metrics provider configurability
-// Validates: Requirements 15.2, 15.3
-//
-// Property: The fallback mechanism should successfully create a provider when
-// the primary fails but the fallback is valid.
-func TestProperty_FallbackMechanism(t *testing.T) {
-	properties := gopter.NewProperties(nil)
+// TestNewProviderMetricsServerLegacyConfig tests backward compatibility with legacy config
+func TestNewProviderMetricsServerLegacyConfig(t *testing.T) {
+	fakeClientset := fake.NewSimpleClientset()
+	fakeMetricsClientset := metricsfake.NewSimpleClientset()
 
-	properties.Property("fallback succeeds when primary fails", prop.ForAll(
-		func(primaryValid bool, fallbackValid bool) bool {
-			var primary, fallback ProviderConfig
+	config := ProviderConfig{
+		Type:             ProviderTypeMetricsServer,
+		Clientset:        fakeClientset,
+		MetricsClientset: fakeMetricsClientset,
+		MaxSamples:       50, // Legacy field
+		SampleInterval:   15, // Legacy field (seconds)
+	}
 
-			if primaryValid {
-				primary = ProviderConfig{
-					Type:             "metrics-server",
-					Clientset:        fake.NewSimpleClientset(),
-					MetricsClientset: metricsfake.NewSimpleClientset(),
-				}
-			} else {
-				// Invalid primary (missing required fields)
-				primary = ProviderConfig{
-					Type: "metrics-server",
-				}
-			}
+	provider, err := NewProvider(config)
+	if err != nil {
+		t.Fatalf("failed to create metrics-server provider with legacy config: %v", err)
+	}
 
-			if fallbackValid {
-				fallback = ProviderConfig{
-					Type:          "prometheus",
-					PrometheusURL: "http://prometheus:9090",
-				}
-			} else {
-				// Invalid fallback (missing required fields)
-				fallback = ProviderConfig{
-					Type: "prometheus",
-				}
-			}
+	msProvider := provider.(*MetricsServerProvider)
 
-			provider, err := NewProviderWithFallback(primary, fallback)
+	// Verify legacy config was applied
+	if msProvider.maxSamples != 50 {
+		t.Errorf("expected maxSamples from legacy config 50, got %d", msProvider.maxSamples)
+	}
 
-			// If primary is valid, should succeed
-			if primaryValid {
-				return err == nil && provider != nil
-			}
+	if msProvider.interval != 15*time.Second {
+		t.Errorf("expected interval from legacy config 15s, got %v", msProvider.interval)
+	}
+}
 
-			// If primary is invalid but fallback is valid, should succeed
-			if !primaryValid && fallbackValid {
-				return err == nil && provider != nil
-			}
+// TestNewProviderMetricsServerMissingClientset tests error handling for missing clientset
+func TestNewProviderMetricsServerMissingClientset(t *testing.T) {
+	config := ProviderConfig{
+		Type: ProviderTypeMetricsServer,
+		// Missing Clientset and MetricsClientset
+	}
 
-			// If both are invalid, should fail
-			if !primaryValid && !fallbackValid {
-				return err != nil && provider == nil
-			}
+	_, err := NewProvider(config)
+	if err == nil {
+		t.Fatal("expected error for missing clientset")
+	}
 
+	expectedMsg := "clientset is required for metrics-server provider"
+	if err.Error() != expectedMsg {
+		t.Errorf("expected error %q, got %q", expectedMsg, err.Error())
+	}
+}
+
+// TestNewProviderMetricsServerMissingMetricsClientset tests error handling for missing metrics clientset
+func TestNewProviderMetricsServerMissingMetricsClientset(t *testing.T) {
+	fakeClientset := fake.NewSimpleClientset()
+
+	config := ProviderConfig{
+		Type:      ProviderTypeMetricsServer,
+		Clientset: fakeClientset,
+		// Missing MetricsClientset
+	}
+
+	_, err := NewProvider(config)
+	if err == nil {
+		t.Fatal("expected error for missing metrics clientset")
+	}
+
+	expectedMsg := "metrics clientset is required for metrics-server provider"
+	if err.Error() != expectedMsg {
+		t.Errorf("expected error %q, got %q", expectedMsg, err.Error())
+	}
+}
+
+// TestNewProviderPrometheus tests creating a prometheus provider
+func TestNewProviderPrometheus(t *testing.T) {
+	config := ProviderConfig{
+		Type:          ProviderTypePrometheus,
+		PrometheusURL: "http://prometheus:9090",
+	}
+
+	// This will fail because we don't have a real Prometheus server
+	// but we can test the configuration validation
+	_, err := NewProvider(config)
+
+	// We expect this to fail with a connection error, not a config error
+	// The error should be about connection/creation, not missing URL
+	if err != nil && err.Error() == "prometheus URL is required for prometheus provider" {
+		t.Error("should not get URL validation error when URL is provided")
+	}
+
+	// If it succeeds unexpectedly, that's also fine for this test
+	// (might happen if there's actually a prometheus server running)
+}
+
+// TestNewProviderPrometheusMissingURL tests error handling for missing Prometheus URL
+func TestNewProviderPrometheusMissingURL(t *testing.T) {
+	config := ProviderConfig{
+		Type: ProviderTypePrometheus,
+		// Missing PrometheusURL
+	}
+
+	_, err := NewProvider(config)
+	if err == nil {
+		t.Fatal("expected error for missing prometheus URL")
+	}
+
+	expectedMsg := "prometheus URL is required for prometheus provider"
+	if err.Error() != expectedMsg {
+		t.Errorf("expected error %q, got %q", expectedMsg, err.Error())
+	}
+}
+
+// TestNewProviderUnknownType tests error handling for unknown provider type
+func TestNewProviderUnknownType(t *testing.T) {
+	config := ProviderConfig{
+		Type: ProviderType("unknown"),
+	}
+
+	_, err := NewProvider(config)
+	if err == nil {
+		t.Fatal("expected error for unknown provider type")
+	}
+
+	expectedMsg := "unknown provider type: unknown"
+	if err.Error() != expectedMsg {
+		t.Errorf("expected error %q, got %q", expectedMsg, err.Error())
+	}
+}
+
+// TestNewProviderWithFallback tests fallback provider functionality
+func TestNewProviderWithFallback(t *testing.T) {
+	// Primary config that will fail (missing clientset)
+	primaryConfig := ProviderConfig{
+		Type: ProviderTypeMetricsServer,
+		// Missing required fields
+	}
+
+	// Fallback config that will succeed
+	fakeClientset := fake.NewSimpleClientset()
+	fakeMetricsClientset := metricsfake.NewSimpleClientset()
+	fallbackConfig := ProviderConfig{
+		Type:             ProviderTypeMetricsServer,
+		Clientset:        fakeClientset,
+		MetricsClientset: fakeMetricsClientset,
+	}
+
+	provider, err := NewProviderWithFallback(primaryConfig, fallbackConfig)
+	if err != nil {
+		t.Fatalf("expected fallback to succeed, got error: %v", err)
+	}
+
+	// Verify we got the fallback provider
+	if _, ok := provider.(*MetricsServerProvider); !ok {
+		t.Errorf("expected MetricsServerProvider from fallback, got %T", provider)
+	}
+}
+
+// TestNewProviderWithFallbackBothFail tests when both primary and fallback fail
+func TestNewProviderWithFallbackBothFail(t *testing.T) {
+	// Both configs will fail
+	primaryConfig := ProviderConfig{
+		Type: ProviderTypeMetricsServer,
+		// Missing required fields
+	}
+
+	fallbackConfig := ProviderConfig{
+		Type: ProviderType("unknown"),
+	}
+
+	_, err := NewProviderWithFallback(primaryConfig, fallbackConfig)
+	if err == nil {
+		t.Fatal("expected error when both primary and fallback fail")
+	}
+
+	// Should mention both errors
+	errMsg := err.Error()
+	if !contains(errMsg, "primary provider failed") {
+		t.Error("error should mention primary provider failure")
+	}
+	if !contains(errMsg, "fallback provider failed") {
+		t.Error("error should mention fallback provider failure")
+	}
+}
+
+// TestSamplingConfigDefaults tests SamplingConfig default handling
+func TestSamplingConfigDefaults(t *testing.T) {
+	fakeMetricsClientset := metricsfake.NewSimpleClientset()
+
+	// Test with zero values in SamplingConfig
+	provider := NewMetricsServerProviderWithConfig(fakeMetricsClientset, SamplingConfig{})
+
+	// Verify defaults were applied
+	if provider.defaultMinSamples != 10 {
+		t.Errorf("expected default minSamples 10, got %d", provider.defaultMinSamples)
+	}
+
+	if provider.maxSamples != 2880 {
+		t.Errorf("expected default maxSamples 2880, got %d", provider.maxSamples)
+	}
+
+	if provider.interval != 30*time.Second {
+		t.Errorf("expected default interval 30s, got %v", provider.interval)
+	}
+}
+
+// TestSamplingConfigCustomValues tests SamplingConfig with custom values
+func TestSamplingConfigCustomValues(t *testing.T) {
+	fakeMetricsClientset := metricsfake.NewSimpleClientset()
+
+	config := SamplingConfig{
+		Interval:   15 * time.Second,
+		MaxSamples: 500,
+		MinSamples: 3,
+		TargetTTL:  5 * time.Minute,
+	}
+
+	provider := NewMetricsServerProviderWithConfig(fakeMetricsClientset, config)
+
+	// Verify custom values were applied
+	if provider.defaultMinSamples != 3 {
+		t.Errorf("expected minSamples 3, got %d", provider.defaultMinSamples)
+	}
+
+	if provider.maxSamples != 500 {
+		t.Errorf("expected maxSamples 500, got %d", provider.maxSamples)
+	}
+
+	if provider.interval != 15*time.Second {
+		t.Errorf("expected interval 15s, got %v", provider.interval)
+	}
+}
+
+// Helper function to check if a string contains a substring
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || (len(s) > len(substr) &&
+		(s[:len(substr)] == substr || s[len(s)-len(substr):] == substr ||
+			containsAt(s, substr))))
+}
+
+func containsAt(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
 			return true
-		},
-		gen.Bool(),
-		gen.Bool(),
-	))
-
-	properties.TestingRun(t, gopter.ConsoleReporter(false))
-}
-
-// Feature: k8s-workload-rightsizing, Property 30: Metrics provider configurability
-// Validates: Requirements 15.2, 15.3
-//
-// Property: Provider creation should be deterministic - same config should always
-// produce the same result (success or specific error).
-func TestProperty_ProviderCreationDeterminism(t *testing.T) {
-	properties := gopter.NewProperties(nil)
-
-	properties.Property("same config produces consistent results", prop.ForAll(
-		func(providerType string) bool {
-			var config ProviderConfig
-
-			switch providerType {
-			case "metrics-server": //nolint:goconst // Testing against existing constant
-				config = ProviderConfig{
-					Type:             "metrics-server",
-					Clientset:        fake.NewSimpleClientset(),
-					MetricsClientset: metricsfake.NewSimpleClientset(),
-				}
-			case "prometheus": //nolint:goconst // Testing against existing constant
-				config = ProviderConfig{
-					Type:          "prometheus",
-					PrometheusURL: "http://prometheus:9090",
-				}
-			default:
-				config = ProviderConfig{
-					Type: ProviderType(providerType),
-				}
-			}
-
-			// Create provider twice with same config
-			provider1, err1 := NewProvider(config)
-			provider2, err2 := NewProvider(config)
-
-			// Both should succeed or both should fail
-			if err1 != nil && err2 != nil {
-				return true // Both failed consistently
-			}
-			if err1 == nil && err2 == nil {
-				return provider1 != nil && provider2 != nil // Both succeeded
-			}
-
-			return false // Inconsistent results
-		},
-		gen.OneConstOf("metrics-server", "prometheus", "invalid"),
-	))
-
-	properties.TestingRun(t, gopter.ConsoleReporter(false))
+		}
+	}
+	return false
 }

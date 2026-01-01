@@ -55,6 +55,20 @@ spec:
               metricsConfig:
                 description: MetricsConfig defines how metrics are collected and processed
                 properties:
+                  metricsServer:
+                    description: MetricsServer configures metrics-server specific
+                      behavior.
+                    properties:
+                      minSamplesRequired:
+                        description: |-
+                          MinSamplesRequired is the minimum number of cached samples required before OptiPod will
+                          compute/apply recommendations when using metrics-server.
+                          If not set, the operator-wide default is used.
+                        format: int32
+                        maximum: 100000
+                        minimum: 1
+                        type: integer
+                    type: object
                   percentile:
                     default: P90
                     description: Percentile defines which percentile to use for recommendations

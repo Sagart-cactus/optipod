@@ -30,7 +30,7 @@ while maintaining safety margins to prevent performance issues.
 
 ### 🚧 Work in Progress
 
-- **Metrics Backends**: Basic support for metrics-server implemented; Prometheus integration in active development
+- **Per-Policy Metrics Providers**: Global provider configuration only; per-policy selection planned
 - **Custom Metrics Providers**: Plugin architecture designed, implementation in progress
 
 > **📋 See [ROADMAP.md](ROADMAP.md) for complete implementation status and future plans**
@@ -41,7 +41,7 @@ while maintaining safety margins to prevent performance issues.
 
 - Kubernetes cluster (1.29+)
 - kubectl configured to access your cluster
-- Metrics source (metrics-server recommended; Prometheus support in development)
+- Metrics source (metrics-server or Prometheus)
 
 ### Installation
 
@@ -86,7 +86,7 @@ spec:
         optimize: "true"
   
   metricsConfig:
-    provider: metrics-server  # Currently supported; Prometheus in development
+    provider: prometheus  # Supported: metrics-server, prometheus
     rollingWindow: 24h
     percentile: P90
     safetyFactor: 1.2
@@ -130,6 +130,7 @@ kubectl describe optimizationpolicy production-workloads
 - [Installation Guide](docs/INSTALLATION.md) - Detailed installation instructions
 - [CRD Reference](docs/CRD_REFERENCE.md) - Complete OptimizationPolicy field documentation
 - [Example Policies](docs/EXAMPLES.md) - Common use case examples
+- [Prometheus Setup](docs/PROMETHEUS_SETUP.md) - Complete Prometheus integration guide
 - [Roadmap](ROADMAP.md) - Implementation status and future plans
 - [ArgoCD Integration](docs/ARGOCD_INTEGRATION.md) - GitOps compatibility guide
 - [CI/CD Testing Guide](docs/ci-cd-testing.md) - How to test and validate workflows

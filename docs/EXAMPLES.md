@@ -2,8 +2,10 @@
 
 This document provides example OptimizationPolicy configurations for common use cases.
 
-> **📋 Metrics Provider Status**: Examples use `metrics-server` as the recommended provider. Prometheus support is in
-> development. See [ROADMAP.md](../ROADMAP.md) for current implementation status.
+> **✅ Metrics Provider Support**: Both `metrics-server` and `prometheus` are fully supported and production-ready. 
+> See [Prometheus Setup Guide](PROMETHEUS_SETUP.md) for detailed Prometheus configuration.
+>
+> **⚠️ Current Limitation**: The metrics provider is configured globally at the controller level. While policies have a `metricsConfig.provider` field, it must match the controller's `--metrics-provider` setting. Per-policy provider selection is planned for a future release.
 
 ## Table of Contents
 
@@ -35,7 +37,7 @@ spec:
       - default
   
   metricsConfig:
-    provider: metrics-server  # Recommended for current version
+    provider: metrics-server  # Must match controller's --metrics-provider setting
   
   resourceBounds:
     cpu:
@@ -897,3 +899,117 @@ kubectl patch optimizationpolicy my-policy --type=merge -p '{"spec":{"mode":"Dis
 - [CRD Reference](CRD_REFERENCE.md) - Complete field documentation
 - [ArgoCD Integration](ARGOCD_INTEGRATION.md) - GitOps compatibility guide
 - [Installation Guide](INSTALLATION.md) - Setup instructions
+
+## Prometheus Provider Examples
+
+### Basic Prometheus Policy
+
+Using Prometheus as the metrics provider for advanced monitoring capabilities:
+
+```yaml
+apiVersion: optipod.optipod.io/v1alpha1
+kind: OptimizationPolicy
+metadata:
+  name: prometheus-basic-policy
+  namespace: optipod-system
+spec:
+  mode: Auto
+  
+  selector:
+    namespaceSelector:
+      matchLabels:
+        optimize: "true"
+    workloadSelector:
+      matchLabels:
+        optimize: "true"
+  
+  metricsConfig:
+    provider: prometheus  # Must match controller's --metrics-provider setting
+    rollingWindow: 24h    # Analyze 24 hours of historical data
+    percentile: P90       # Use 90th percentile for recommendations
+    safetyFactor: 1.2     # Add 20% safety buffer
+  
+  resourceBounds:
+    cpu:
+      min: "50m"
+      max: "8000m"
+    memory:
+      min: "64Mi"
+      max: "16Gi"
+  
+  updateStrategy:
+    allowInPlaceResize: true
+    allowRecreate: false
+    updateRequestsOnly: false  # Update both requests and limits
+    useServerSideApply: true
+  
+  reconciliationInterval: 5m
+```
+
+### Prometheus with Conservative Settings
+
+For production workloads requiring extra safety margins:
+
+```yaml
+apiVersion: optipod.optipod.io/v1alpha1
+kind: OptimizationPolicy
+metadata:
+  name: prometheus-conservative-policy
+  namespace: optipod-system
+spec:
+  mode: Recommend  # Only recommend, don't auto-apply
+  
+  selector:
+    namespaceSelector:
+      matchLabels:
+        environment: production
+    workloadSelector:
+      matchLabels:
+        tier: critical
+  
+  metricsConfig:
+    provider: prometheus  # Must match controller's --metrics-provider setting
+    rollingWindow: 48h    # Longer analysis window
+    percentile: P99       # Very conservative percentile
+    safetyFactor: 1.5     # Higher safety factor
+  
+  resourceBounds:
+    cpu:
+      min: "100m"
+      max: "16000m"
+    memory:
+      min: "128Mi"
+      max: "32Gi"
+  
+  updateStrategy:
+    allowInPlaceResize: true
+    allowRecreate: false
+    updateRequestsOnly: false
+    useServerSideApply: true
+  
+  reconciliationInterval: 15m  # Less frequent reconciliation
+```
+
+### Prometheus vs Metrics-Server Comparison
+
+| Feature | Metrics-Server | Prometheus |
+|---------|----------------|------------|
+| **Data Retention** | ~15 minutes | Configurable (hours to years) |
+| **Query Flexibility** | Basic | Advanced (PromQL) |
+| **Historical Analysis** | Limited | Extensive |
+| **Resource Usage** | Lower | Higher |
+| **Setup Complexity** | Simple | Moderate |
+| **Production Ready** | ✅ Yes | ✅ Yes |
+
+Choose **metrics-server** for:
+- Simple setups with minimal resource overhead
+- Basic optimization needs
+- Clusters without existing Prometheus infrastructure
+
+Choose **Prometheus** for:
+- Advanced monitoring and alerting requirements
+- Historical trend analysis
+- Custom metrics and complex queries
+- Existing Prometheus infrastructure
+
+> **Note**: Currently, the metrics provider is configured globally at the controller level. All policies in a cluster must use the same provider. Per-policy provider selection is planned for a future release, which will enable mixing providers within the same cluster.
