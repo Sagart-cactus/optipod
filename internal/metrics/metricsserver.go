@@ -24,101 +24,85 @@ import (
 
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes"
-	metricsv1beta1 "k8s.io/metrics/pkg/apis/metrics/v1beta1"
 	metricsclientset "k8s.io/metrics/pkg/client/clientset/versioned"
 )
 
 // MetricsServerProvider implements MetricsProvider using Kubernetes metrics-server.
 type MetricsServerProvider struct {
-	clientset        kubernetes.Interface
-	metricsClientset metricsclientset.Interface
-	maxSamples       int           // Maximum number of samples to collect
-	sampleInterval   time.Duration // Interval between samples
+	metricsClientset  metricsclientset.Interface
+	store             *timeSeriesStore
+	sampler           *MetricsServerSampler
+	defaultMinSamples int
+	interval          time.Duration
+	maxSamples        int
+}
+
+// SamplingConfig controls metrics-server sampling behavior.
+type SamplingConfig struct {
+	Interval   time.Duration
+	MaxSamples int
+	MinSamples int
+	TargetTTL  time.Duration
 }
 
 // NewMetricsServerProvider creates a new MetricsServerProvider with default settings.
-// Default: 10 samples with 15-second intervals (suitable for production).
-func NewMetricsServerProvider(clientset kubernetes.Interface, metricsClientset metricsclientset.Interface) *MetricsServerProvider {
-	return &MetricsServerProvider{
-		clientset:        clientset,
-		metricsClientset: metricsClientset,
-		maxSamples:       10,               // Default: 10 samples for production
-		sampleInterval:   15 * time.Second, // Match metrics-server scrape interval
-	}
+func NewMetricsServerProvider(metricsClientset metricsclientset.Interface) *MetricsServerProvider {
+	return NewMetricsServerProviderWithConfig(metricsClientset, SamplingConfig{})
 }
 
 // NewMetricsServerProviderWithConfig creates a new MetricsServerProvider with custom configuration.
-// This allows tests to use fewer samples for faster execution.
-func NewMetricsServerProviderWithConfig(clientset kubernetes.Interface, metricsClientset metricsclientset.Interface, maxSamples int, sampleInterval time.Duration) *MetricsServerProvider {
+func NewMetricsServerProviderWithConfig(metricsClientset metricsclientset.Interface, config SamplingConfig) *MetricsServerProvider {
+	interval := config.Interval
+	if interval <= 0 {
+		interval = 30 * time.Second
+	}
+
+	maxSamples := config.MaxSamples
 	if maxSamples < 1 {
-		maxSamples = 1
+		maxSamples = 2880 // 24h @ 30s
 	}
-	if sampleInterval < 1*time.Second {
-		sampleInterval = 1 * time.Second
+
+	minSamples := config.MinSamples
+	if minSamples < 1 {
+		minSamples = 10
 	}
+
+	store := newTimeSeriesStore(maxSamples)
+	sampler := NewMetricsServerSampler(metricsClientset, store, interval, config.TargetTTL)
+
 	return &MetricsServerProvider{
-		clientset:        clientset,
-		metricsClientset: metricsClientset,
-		maxSamples:       maxSamples,
-		sampleInterval:   sampleInterval,
+		metricsClientset:  metricsClientset,
+		store:             store,
+		sampler:           sampler,
+		defaultMinSamples: minSamples,
+		interval:          interval,
+		maxSamples:        maxSamples,
 	}
 }
 
-// GetContainerMetrics collects metrics from metrics-server and computes percentiles.
-// Since metrics-server provides point-in-time metrics, we collect multiple samples
-// over a short period to build a time series for percentile computation.
-// Note: We collect a configurable number of samples rather than sampling over the
-// entire rolling window, as that would be impractical (e.g., 1 hour would take 1 hour).
+// GetContainerMetrics reads cached metrics samples and computes percentiles.
 func (m *MetricsServerProvider) GetContainerMetrics(ctx context.Context, namespace, podName, containerName string, window time.Duration) (*ContainerMetrics, error) {
-	// Calculate number of samples based on window, but cap at configured maxSamples
-	// This provides enough data for percentile computation without excessive wait time
-	numSamples := int(window / m.sampleInterval)
-	if numSamples < 1 {
-		numSamples = 1
-	}
-	if numSamples > m.maxSamples {
-		numSamples = m.maxSamples
+	if window <= 0 {
+		window = time.Hour
 	}
 
-	cpuSamples := make([]int64, 0, numSamples)
-	memorySamples := make([]int64, 0, numSamples)
+	key, ok := m.store.resolveTargetKey(namespace, podName, containerName)
+	if !ok {
+		return nil, &ErrInsufficientSamples{Have: 0, Need: m.defaultMinSamples}
+	}
 
-	// Collect samples
-	for i := 0; i < numSamples; i++ {
-		podMetrics, err := m.metricsClientset.MetricsV1beta1().PodMetricses(namespace).Get(ctx, podName, metav1.GetOptions{})
-		if err != nil {
-			return nil, fmt.Errorf("failed to get pod metrics: %w", err)
-		}
+	cutoff := time.Now().Add(-window)
+	samples := m.store.samplesSince(key, cutoff)
+	if len(samples) == 0 {
+		return nil, &ErrInsufficientSamples{Have: 0, Need: m.defaultMinSamples}
+	}
 
-		// Find the container metrics
-		var containerMetrics *metricsv1beta1.ContainerMetrics
-		for i := range podMetrics.Containers {
-			if podMetrics.Containers[i].Name == containerName {
-				containerMetrics = &podMetrics.Containers[i]
-				break
-			}
-		}
+	cpuSamples := make([]int64, 0, len(samples))
+	memorySamples := make([]int64, 0, len(samples))
 
-		if containerMetrics == nil {
-			return nil, fmt.Errorf("container %s not found in pod %s/%s metrics", containerName, namespace, podName)
-		}
-
-		// Extract CPU and memory usage
-		cpuUsage := containerMetrics.Usage.Cpu().MilliValue()
-		memoryUsage := containerMetrics.Usage.Memory().Value()
-
-		cpuSamples = append(cpuSamples, cpuUsage)
-		memorySamples = append(memorySamples, memoryUsage)
-
-		// Wait before next sample (except for the last iteration)
-		if i < numSamples-1 {
-			select {
-			case <-ctx.Done():
-				return nil, ctx.Err()
-			case <-time.After(m.sampleInterval):
-			}
-		}
+	for _, sample := range samples {
+		cpuSamples = append(cpuSamples, sample.CPUMilli)
+		memorySamples = append(memorySamples, sample.MemoryByte)
 	}
 
 	// Compute percentiles
@@ -129,6 +113,24 @@ func (m *MetricsServerProvider) GetContainerMetrics(ctx context.Context, namespa
 		CPU:    cpuMetrics,
 		Memory: memoryMetrics,
 	}, nil
+}
+
+// DefaultMinSamplesRequired returns the operator-wide default minimum samples required.
+func (m *MetricsServerProvider) DefaultMinSamplesRequired() int {
+	return m.defaultMinSamples
+}
+
+// RegisterTarget updates sampling for a workload container.
+func (m *MetricsServerProvider) RegisterTarget(key TargetKey, podName string) {
+	if m.sampler == nil {
+		return
+	}
+	m.sampler.RegisterTarget(key, podName)
+}
+
+// Sampler returns the background sampler so it can be registered with the manager.
+func (m *MetricsServerProvider) Sampler() *MetricsServerSampler {
+	return m.sampler
 }
 
 // HealthCheck verifies that metrics-server is accessible.

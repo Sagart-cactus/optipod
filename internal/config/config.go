@@ -49,20 +49,36 @@ type OperatorConfig struct {
 
 	// MetricsSampleInterval is the interval between samples in seconds (0 = use default)
 	MetricsSampleInterval int
+
+	// MetricsServerSamplingInterval is the background sampling cadence for metrics-server.
+	MetricsServerSamplingInterval time.Duration
+
+	// MetricsServerMaxSamplesPerTarget caps cached samples per target for metrics-server.
+	MetricsServerMaxSamplesPerTarget int
+
+	// MetricsServerMinSamplesRequired is the minimum samples needed before recommendations.
+	MetricsServerMinSamplesRequired int
+
+	// MetricsServerTargetTTL evicts inactive targets from the metrics-server cache.
+	MetricsServerTargetTTL time.Duration
 }
 
 // NewOperatorConfig creates a new OperatorConfig with default values
 func NewOperatorConfig() *OperatorConfig {
 	return &OperatorConfig{
-		DryRun:                 false,
-		DefaultMetricsProvider: "metrics-server",
-		PrometheusURL:          "http://prometheus:9090",
-		LeaderElection:         false,
-		MetricsAddr:            ":8080",
-		ProbeAddr:              ":8081",
-		ReconciliationInterval: 5 * time.Minute,
-		MetricsMaxSamples:      0, // 0 = use default (10 for production)
-		MetricsSampleInterval:  0, // 0 = use default (15 seconds)
+		DryRun:                           false,
+		DefaultMetricsProvider:           "metrics-server",
+		PrometheusURL:                    "http://prometheus:9090",
+		LeaderElection:                   false,
+		MetricsAddr:                      ":8080",
+		ProbeAddr:                        ":8081",
+		ReconciliationInterval:           5 * time.Minute,
+		MetricsMaxSamples:                0, // 0 = use default (10 for production)
+		MetricsSampleInterval:            0, // 0 = use default (15 seconds)
+		MetricsServerSamplingInterval:    5 * time.Minute,
+		MetricsServerMaxSamplesPerTarget: 2880,
+		MetricsServerMinSamplesRequired:  10,
+		MetricsServerTargetTTL:           15 * time.Minute,
 	}
 }
 
@@ -79,9 +95,17 @@ func (c *OperatorConfig) BindFlags() {
 	flag.DurationVar(&c.ReconciliationInterval, "reconciliation-interval", c.ReconciliationInterval,
 		"Default interval for policy reconciliation")
 	flag.IntVar(&c.MetricsMaxSamples, "metrics-max-samples", c.MetricsMaxSamples,
-		"Maximum number of samples to collect for metrics (0 = use default: 10 for production, 3 for tests)")
+		"Deprecated: inline metrics-server sampling cap (0 = default). Use metrics-server-max-samples-per-target instead.")
 	flag.IntVar(&c.MetricsSampleInterval, "metrics-sample-interval", c.MetricsSampleInterval,
-		"Interval between samples in seconds (0 = use default: 15 seconds)")
+		"Deprecated: inline metrics-server sampling interval in seconds (0 = default). Use metrics-server-sampling-interval instead.")
+	flag.DurationVar(&c.MetricsServerSamplingInterval, "metrics-server-sampling-interval", c.MetricsServerSamplingInterval,
+		"Background sampling interval for metrics-server (e.g. 30s)")
+	flag.IntVar(&c.MetricsServerMaxSamplesPerTarget, "metrics-server-max-samples-per-target", c.MetricsServerMaxSamplesPerTarget,
+		"Maximum cached samples per target for metrics-server (e.g. 2880 for 24h @ 30s)")
+	flag.IntVar(&c.MetricsServerMinSamplesRequired, "metrics-server-min-samples-required", c.MetricsServerMinSamplesRequired,
+		"Minimum samples required before recommendations are computed (metrics-server)")
+	flag.DurationVar(&c.MetricsServerTargetTTL, "metrics-server-target-ttl", c.MetricsServerTargetTTL,
+		"Evict metrics-server sampling targets if not refreshed within this TTL (e.g. 15m)")
 }
 
 // IsDryRun returns true if global dry-run mode is enabled
@@ -117,4 +141,24 @@ func (c *OperatorConfig) GetMetricsMaxSamples() int {
 // GetMetricsSampleInterval returns the interval between samples in seconds
 func (c *OperatorConfig) GetMetricsSampleInterval() int {
 	return c.MetricsSampleInterval
+}
+
+// GetMetricsServerSamplingInterval returns the metrics-server sampling interval.
+func (c *OperatorConfig) GetMetricsServerSamplingInterval() time.Duration {
+	return c.MetricsServerSamplingInterval
+}
+
+// GetMetricsServerMaxSamplesPerTarget returns the max cached samples per target.
+func (c *OperatorConfig) GetMetricsServerMaxSamplesPerTarget() int {
+	return c.MetricsServerMaxSamplesPerTarget
+}
+
+// GetMetricsServerMinSamplesRequired returns the minimum samples required.
+func (c *OperatorConfig) GetMetricsServerMinSamplesRequired() int {
+	return c.MetricsServerMinSamplesRequired
+}
+
+// GetMetricsServerTargetTTL returns the target eviction TTL.
+func (c *OperatorConfig) GetMetricsServerTargetTTL() time.Duration {
+	return c.MetricsServerTargetTTL
 }

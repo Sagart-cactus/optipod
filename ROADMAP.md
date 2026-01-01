@@ -72,11 +72,17 @@ development approach with comprehensive testing.
   - ⚠️ Limited testing coverage
   - 🔄 Enhanced integration testing in progress
 
-- **Prometheus Integration**: 🚧 Partial implementation
-  - ✅ Basic Prometheus query support
-  - 🔄 Advanced query optimization in progress
+- **Prometheus Integration**: ✅ Fully implemented
+  - ✅ Complete Prometheus query support
+  - ✅ Production-ready integration tested
+  - ✅ Custom metrics and query optimization
   - 🔄 High availability Prometheus setup testing
-  - 🔄 Custom metrics and alerting integration
+
+- **Per-Policy Metrics Providers**: 🚧 Planned for next release
+  - 🔄 Hybrid approach: Global default with per-policy override capability
+  - 🔄 Support different providers for different policies (e.g., Prometheus for production, metrics-server for dev)
+  - 🔄 Backward compatible implementation
+  - 📋 Dynamic provider switching and resource management
 
 ### Advanced Features
 

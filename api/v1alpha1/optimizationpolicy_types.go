@@ -151,6 +151,10 @@ type MetricsConfig struct {
 	// +kubebuilder:validation:Enum=prometheus;metrics-server;custom
 	Provider string `json:"provider"`
 
+	// MetricsServer configures metrics-server specific behavior.
+	// +optional
+	MetricsServer *MetricsServerConfig `json:"metricsServer,omitempty"`
+
 	// RollingWindow defines the time period over which metrics are aggregated
 	// +kubebuilder:default="24h"
 	// +optional
@@ -167,6 +171,17 @@ type MetricsConfig struct {
 	// +kubebuilder:default=1.2
 	// +optional
 	SafetyFactor *float64 `json:"safetyFactor,omitempty"`
+}
+
+// MetricsServerConfig configures how metrics-server is sampled/consumed.
+type MetricsServerConfig struct {
+	// MinSamplesRequired is the minimum number of cached samples required before OptiPod will
+	// compute/apply recommendations when using metrics-server.
+	// If not set, the operator-wide default is used.
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=100000
+	// +optional
+	MinSamplesRequired *int32 `json:"minSamplesRequired,omitempty"`
 }
 
 // ResourceBounds defines min/max constraints for CPU and memory
@@ -588,6 +603,13 @@ func (r *OptimizationPolicy) validateOptimizationPolicy() error {
 	// Validate safety factor
 	if r.Spec.MetricsConfig.SafetyFactor != nil && *r.Spec.MetricsConfig.SafetyFactor < 1.0 {
 		return fmt.Errorf("safety factor must be at least 1.0, got %f", *r.Spec.MetricsConfig.SafetyFactor)
+	}
+
+	// Validate metrics-server config if provided
+	if r.Spec.MetricsConfig.MetricsServer != nil && r.Spec.MetricsConfig.MetricsServer.MinSamplesRequired != nil {
+		if *r.Spec.MetricsConfig.MetricsServer.MinSamplesRequired < 1 {
+			return fmt.Errorf("metricsConfig.metricsServer.minSamplesRequired must be >= 1")
+		}
 	}
 
 	// Validate weight

@@ -31,7 +31,7 @@
     {
       "id": "pluggable-metrics",
       "title": "Pluggable Metrics Backends",
-      "description": "Metrics-server fully supported; Prometheus in active development.",
+      "description": "Metrics-server and Prometheus fully supported; per-policy provider selection planned.",
       "category": "advanced",
       "priority": 5
     },

@@ -5,6 +5,10 @@
 # ownership, allowing OptipPod to manage resource requests/limits while other tools
 # (like ArgoCD) manage other fields without conflicts.
 #
+# IMPORTANT: The metricsConfig.provider field must match the controller's
+# --metrics-provider flag setting. Per-policy provider selection is planned
+# for a future release.
+#
 # Use SSA when:
 # - Using GitOps tools (ArgoCD, Flux, etc.)
 # - Multiple tools manage the same workloads
@@ -492,3 +496,105 @@ spec:
     useServerSideApply: true
 
   reconciliationInterval: 15m
+---
+# Example 10: Prometheus Provider Configuration
+#
+# This example demonstrates OptipPod's full Prometheus integration support.
+# Prometheus is now production-ready and fully supported alongside metrics-server.
+#
+# Use Prometheus when:
+# - You have existing Prometheus monitoring infrastructure
+# - You need advanced metrics queries and historical data
+# - You want to leverage Prometheus's powerful query language (PromQL)
+# - You need custom metrics beyond basic CPU/memory usage
+#
+apiVersion: optipod.optipod.io/v1alpha1
+kind: OptimizationPolicy
+metadata:
+  name: prometheus-production-policy
+  namespace: default
+spec:
+  mode: Auto
+  weight: 100
+
+  selector:
+    namespaceSelector:
+      matchLabels:
+        environment: production
+    workloadSelector:
+      matchLabels:
+        optimize: "true"
+    namespaces:
+      allow:
+        - production
+        - staging
+
+  metricsConfig:
+    provider: prometheus  # ✅ Fully supported and production-ready
+    rollingWindow: 24h    # Analyze metrics over 24-hour window
+    percentile: P90       # Use 90th percentile for recommendations
+    safetyFactor: 1.2     # Add 20% safety buffer
+
+  resourceBounds:
+    cpu:
+      min: "100m"
+      max: "8000m"
+    memory:
+      min: "128Mi"
+      max: "16Gi"
+
+  updateStrategy:
+    allowInPlaceResize: true
+    allowRecreate: false
+    updateRequestsOnly: false  # Update both requests and limits
+    useServerSideApply: true   # Recommended for GitOps compatibility
+
+  reconciliationInterval: 5m
+
+---
+# Example 11: Metrics-Server Provider Configuration
+#
+# This example shows the traditional metrics-server configuration.
+# Both metrics-server and Prometheus are fully supported.
+#
+apiVersion: optipod.optipod.io/v1alpha1
+kind: OptimizationPolicy
+metadata:
+  name: metrics-server-policy
+  namespace: default
+spec:
+  mode: Auto
+  weight: 100
+
+  selector:
+    namespaceSelector:
+      matchLabels:
+        environment: development
+    workloadSelector:
+      matchLabels:
+        optimize: "true"
+
+  metricsConfig:
+    provider: metrics-server  # ✅ Fully supported and production-ready
+    rollingWindow: 12h
+    percentile: P90
+    safetyFactor: 1.1
+    # Metrics-server specific configuration
+    metricsServer:
+      minSamplesRequired: 10  # Require at least 10 samples before optimization
+
+  resourceBounds:
+    cpu:
+      min: "50m"
+      max: "4000m"
+    memory:
+      min: "64Mi"
+      max: "8Gi"
+
+  updateStrategy:
+    allowInPlaceResize: true
+    allowRecreate: true
+    updateRequestsOnly: false
+    useServerSideApply: true
+
+  reconciliationInterval: 10m

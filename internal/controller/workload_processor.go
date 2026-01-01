@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -124,6 +125,15 @@ func (wp *WorkloadProcessor) ProcessWorkload(
 			continue
 		}
 
+		if registrar, ok := wp.metricsProvider.(metrics.SamplingTargetRegistrar); ok {
+			registrar.RegisterTarget(metrics.TargetKey{
+				Namespace:    workload.Namespace,
+				WorkloadKind: workload.Kind,
+				WorkloadName: workload.Name,
+				Container:    container.Name,
+			}, podName)
+		}
+
 		// Get rolling window from policy
 		rollingWindow := 24 * time.Hour
 		if policy.Spec.MetricsConfig.RollingWindow.Duration > 0 {
@@ -145,10 +155,45 @@ func (wp *WorkloadProcessor) ProcessWorkload(
 		metricsTimer.Observe(time.Since(metricsStartTime).Seconds())
 
 		if err != nil {
+			var insufficient *metrics.ErrInsufficientSamples
+			if errors.As(err, &insufficient) {
+				hasMetricsError = true
+				metricsErrorMsg = fmt.Sprintf("Insufficient metrics samples for container %s: %v", container.Name, err)
+				continue
+			}
+
 			// Handle missing metrics error
 			hasMetricsError = true
 			metricsErrorMsg = fmt.Sprintf("Failed to collect metrics for container %s: %v", container.Name, err)
 			continue
+		}
+
+		// Enforce per-policy minimum samples requirement for metrics-server.
+		// For other providers, this is ignored.
+		if wp.metricsProviderType == "metrics-server" {
+			required := 0
+			if policy.Spec.MetricsConfig.MetricsServer != nil && policy.Spec.MetricsConfig.MetricsServer.MinSamplesRequired != nil {
+				required = int(*policy.Spec.MetricsConfig.MetricsServer.MinSamplesRequired)
+			} else {
+				type defaultMinSampler interface {
+					DefaultMinSamplesRequired() int
+				}
+				if provider, ok := wp.metricsProvider.(defaultMinSampler); ok {
+					required = provider.DefaultMinSamplesRequired()
+				}
+			}
+
+			if required > 0 {
+				samples := containerMetrics.CPU.Samples
+				if containerMetrics.Memory.Samples < samples {
+					samples = containerMetrics.Memory.Samples
+				}
+				if samples < required {
+					hasMetricsError = true
+					metricsErrorMsg = fmt.Sprintf("Insufficient metrics samples for container %s: have %d, need %d", container.Name, samples, required)
+					continue
+				}
+			}
 		}
 
 		// Compute recommendation

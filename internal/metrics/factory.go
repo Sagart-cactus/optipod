@@ -55,6 +55,18 @@ type ProviderConfig struct {
 
 	// SampleInterval is the interval between samples (optional, defaults to 15 seconds)
 	SampleInterval int // in seconds
+
+	// MetricsServerSamplingInterval controls background sampling cadence (metrics-server only).
+	MetricsServerSamplingInterval time.Duration
+
+	// MetricsServerMaxSamplesPerTarget caps stored samples per target (metrics-server only).
+	MetricsServerMaxSamplesPerTarget int
+
+	// MetricsServerMinSamplesRequired is the minimum samples required before recommendations (metrics-server only).
+	MetricsServerMinSamplesRequired int
+
+	// MetricsServerTargetTTL evicts targets that have not been refreshed (metrics-server only).
+	MetricsServerTargetTTL time.Duration
 }
 
 // NewProvider creates a new MetricsProvider based on the configuration.
@@ -71,24 +83,24 @@ func NewProvider(config ProviderConfig) (MetricsProvider, error) {
 		}
 
 		// Use custom configuration if provided, otherwise use defaults
-		if config.MaxSamples > 0 || config.SampleInterval > 0 {
-			maxSamples := config.MaxSamples
-			if maxSamples == 0 {
-				maxSamples = 10 // default
-			}
-			sampleInterval := config.SampleInterval
-			if sampleInterval == 0 {
-				sampleInterval = 15 // default 15 seconds
-			}
-			return NewMetricsServerProviderWithConfig(
-				config.Clientset,
-				config.MetricsClientset,
-				maxSamples,
-				time.Duration(sampleInterval)*time.Second,
-			), nil
+		samplingConfig := SamplingConfig{
+			Interval:   config.MetricsServerSamplingInterval,
+			MaxSamples: config.MetricsServerMaxSamplesPerTarget,
+			MinSamples: config.MetricsServerMinSamplesRequired,
+			TargetTTL:  config.MetricsServerTargetTTL,
 		}
 
-		return NewMetricsServerProvider(config.Clientset, config.MetricsClientset), nil
+		if samplingConfig.Interval == 0 && config.SampleInterval > 0 {
+			samplingConfig.Interval = time.Duration(config.SampleInterval) * time.Second
+		}
+		if samplingConfig.MaxSamples == 0 && config.MaxSamples > 0 {
+			samplingConfig.MaxSamples = config.MaxSamples
+		}
+
+		return NewMetricsServerProviderWithConfig(
+			config.MetricsClientset,
+			samplingConfig,
+		), nil
 
 	case ProviderTypePrometheus:
 		if config.PrometheusURL == "" {
