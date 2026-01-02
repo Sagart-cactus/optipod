@@ -38,7 +38,7 @@ const CONFIG = {
   userAgent: 'OptipOd-LinkChecker/1.0 (+https://github.com/Sagart-cactus/optipod)',
 
   // Files to scan for links
-  htmlFiles: ['index.html'],
+  htmlFiles: [],
 
   // Patterns to ignore (regex strings)
   ignorePatterns: [
@@ -53,6 +53,24 @@ const CONFIG = {
 
   // Expected status codes that are considered valid
   validStatusCodes: [200, 201, 202, 203, 204, 205, 206, 300, 301, 302, 303, 304, 307, 308]
+}
+
+function listHtmlFiles (rootDir) {
+  const files = []
+  const stack = [rootDir]
+  while (stack.length) {
+    const current = stack.pop()
+    const entries = fs.readdirSync(current, { withFileTypes: true })
+    for (const entry of entries) {
+      const full = path.join(current, entry.name)
+      if (entry.isDirectory()) {
+        stack.push(full)
+      } else if (entry.isFile() && entry.name.endsWith('.html')) {
+        files.push(full)
+      }
+    }
+  }
+  return files
 }
 
 /**
@@ -221,11 +239,15 @@ async function main () {
   console.log('Validating external links in website...\n')
 
   const websiteDir = path.resolve(__dirname, '..')
+  CONFIG.htmlFiles = [
+    path.join(websiteDir, 'index.html'),
+    ...listHtmlFiles(path.join(websiteDir, 'docs'))
+  ]
   const allLinks = new Set()
 
   // Extract links from all HTML files
-  for (const htmlFile of CONFIG.htmlFiles) {
-    const filePath = path.join(websiteDir, htmlFile)
+  for (const filePath of CONFIG.htmlFiles) {
+    const htmlFile = path.relative(websiteDir, filePath)
 
     if (!fs.existsSync(filePath)) {
       console.log(`⚠️  Warning: ${htmlFile} not found, skipping...`)

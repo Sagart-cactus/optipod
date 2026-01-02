@@ -10,6 +10,18 @@ const outputDir = process.env.OUTPUT_DIR
   ? path.resolve(process.env.OUTPUT_DIR)
   : path.resolve('dist')
 
+function copyIfExists (sourcePath, destPath) {
+  if (!fs.existsSync(sourcePath)) return
+  fs.mkdirSync(path.dirname(destPath), { recursive: true })
+  fs.copyFileSync(sourcePath, destPath)
+}
+
+function copyDirIfExists (sourceDir, destDir) {
+  if (!fs.existsSync(sourceDir)) return
+  fs.mkdirSync(destDir, { recursive: true })
+  fs.cpSync(sourceDir, destDir, { recursive: true, force: true })
+}
+
 // Load content configuration for version information
 let versionInfo = ''
 try {
@@ -140,6 +152,10 @@ try {
     console.log('🎨 No CSS files found to optimize')
   }
 
+  // Docs pages reference a standalone stylesheet for dev + production.
+  copyIfExists(path.resolve('css', 'docs.css'), path.join(outputDir, 'css', 'docs.css'))
+  copyIfExists(path.resolve('css', 'hljs.css'), path.join(outputDir, 'css', 'hljs.css'))
+
   // Step 3: Optimize JavaScript
   console.log('⚡ Optimizing JavaScript...')
 
@@ -197,6 +213,16 @@ try {
     fs.writeFileSync(path.join(outputDir, 'index.html'), htmlContent)
     console.log('✅ HTML written to output directory')
   }
+
+  // Step 5: Copy static files (docs, sitemap, robots)
+  console.log('📚 Copying static docs and metadata...')
+  const outputDocsDir = path.join(outputDir, 'docs')
+  if (fs.existsSync(outputDocsDir)) {
+    fs.rmSync(outputDocsDir, { recursive: true, force: true })
+  }
+  copyDirIfExists(path.resolve('docs'), outputDocsDir)
+  copyIfExists(path.resolve('sitemap.xml'), path.join(outputDir, 'sitemap.xml'))
+  copyIfExists(path.resolve('robots.txt'), path.join(outputDir, 'robots.txt'))
 
   const report = {
     timestamp: new Date().toISOString(),

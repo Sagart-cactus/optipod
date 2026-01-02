@@ -1,0 +1,345 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Contributing | OptiPod Docs</title>
+    <meta name="robots" content="index, follow">
+    <link rel="canonical" href="https://sagart-cactus.github.io/optipod/docs/contributing/">
+    <link rel="icon" type="image/svg+xml" href="../../images/favicon.svg">
+    <link rel="stylesheet" href="../../css/docs.css">
+    <link rel="stylesheet" href="../../css/hljs.css">
+  </head>
+  <body class="docs">
+    <header class="docs-header">
+      <div class="docs-container docs-header-inner">
+        <a class="docs-brand" href="../../" aria-label="OptiPod home">
+          <img src="../../images/optipod-logo-themed.svg" alt="OptiPod" width="34" height="34">
+          <span>OptiPod Docs</span>
+        </a>
+        <nav class="docs-toplinks" aria-label="Top links">
+          <a class="docs-pill" href="../">Docs</a>
+          <a class="docs-pill" href="https://github.com/Sagart-cactus/optipod" target="_blank" rel="noreferrer">GitHub</a>
+        </nav>
+      </div>
+    </header>
+
+    <div class="docs-container docs-layout">
+      <nav class="docs-nav" aria-label="Docs navigation">
+
+<nav class="docs-nav" aria-label="Docs navigation">
+<a class="docs-pill" href="../">Docs Home</a>
+<h2>Getting Started</h2>
+<a href="../installation/">Installation Guide</a>
+<a href="../examples/">Examples</a>
+<h2>Configuration</h2>
+<a href="../crd-reference/">CRD Reference</a>
+<a href="../prometheus-setup/">Prometheus Setup</a>
+<a href="../metrics-server-sampling/">Metrics Server Sampling</a>
+<h2>Integration</h2>
+<a href="../argocd-integration/">ArgoCD Integration</a>
+<h2>Development</h2>
+<a href="../contributing/" aria-current="page">Contributing</a>
+<a href="../pre-commit-setup/">Pre-commit Setup</a>
+</nav>
+</nav>
+      <main class="docs-main" id="main">
+        <div class="docs-meta">
+          <div class="breadcrumbs">Docs / Contributing</div>
+          <div class="actions"><a href="https://github.com/Sagart-cactus/optipod/blob/main/docs/CONTRIBUTING.md" target="_blank" rel="noreferrer">View source (Markdown)</a></div>
+        </div>
+        <article class="doc-content">
+          <h1 id="contributing-to-optippod">Contributing to OptipPod</h1>
+          <p>Thank you for your interest in contributing to OptipPod! This document provides guidelines and information for contributors.</p>
+          <h2 id="table-of-contents">Table of Contents</h2>
+          <ul>
+          <li><a href="#code-of-conduct">Code of Conduct</a></li>
+          <li><a href="#getting-started">Getting Started</a></li>
+          <li><a href="#development-setup">Development Setup</a></li>
+          <li><a href="#pre-commit-hooks">Pre-commit Hooks</a></li>
+          <li><a href="#code-quality-standards">Code Quality Standards</a></li>
+          <li><a href="#testing-guidelines">Testing Guidelines</a></li>
+          <li><a href="#submitting-changes">Submitting Changes</a></li>
+          </ul>
+          <h2 id="code-of-conduct">Code of Conduct</h2>
+          <p>This project adheres to a code of conduct. By participating, you are expected to uphold this code. Please report unacceptable
+          behavior to the project maintainers.</p>
+          <h2 id="getting-started">Getting Started</h2>
+          <ol>
+          <li>Fork the repository on GitHub</li>
+          <li>Clone your fork locally</li>
+          <li>Set up the development environment</li>
+          <li>Create a feature branch</li>
+          <li>Make your changes</li>
+          <li>Test your changes</li>
+          <li>Submit a pull request</li>
+          </ol>
+          <h2 id="development-setup">Development Setup</h2>
+          <h3 id="prerequisites">Prerequisites</h3>
+          <ul>
+          <li>Go 1.21 or later</li>
+          <li>Docker and Docker Compose</li>
+          <li>kubectl</li>
+          <li>Kind (for local Kubernetes testing)</li>
+          <li>Python 3.11+ (for pre-commit hooks)</li>
+          </ul>
+          <h3 id="initial-setup">Initial Setup</h3>
+          <pre><code class="hljs language-bash"><span class="hljs-comment"># Clone your fork</span>
+git <span class="hljs-built_in">clone</span> https://github.com/YOUR_USERNAME/optipod.git
+<span class="hljs-built_in">cd</span> optipod
+
+<span class="hljs-comment"># Set up pre-commit hooks (recommended)</span>
+make setup-pre-commit
+
+<span class="hljs-comment"># Install dependencies</span>
+go mod download
+
+<span class="hljs-comment"># Build the project</span>
+make build
+
+<span class="hljs-comment"># Run tests</span>
+make <span class="hljs-built_in">test</span></code></pre>
+          <h2 id="pre-commit-hooks">Pre-commit Hooks</h2>
+          <p>We use pre-commit hooks to ensure code quality and consistency. These hooks automatically run checks before each commit.</p>
+          <h3 id="automatic-setup">Automatic Setup</h3>
+          <pre><code class="hljs language-bash"><span class="hljs-comment"># Install and configure pre-commit hooks</span>
+make setup-pre-commit</code></pre>
+          <p>This will:</p>
+          <ul>
+          <li>Install pre-commit if not already installed</li>
+          <li>Set up all configured hooks</li>
+          <li>Install required tools (golangci-lint, goimports, etc.)</li>
+          <li>Run initial checks on all files</li>
+          </ul>
+          <h3 id="manual-setup">Manual Setup</h3>
+          <p>If you prefer manual setup:</p>
+          <pre><code class="hljs language-bash"><span class="hljs-comment"># Install pre-commit</span>
+pip3 install pre-commit
+
+<span class="hljs-comment"># Install hooks</span>
+pre-commit install
+pre-commit install --hook-type commit-msg
+
+<span class="hljs-comment"># Run on all files</span>
+pre-commit run --all-files</code></pre>
+          <h3 id="available-hooks">Available Hooks</h3>
+          <p>Our pre-commit configuration includes:</p>
+          <h4 id="go-code-quality">Go Code Quality</h4>
+          <ul>
+          <li><strong>gofmt</strong>: Formats Go code according to standard conventions</li>
+          <li><strong>goimports</strong>: Organizes and formats Go imports</li>
+          <li><strong>go-mod-tidy</strong>: Cleans up Go module dependencies</li>
+          <li><strong>go-vet</strong>: Runs static analysis on Go code</li>
+          <li><strong>golangci-lint</strong>: Comprehensive Go linting with multiple analyzers</li>
+          <li><strong>go-unit-tests</strong>: Runs unit tests (excludes e2e tests)</li>
+          </ul>
+          <h4 id="general-code-quality">General Code Quality</h4>
+          <ul>
+          <li><strong>trailing-whitespace</strong>: Removes trailing whitespace</li>
+          <li><strong>end-of-file-fixer</strong>: Ensures files end with newline</li>
+          <li><strong>check-yaml</strong>: Validates YAML syntax</li>
+          <li><strong>check-json</strong>: Validates JSON syntax</li>
+          <li><strong>check-merge-conflict</strong>: Detects merge conflict markers</li>
+          </ul>
+          <h4 id="security">Security</h4>
+          <ul>
+          <li><strong>detect-secrets</strong>: Scans for potential secrets in code</li>
+          <li><strong>shellcheck</strong>: Analyzes shell scripts for issues</li>
+          </ul>
+          <h4 id="documentation">Documentation</h4>
+          <ul>
+          <li><strong>yamllint</strong>: Lints YAML files for style and syntax</li>
+          <li><strong>markdownlint</strong>: Lints Markdown files for consistency</li>
+          <li><strong>hadolint</strong>: Lints Dockerfiles for best practices</li>
+          </ul>
+          <h4 id="kubernetes">Kubernetes</h4>
+          <ul>
+          <li><strong>kubeval</strong>: Validates Kubernetes YAML manifests</li>
+          </ul>
+          <h3 id="running-hooks-manually">Running Hooks Manually</h3>
+          <pre><code class="hljs language-bash"><span class="hljs-comment"># Run all hooks on all files</span>
+make pre-commit-run
+
+<span class="hljs-comment"># Run specific hook</span>
+pre-commit run golangci-lint
+
+<span class="hljs-comment"># Run on specific files</span>
+pre-commit run --files path/to/file.go
+
+<span class="hljs-comment"># Update hook versions</span>
+make pre-commit-update</code></pre>
+          <h3 id="skipping-hooks-not-recommended">Skipping Hooks (Not Recommended)</h3>
+          <p>In rare cases, you may need to skip hooks:</p>
+          <pre><code class="hljs language-bash"><span class="hljs-comment"># Skip all hooks for a commit (use sparingly)</span>
+git commit --no-verify -m <span class="hljs-string">&quot;commit message&quot;</span>
+
+<span class="hljs-comment"># Skip specific hook</span>
+SKIP=golangci-lint git commit -m <span class="hljs-string">&quot;commit message&quot;</span></code></pre>
+          <h2 id="code-quality-standards">Code Quality Standards</h2>
+          <h3 id="go-code-standards">Go Code Standards</h3>
+          <ul>
+          <li>Follow standard Go formatting (enforced by gofmt)</li>
+          <li>Use meaningful variable and function names</li>
+          <li>Add comments for exported functions and types</li>
+          <li>Keep functions small and focused</li>
+          <li>Handle errors appropriately</li>
+          <li>Write tests for new functionality</li>
+          </ul>
+          <h3 id="linting-rules">Linting Rules</h3>
+          <p>We use golangci-lint with the following key rules:</p>
+          <ul>
+          <li><strong>errcheck</strong>: Check for unchecked errors</li>
+          <li><strong>gofmt</strong>: Ensure proper formatting</li>
+          <li><strong>goimports</strong>: Ensure proper import organization</li>
+          <li><strong>govet</strong>: Run go vet static analysis</li>
+          <li><strong>ineffassign</strong>: Detect ineffectual assignments</li>
+          <li><strong>misspell</strong>: Detect commonly misspelled words</li>
+          <li><strong>staticcheck</strong>: Advanced static analysis</li>
+          </ul>
+          <h3 id="documentation-standards">Documentation Standards</h3>
+          <ul>
+          <li>Use clear, concise language</li>
+          <li>Include code examples where helpful</li>
+          <li>Keep documentation up to date with code changes</li>
+          <li>Follow Markdown best practices</li>
+          </ul>
+          <h2 id="testing-guidelines">Testing Guidelines</h2>
+          <h3 id="unit-tests">Unit Tests</h3>
+          <ul>
+          <li>Write unit tests for all new functionality</li>
+          <li>Aim for high test coverage (&gt;80%)</li>
+          <li>Use table-driven tests where appropriate</li>
+          <li>Mock external dependencies</li>
+          </ul>
+          <pre><code class="hljs language-bash"><span class="hljs-comment"># Run unit tests</span>
+make <span class="hljs-built_in">test</span>
+
+<span class="hljs-comment"># Run tests with coverage</span>
+go <span class="hljs-built_in">test</span> -cover ./...
+
+<span class="hljs-comment"># Run tests with race detection</span>
+go <span class="hljs-built_in">test</span> -race ./...</code></pre>
+          <h3 id="e2e-tests">E2E Tests</h3>
+          <ul>
+          <li>Write E2E tests for critical user workflows</li>
+          <li>Use the existing E2E test framework</li>
+          <li>Ensure tests are reliable and not flaky</li>
+          </ul>
+          <pre><code class="hljs language-bash"><span class="hljs-comment"># Run E2E tests</span>
+make test-e2e
+
+<span class="hljs-comment"># Run specific E2E test</span>
+make test-e2e-focus FOCUS=<span class="hljs-string">&quot;Policy Modes&quot;</span></code></pre>
+          <h3 id="property-based-tests">Property-Based Tests</h3>
+          <ul>
+          <li>Use property-based testing for complex logic</li>
+          <li>Focus on invariants and universal properties</li>
+          <li>Include in the main test suite</li>
+          </ul>
+          <h2 id="submitting-changes">Submitting Changes</h2>
+          <h3 id="pull-request-process">Pull Request Process</h3>
+          <ol>
+          <li><p><strong>Create a feature branch</strong> from <code>main</code>:</p>
+          <pre><code class="hljs language-bash">git checkout -b feature/your-feature-name</code></pre>
+          </li>
+          <li><p><strong>Make your changes</strong> following the coding standards</p>
+          </li>
+          <li><p><strong>Run pre-commit checks</strong>:</p>
+          <pre><code class="hljs language-bash">make pre-commit-run</code></pre>
+          </li>
+          <li><p><strong>Run tests</strong>:</p>
+          <pre><code class="hljs language-bash">make <span class="hljs-built_in">test</span>
+make test-e2e</code></pre>
+          </li>
+          <li><p><strong>Commit your changes</strong>:</p>
+          <pre><code class="hljs language-bash">git add .
+git commit -m <span class="hljs-string">&quot;feat: add new feature description&quot;</span></code></pre>
+          </li>
+          <li><p><strong>Push to your fork</strong>:</p>
+          <pre><code class="hljs language-bash">git push origin feature/your-feature-name</code></pre>
+          </li>
+          <li><p><strong>Create a pull request</strong> on GitHub</p>
+          </li>
+          </ol>
+          <h3 id="commit-message-format">Commit Message Format</h3>
+          <p>We follow conventional commit format:</p>
+          <pre><code class="hljs language-text">&lt;type&gt;(&lt;scope&gt;): &lt;description&gt;
+
+[optional body]
+
+[optional footer]</code></pre>
+          <p>Types:</p>
+          <ul>
+          <li><code>feat</code>: New feature</li>
+          <li><code>fix</code>: Bug fix</li>
+          <li><code>docs</code>: Documentation changes</li>
+          <li><code>style</code>: Code style changes (formatting, etc.)</li>
+          <li><code>refactor</code>: Code refactoring</li>
+          <li><code>test</code>: Adding or updating tests</li>
+          <li><code>chore</code>: Maintenance tasks</li>
+          </ul>
+          <p>Examples:</p>
+          <pre><code class="hljs language-text">feat(controller): add resource optimization logic
+fix(api): handle nil pointer in policy validation
+docs(readme): update installation instructions
+test(e2e): add policy mode validation tests</code></pre>
+          <h3 id="pull-request-guidelines">Pull Request Guidelines</h3>
+          <ul>
+          <li><strong>Title</strong>: Use a clear, descriptive title</li>
+          <li><strong>Description</strong>: Explain what changes you made and why</li>
+          <li><strong>Testing</strong>: Describe how you tested your changes</li>
+          <li><strong>Documentation</strong>: Update relevant documentation</li>
+          <li><strong>Breaking Changes</strong>: Clearly mark any breaking changes</li>
+          </ul>
+          <h3 id="review-process">Review Process</h3>
+          <ol>
+          <li>Automated checks must pass (CI/CD pipeline)</li>
+          <li>Code review by at least one maintainer</li>
+          <li>All feedback addressed</li>
+          <li>Final approval and merge</li>
+          </ol>
+          <h2 id="getting-help">Getting Help</h2>
+          <ul>
+          <li><strong>Issues</strong>: Check existing issues or create a new one</li>
+          <li><strong>Discussions</strong>: Use GitHub Discussions for questions</li>
+          <li><strong>Documentation</strong>: Check the docs/ directory</li>
+          <li><strong>Code Examples</strong>: Look at existing code and tests</li>
+          </ul>
+          <h2 id="development-tips">Development Tips</h2>
+          <h3 id="useful-make-targets">Useful Make Targets</h3>
+          <pre><code class="hljs language-bash">make <span class="hljs-built_in">help</span>              <span class="hljs-comment"># Show all available targets</span>
+make build             <span class="hljs-comment"># Build the binary</span>
+make <span class="hljs-built_in">test</span>              <span class="hljs-comment"># Run unit tests</span>
+make test-e2e          <span class="hljs-comment"># Run E2E tests</span>
+make lint              <span class="hljs-comment"># Run linting</span>
+make format            <span class="hljs-comment"># Format code</span>
+make setup-pre-commit  <span class="hljs-comment"># Set up pre-commit hooks</span>
+make pre-commit-run    <span class="hljs-comment"># Run pre-commit on all files</span></code></pre>
+          <h3 id="ide-setup">IDE Setup</h3>
+          <p>For VS Code, consider these extensions:</p>
+          <ul>
+          <li>Go extension</li>
+          <li>YAML extension</li>
+          <li>Markdown extension</li>
+          <li>GitLens</li>
+          <li>Pre-commit hooks extension</li>
+          </ul>
+          <h3 id="debugging">Debugging</h3>
+          <ul>
+          <li>Use <code>dlv</code> for Go debugging</li>
+          <li>Add logging with structured logging</li>
+          <li>Use <code>kubectl logs</code> for controller debugging</li>
+          <li>Check E2E test logs for integration issues</li>
+          </ul>
+          <p>Thank you for contributing to OptipPod! 🚀</p>
+        </article>
+      </main>
+    </div>
+
+    <footer class="docs-footer">
+      <div class="docs-container">
+        <div>Found an issue? Open a ticket on <a href="https://github.com/Sagart-cactus/optipod/issues" target="_blank" rel="noreferrer">GitHub Issues</a>.</div>
+      </div>
+    </footer>
+  </body>
+</html>
