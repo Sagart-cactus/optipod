@@ -1,0 +1,373 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Installation Guide | OptiPod Docs</title>
+    <meta name="robots" content="index, follow">
+    <link rel="canonical" href="https://sagart-cactus.github.io/optipod/docs/installation/">
+    <link rel="icon" type="image/svg+xml" href="../../images/favicon.svg">
+    <link rel="stylesheet" href="../../css/docs.css">
+    <link rel="stylesheet" href="../../css/hljs.css">
+  </head>
+  <body class="docs">
+    <header class="docs-header">
+      <div class="docs-container docs-header-inner">
+        <a class="docs-brand" href="../../" aria-label="OptiPod home">
+          <img src="../../images/optipod-logo-themed.svg" alt="OptiPod" width="34" height="34">
+          <span>OptiPod Docs</span>
+        </a>
+        <nav class="docs-toplinks" aria-label="Top links">
+          <a class="docs-pill" href="../">Docs</a>
+          <a class="docs-pill" href="https://github.com/Sagart-cactus/optipod" target="_blank" rel="noreferrer">GitHub</a>
+        </nav>
+      </div>
+    </header>
+
+    <div class="docs-container docs-layout">
+      <nav class="docs-nav" aria-label="Docs navigation">
+
+<nav class="docs-nav" aria-label="Docs navigation">
+<a class="docs-pill" href="../">Docs Home</a>
+<h2>Getting Started</h2>
+<a href="../installation/" aria-current="page">Installation Guide</a>
+<a href="../examples/">Examples</a>
+<h2>Configuration</h2>
+<a href="../crd-reference/">CRD Reference</a>
+<a href="../prometheus-setup/">Prometheus Setup</a>
+<a href="../metrics-server-sampling/">Metrics Server Sampling</a>
+<h2>Integration</h2>
+<a href="../argocd-integration/">ArgoCD Integration</a>
+<h2>Development</h2>
+<a href="../contributing/">Contributing</a>
+<a href="../pre-commit-setup/">Pre-commit Setup</a>
+</nav>
+</nav>
+      <main class="docs-main" id="main">
+        <div class="docs-meta">
+          <div class="breadcrumbs">Docs / Installation Guide</div>
+          <div class="actions"><a href="https://github.com/Sagart-cactus/optipod/blob/main/docs/INSTALLATION.md" target="_blank" rel="noreferrer">View source (Markdown)</a></div>
+        </div>
+        <article class="doc-content">
+          <h1 id="optipod-installation-guide">OptiPod Installation Guide</h1>
+          <p>This guide provides detailed instructions for installing and configuring OptiPod in your Kubernetes cluster.</p>
+          <h2 id="prerequisites">Prerequisites</h2>
+          <h3 id="required">Required</h3>
+          <ul>
+          <li><strong>Kubernetes Cluster</strong>: Version 1.29 or higher</li>
+          <li><strong>kubectl</strong>: Configured to access your cluster</li>
+          <li><strong>Metrics Provider</strong>: One of the following:<ul>
+          <li>Kubernetes metrics-server (recommended for most use cases)</li>
+          <li>Prometheus (recommended for advanced monitoring setups)</li>
+          <li>Custom metrics provider (planned)</li>
+          </ul>
+          </li>
+          </ul>
+          <h3 id="optional">Optional</h3>
+          <ul>
+          <li><strong>In-Place Pod Resize</strong>: Kubernetes 1.29+ with <code>InPlacePodVerticalScaling</code> feature gate enabled</li>
+          <li><strong>Helm</strong>: For Helm-based installation (coming soon)</li>
+          </ul>
+          <h2 id="installation-methods">Installation Methods</h2>
+          <h3 id="method-1-using-kubectl-recommended">Method 1: Using kubectl (Recommended)</h3>
+          <h4 id="step-1-install-from-latest-release-recommended">Step 1: Install from Latest Release (Recommended)</h4>
+          <pre><code class="hljs language-bash">kubectl apply -f https://github.com/Sagart-cactus/optipod/releases/latest/download/install.yaml</code></pre>
+          <p>Or install a specific version:</p>
+          <pre><code class="hljs language-bash">kubectl apply -f https://github.com/Sagart-cactus/optipod/releases/download/v1.0.0/install.yaml</code></pre>
+          <h4 id="alternative-install-from-source">Alternative: Install from Source</h4>
+          <p>If you need to install from the main branch:</p>
+          <pre><code class="hljs language-bash"><span class="hljs-comment"># Install CRDs</span>
+kubectl apply -f https://raw.githubusercontent.com/Sagart-cactus/optipod/main/config/crd/bases/optipod.optipod.io_optimizationpolicies.yaml
+
+<span class="hljs-comment"># Deploy the operator</span>
+kubectl apply -f https://raw.githubusercontent.com/Sagart-cactus/optipod/main/config/default</code></pre>
+          <p>This creates:</p>
+          <ul>
+          <li><code>optipod-system</code> namespace</li>
+          <li>ServiceAccount, Roles, and RoleBindings</li>
+          <li>Deployment for the operator</li>
+          <li>ConfigMap for configuration</li>
+          <li>Service for metrics</li>
+          </ul>
+          <blockquote>
+          <p><strong>Security Note</strong>: All release images are signed with cosign and include SBOMs. You can verify signatures using:</p>
+          <pre><code class="hljs language-bash">cosign verify ghcr.io/sagart-cactus/optipod:v1.0.0</code></pre>
+          </blockquote>
+          <h4 id="step-2-verify-installation">Step 2: Verify Installation</h4>
+          <p>Check that the operator is running:</p>
+          <pre><code class="hljs language-bash">kubectl get pods -n optipod-system</code></pre>
+          <p>Expected output:</p>
+          <pre><code class="hljs language-text">NAME                                        READY   STATUS    RESTARTS   AGE
+optipod-controller-manager-xxxxxxxxx-xxxxx   1/1     Running   0          30s</code></pre>
+          <p>Check operator logs:</p>
+          <pre><code class="hljs language-bash">kubectl logs -n optipod-system deployment/optipod-controller-manager -f</code></pre>
+          <h3 id="method-2-using-kustomize">Method 2: Using Kustomize</h3>
+          <p>Clone the repository and customize:</p>
+          <pre><code class="hljs language-bash">git <span class="hljs-built_in">clone</span> https://github.com/yourusername/optipod.git
+<span class="hljs-built_in">cd</span> optipod
+
+<span class="hljs-comment"># Edit config/default/kustomization.yaml to customize</span>
+<span class="hljs-comment"># Then apply:</span>
+kubectl apply -k config/default</code></pre>
+          <h3 id="method-3-building-from-source">Method 3: Building from Source</h3>
+          <pre><code class="hljs language-bash"><span class="hljs-comment"># Clone and build</span>
+git <span class="hljs-built_in">clone</span> https://github.com/yourusername/optipod.git
+<span class="hljs-built_in">cd</span> optipod
+make build
+
+<span class="hljs-comment"># Build Docker image</span>
+make docker-build IMG=your-registry/optipod:v1.0.0
+
+<span class="hljs-comment"># Push to registry</span>
+make docker-push IMG=your-registry/optipod:v1.0.0
+
+<span class="hljs-comment"># Deploy with your image</span>
+<span class="hljs-built_in">cd</span> config/manager &amp;&amp; kustomize edit <span class="hljs-built_in">set</span> image controller=your-registry/optipod:v1.0.0
+kubectl apply -k config/default</code></pre>
+          <h2 id="configuration">Configuration</h2>
+          <h3 id="operator-configuration">Operator Configuration</h3>
+          <p>OptiPod can be configured via:</p>
+          <ol>
+          <li>Command-line flags (in deployment args)</li>
+          <li>ConfigMap (<code>optipod-config</code>)</li>
+          <li>Environment variables</li>
+          </ol>
+          <h4 id="configmap-configuration">ConfigMap Configuration</h4>
+          <p>Edit the ConfigMap in <code>config/manager/config.yaml</code>:</p>
+          <pre><code class="hljs language-yaml"><span class="hljs-attr">apiVersion:</span> <span class="hljs-string">v1</span>
+<span class="hljs-attr">kind:</span> <span class="hljs-string">ConfigMap</span>
+<span class="hljs-attr">metadata:</span>
+  <span class="hljs-attr">name:</span> <span class="hljs-string">optipod-config</span>
+  <span class="hljs-attr">namespace:</span> <span class="hljs-string">optipod-system</span>
+<span class="hljs-attr">data:</span>
+  <span class="hljs-comment"># Global dry-run mode (compute recommendations but never apply)</span>
+  <span class="hljs-attr">dry-run:</span> <span class="hljs-string">&quot;false&quot;</span>
+
+  <span class="hljs-comment"># Default metrics provider</span>
+  <span class="hljs-attr">metrics-provider:</span> <span class="hljs-string">&quot;metrics-server&quot;</span>
+
+  <span class="hljs-comment"># Prometheus URL (when using Prometheus provider)</span>
+  <span class="hljs-attr">prometheus-url:</span> <span class="hljs-string">&quot;http://prometheus-kube-prometheus-prometheus.monitoring.svc.cluster.local:9090&quot;</span>
+
+  <span class="hljs-comment"># Default reconciliation interval</span>
+  <span class="hljs-attr">reconciliation-interval:</span> <span class="hljs-string">&quot;5m&quot;</span>
+
+  <span class="hljs-comment"># Enable leader election for HA</span>
+  <span class="hljs-attr">leader-election:</span> <span class="hljs-string">&quot;true&quot;</span></code></pre>
+          <p>Apply changes:</p>
+          <pre><code class="hljs language-bash">kubectl apply -f config/manager/config.yaml
+kubectl rollout restart deployment/optipod-controller-manager -n optipod-system</code></pre>
+          <h4 id="command-line-flags">Command-Line Flags</h4>
+          <p>Available flags (set in deployment args):</p>
+          <table>
+          <thead>
+          <tr>
+          <th>Flag</th>
+          <th>Default</th>
+          <th>Description</th>
+          </tr>
+          </thead>
+          <tbody><tr>
+          <td><code>--leader-elect</code></td>
+          <td><code>true</code></td>
+          <td>Enable leader election</td>
+          </tr>
+          <tr>
+          <td><code>--metrics-bind-address</code></td>
+          <td><code>:8080</code></td>
+          <td>Metrics endpoint address</td>
+          </tr>
+          <tr>
+          <td><code>--health-probe-bind-address</code></td>
+          <td><code>:8081</code></td>
+          <td>Health probe address</td>
+          </tr>
+          <tr>
+          <td><code>--metrics-provider</code></td>
+          <td><code>metrics-server</code></td>
+          <td><strong>Global</strong> metrics backend (metrics-server, prometheus, custom)</td>
+          </tr>
+          <tr>
+          <td><code>--prometheus-url</code></td>
+          <td><code>http://prometheus-kube-prometheus-prometheus.monitoring.svc.cluster.local:9090</code></td>
+          <td>Prometheus URL (when using Prometheus)</td>
+          </tr>
+          <tr>
+          <td><code>--dry-run</code></td>
+          <td><code>false</code></td>
+          <td>Global dry-run mode</td>
+          </tr>
+          <tr>
+          <td><code>--reconciliation-interval</code></td>
+          <td><code>5m</code></td>
+          <td>Default reconciliation interval</td>
+          </tr>
+          </tbody></table>
+          <blockquote>
+          <p><strong>⚠️ Important</strong>: The <code>--metrics-provider</code> flag sets the metrics backend <strong>globally</strong> for all optimization policies. While individual policies have a <code>metricsConfig.provider</code> field, it must currently match the global setting. Per-policy provider selection is planned for a future release.</p>
+          </blockquote>
+          <h3 id="rbac-configuration">RBAC Configuration</h3>
+          <p>OptiPod requires the following permissions:</p>
+          <p><strong>Cluster-scoped</strong>:</p>
+          <ul>
+          <li>Read: Deployments, StatefulSets, DaemonSets</li>
+          <li>Update: Deployments, StatefulSets, DaemonSets (for resource patching)</li>
+          <li>Read: Pods (for metrics collection)</li>
+          <li>Create: Events (for notifications)</li>
+          </ul>
+          <p><strong>Namespace-scoped</strong>:</p>
+          <ul>
+          <li>Full access to OptimizationPolicy CRDs</li>
+          </ul>
+          <p>The default installation includes all necessary RBAC resources. To restrict OptiPod to specific namespaces, modify the
+          RoleBindings in <code>config/rbac/</code>.</p>
+          <h3 id="metrics-provider-setup">Metrics Provider Setup</h3>
+          <h4 id="prometheus">Prometheus</h4>
+          <ol>
+          <li>Ensure Prometheus is deployed and accessible in your cluster</li>
+          <li>Configure the Prometheus URL in the ConfigMap or via <code>--prometheus-url</code> flag</li>
+          <li>Verify connectivity:</li>
+          </ol>
+          <pre><code class="hljs language-bash">kubectl <span class="hljs-built_in">exec</span> -n optipod-system deployment/optipod-controller-manager -- \
+  curl http://prometheus-kube-prometheus-prometheus.monitoring.svc.cluster.local:9090/-/healthy</code></pre>
+          <p>Required Prometheus metrics:</p>
+          <ul>
+          <li><code>container_cpu_usage_seconds_total</code></li>
+          <li><code>container_memory_working_set_bytes</code></li>
+          </ul>
+          <h4 id="metrics-server">Metrics-Server</h4>
+          <ol>
+          <li>Install metrics-server:</li>
+          </ol>
+          <pre><code class="hljs language-bash">kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml</code></pre>
+          <ol>
+          <li>Configure OptiPod to use metrics-server:</li>
+          </ol>
+          <pre><code class="hljs language-yaml"><span class="hljs-attr">data:</span>
+  <span class="hljs-attr">metrics-provider:</span> <span class="hljs-string">&quot;metrics-server&quot;</span></code></pre>
+          <ol>
+          <li>Verify metrics-server:</li>
+          </ol>
+          <pre><code class="hljs language-bash">kubectl top nodes
+kubectl top pods</code></pre>
+          <h2 id="verification">Verification</h2>
+          <h3 id="check-operator-health">Check Operator Health</h3>
+          <pre><code class="hljs language-bash"><span class="hljs-comment"># Health check</span>
+kubectl get --raw /apis/v1/namespaces/optipod-system/services/optipod-controller-manager-metrics-service:8081/healthz
+
+<span class="hljs-comment"># Readiness check</span>
+kubectl get --raw /apis/v1/namespaces/optipod-system/services/optipod-controller-manager-metrics-service:8081/readyz</code></pre>
+          <h3 id="check-prometheus-metrics">Check Prometheus Metrics</h3>
+          <pre><code class="hljs language-bash">kubectl port-forward -n optipod-system svc/optipod-controller-manager-metrics-service 8080:8080
+curl http://localhost:8080/metrics | grep optipod</code></pre>
+          <p>Expected metrics:</p>
+          <ul>
+          <li><code>optipod_workloads_monitored</code></li>
+          <li><code>optipod_workloads_updated</code></li>
+          <li><code>optipod_reconciliation_duration_seconds</code></li>
+          </ul>
+          <h3 id="create-a-test-policy">Create a Test Policy</h3>
+          <pre><code class="hljs language-bash"><span class="hljs-built_in">cat</span> &lt;&lt;<span class="hljs-string">EOF | kubectl apply -f -
+apiVersion: optipod.optipod.io/v1alpha1
+kind: OptimizationPolicy
+metadata:
+  name: test-policy
+  namespace: default
+spec:
+  mode: Recommend
+  selector:
+    workloadSelector:
+      matchLabels:
+        app: test
+  metricsConfig:
+    provider: metrics-server  # Recommended
+    rollingWindow: 1h
+    percentile: P90
+    safetyFactor: 1.2
+  resourceBounds:
+    cpu:
+      min: &quot;100m&quot;
+      max: &quot;2000m&quot;
+    memory:
+      min: &quot;128Mi&quot;
+      max: &quot;4Gi&quot;
+  updateStrategy:
+    allowInPlaceResize: true
+    allowRecreate: false
+    updateRequestsOnly: true
+EOF</span></code></pre>
+          <p>Check policy status:</p>
+          <pre><code class="hljs language-bash">kubectl get optimizationpolicy test-policy -o yaml
+kubectl describe optimizationpolicy test-policy</code></pre>
+          <h2 id="upgrading">Upgrading</h2>
+          <h3 id="upgrade-operator">Upgrade Operator</h3>
+          <pre><code class="hljs language-bash"><span class="hljs-comment"># Upgrade to latest release</span>
+kubectl apply -f https://github.com/Sagart-cactus/optipod/releases/latest/download/install.yaml
+
+<span class="hljs-comment"># Or upgrade to specific version</span>
+kubectl apply -f https://github.com/Sagart-cactus/optipod/releases/download/v1.1.0/install.yaml
+
+<span class="hljs-comment"># Verify upgrade</span>
+kubectl rollout status deployment/optipod-controller-manager -n optipod-system</code></pre>
+          <h3 id="rollback">Rollback</h3>
+          <pre><code class="hljs language-bash"><span class="hljs-comment"># Rollback deployment</span>
+kubectl rollout undo deployment/optipod-controller-manager -n optipod-system
+
+<span class="hljs-comment"># Verify rollback</span>
+kubectl rollout status deployment/optipod-controller-manager -n optipod-system</code></pre>
+          <h2 id="uninstallation">Uninstallation</h2>
+          <h3 id="remove-operator">Remove Operator</h3>
+          <pre><code class="hljs language-bash"><span class="hljs-comment"># Remove using the same version you installed</span>
+kubectl delete -f https://github.com/Sagart-cactus/optipod/releases/download/v1.0.0/install.yaml
+
+<span class="hljs-comment"># Or remove latest</span>
+kubectl delete -f https://github.com/Sagart-cactus/optipod/releases/latest/download/install.yaml</code></pre>
+          <h3 id="remove-crds">Remove CRDs</h3>
+          <p><strong>Warning</strong>: This will delete all OptimizationPolicy resources!</p>
+          <pre><code class="hljs language-bash">kubectl delete crd optimizationpolicies.optipod.optipod.io</code></pre>
+          <h3 id="clean-up-namespace">Clean Up Namespace</h3>
+          <pre><code class="hljs language-bash">kubectl delete namespace optipod-system</code></pre>
+          <h2 id="high-availability">High Availability</h2>
+          <p>For production deployments, consider:</p>
+          <ol>
+          <li><strong>Leader Election</strong>: Enabled by default, allows multiple replicas</li>
+          <li><strong>Resource Limits</strong>: Adjust based on cluster size</li>
+          <li><strong>Pod Disruption Budget</strong>: Ensure availability during updates</li>
+          </ol>
+          <p>Example HA configuration:</p>
+          <pre><code class="hljs language-yaml"><span class="hljs-attr">apiVersion:</span> <span class="hljs-string">apps/v1</span>
+<span class="hljs-attr">kind:</span> <span class="hljs-string">Deployment</span>
+<span class="hljs-attr">metadata:</span>
+  <span class="hljs-attr">name:</span> <span class="hljs-string">optipod-controller-manager</span>
+  <span class="hljs-attr">namespace:</span> <span class="hljs-string">optipod-system</span>
+<span class="hljs-attr">spec:</span>
+  <span class="hljs-attr">replicas:</span> <span class="hljs-number">3</span>  <span class="hljs-comment"># Multiple replicas with leader election</span>
+  <span class="hljs-attr">template:</span>
+    <span class="hljs-attr">spec:</span>
+      <span class="hljs-attr">affinity:</span>
+        <span class="hljs-attr">podAntiAffinity:</span>
+          <span class="hljs-attr">preferredDuringSchedulingIgnoredDuringExecution:</span>
+          <span class="hljs-bullet">-</span> <span class="hljs-attr">weight:</span> <span class="hljs-number">100</span>
+            <span class="hljs-attr">podAffinityTerm:</span>
+              <span class="hljs-attr">labelSelector:</span>
+                <span class="hljs-attr">matchLabels:</span>
+                  <span class="hljs-attr">control-plane:</span> <span class="hljs-string">controller-manager</span>
+              <span class="hljs-attr">topologyKey:</span> <span class="hljs-string">kubernetes.io/hostname</span></code></pre>
+          <h2 id="next-steps">Next Steps</h2>
+          <ul>
+          <li><a href="../crd-reference/">Configure your first policy</a></li>
+          <li><a href="../examples/">Review example policies</a></li>
+          <li><a href="METRICS.md">Set up metrics provider</a></li>
+          <li><a href="TROUBLESHOOTING.md">Troubleshoot issues</a></li>
+          </ul>
+        </article>
+      </main>
+    </div>
+
+    <footer class="docs-footer">
+      <div class="docs-container">
+        <div>Found an issue? Open a ticket on <a href="https://github.com/Sagart-cactus/optipod/issues" target="_blank" rel="noreferrer">GitHub Issues</a>.</div>
+      </div>
+    </footer>
+  </body>
+</html>

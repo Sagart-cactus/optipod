@@ -3,6 +3,7 @@ const outputDir = process.env.OUTPUT_DIR || './dist'
 module.exports = {
   content: [
     './index.html',
+    './docs/**/*.html',
     './js/*.js'
   ],
   css: [

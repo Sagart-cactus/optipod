@@ -1,0 +1,488 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>ArgoCD Integration | OptiPod Docs</title>
+    <meta name="robots" content="index, follow">
+    <link rel="canonical" href="https://sagart-cactus.github.io/optipod/docs/argocd-integration/">
+    <link rel="icon" type="image/svg+xml" href="../../images/favicon.svg">
+    <link rel="stylesheet" href="../../css/docs.css">
+    <link rel="stylesheet" href="../../css/hljs.css">
+  </head>
+  <body class="docs">
+    <header class="docs-header">
+      <div class="docs-container docs-header-inner">
+        <a class="docs-brand" href="../../" aria-label="OptiPod home">
+          <img src="../../images/optipod-logo-themed.svg" alt="OptiPod" width="34" height="34">
+          <span>OptiPod Docs</span>
+        </a>
+        <nav class="docs-toplinks" aria-label="Top links">
+          <a class="docs-pill" href="../">Docs</a>
+          <a class="docs-pill" href="https://github.com/Sagart-cactus/optipod" target="_blank" rel="noreferrer">GitHub</a>
+        </nav>
+      </div>
+    </header>
+
+    <div class="docs-container docs-layout">
+      <nav class="docs-nav" aria-label="Docs navigation">
+
+<nav class="docs-nav" aria-label="Docs navigation">
+<a class="docs-pill" href="../">Docs Home</a>
+<h2>Getting Started</h2>
+<a href="../installation/">Installation Guide</a>
+<a href="../examples/">Examples</a>
+<h2>Configuration</h2>
+<a href="../crd-reference/">CRD Reference</a>
+<a href="../prometheus-setup/">Prometheus Setup</a>
+<a href="../metrics-server-sampling/">Metrics Server Sampling</a>
+<h2>Integration</h2>
+<a href="../argocd-integration/" aria-current="page">ArgoCD Integration</a>
+<h2>Development</h2>
+<a href="../contributing/">Contributing</a>
+<a href="../pre-commit-setup/">Pre-commit Setup</a>
+</nav>
+</nav>
+      <main class="docs-main" id="main">
+        <div class="docs-meta">
+          <div class="breadcrumbs">Docs / ArgoCD Integration</div>
+          <div class="actions"><a href="https://github.com/Sagart-cactus/optipod/blob/main/docs/ARGOCD_INTEGRATION.md" target="_blank" rel="noreferrer">View source (Markdown)</a></div>
+        </div>
+        <article class="doc-content">
+          <h1 id="argocd-integration-guide">ArgoCD Integration Guide</h1>
+          <p>This guide explains how to use OptiPod alongside ArgoCD without sync conflicts, leveraging Kubernetes Server-Side Apply
+          (SSA) for field-level ownership.</p>
+          <h2 id="overview">Overview</h2>
+          <p>OptiPod uses Server-Side Apply (SSA) by default to manage only resource requests and limits, while ArgoCD manages other
+          fields like image, replicas, and environment variables. This field-level ownership prevents sync conflicts and allows both
+          tools to coexist peacefully.</p>
+          <h3 id="how-it-works">How It Works</h3>
+          <p>With SSA, Kubernetes tracks which tool owns which fields using <code>managedFields</code> metadata:</p>
+          <pre><code class="hljs language-yaml"><span class="hljs-attr">Deployment:</span> <span class="hljs-string">my-app</span>
+<span class="hljs-string">├──</span> <span class="hljs-string">spec.replicas</span>                    [<span class="hljs-attr">Owned by:</span> <span class="hljs-string">argocd</span>]
+<span class="hljs-string">├──</span> <span class="hljs-string">spec.template.spec.containers[0]</span>
+<span class="hljs-string">│</span>   <span class="hljs-string">├──</span> <span class="hljs-string">image</span>                        [<span class="hljs-attr">Owned by:</span> <span class="hljs-string">argocd</span>]
+<span class="hljs-string">│</span>   <span class="hljs-string">├──</span> <span class="hljs-string">env</span>                          [<span class="hljs-attr">Owned by:</span> <span class="hljs-string">argocd</span>]
+<span class="hljs-string">│</span>   <span class="hljs-string">└──</span> <span class="hljs-string">resources</span>
+<span class="hljs-string">│</span>       <span class="hljs-string">├──</span> <span class="hljs-string">requests.cpu</span>             [<span class="hljs-attr">Owned by:</span> <span class="hljs-string">optipod</span>] <span class="hljs-string">✅</span>
+<span class="hljs-string">│</span>       <span class="hljs-string">├──</span> <span class="hljs-string">requests.memory</span>          [<span class="hljs-attr">Owned by:</span> <span class="hljs-string">optipod</span>] <span class="hljs-string">✅</span>
+<span class="hljs-string">│</span>       <span class="hljs-string">├──</span> <span class="hljs-string">limits.cpu</span>               [<span class="hljs-attr">Owned by:</span> <span class="hljs-string">optipod</span>] <span class="hljs-string">✅</span>
+<span class="hljs-string">│</span>       <span class="hljs-string">└──</span> <span class="hljs-string">limits.memory</span>            [<span class="hljs-attr">Owned by:</span> <span class="hljs-string">optipod</span>] <span class="hljs-string">✅</span></code></pre>
+          <h2 id="prerequisites">Prerequisites</h2>
+          <ul>
+          <li>Kubernetes 1.22+ (SSA is GA)</li>
+          <li>ArgoCD 2.5+ (recommended for automatic SSA support)</li>
+          <li>OptiPod installed with SSA enabled (default)</li>
+          </ul>
+          <h2 id="configuration">Configuration</h2>
+          <h3 id="optipod-configuration">OptiPod Configuration</h3>
+          <p>OptiPod uses SSA by default. You can explicitly enable it in your OptimizationPolicy:</p>
+          <pre><code class="hljs language-yaml"><span class="hljs-attr">apiVersion:</span> <span class="hljs-string">optipod.optipod.io/v1alpha1</span>
+<span class="hljs-attr">kind:</span> <span class="hljs-string">OptimizationPolicy</span>
+<span class="hljs-attr">metadata:</span>
+  <span class="hljs-attr">name:</span> <span class="hljs-string">production-workloads</span>
+<span class="hljs-attr">spec:</span>
+  <span class="hljs-attr">mode:</span> <span class="hljs-string">Auto</span>
+
+  <span class="hljs-attr">selector:</span>
+    <span class="hljs-attr">workloadSelector:</span>
+      <span class="hljs-attr">matchLabels:</span>
+        <span class="hljs-attr">optimize:</span> <span class="hljs-string">&quot;true&quot;</span>
+
+  <span class="hljs-attr">metricsConfig:</span>
+    <span class="hljs-attr">provider:</span> <span class="hljs-string">prometheus</span>
+    <span class="hljs-attr">rollingWindow:</span> <span class="hljs-string">24h</span>
+    <span class="hljs-attr">percentile:</span> <span class="hljs-string">P90</span>
+
+  <span class="hljs-attr">resourceBounds:</span>
+    <span class="hljs-attr">cpu:</span>
+      <span class="hljs-attr">min:</span> <span class="hljs-string">&quot;100m&quot;</span>
+      <span class="hljs-attr">max:</span> <span class="hljs-string">&quot;4000m&quot;</span>
+    <span class="hljs-attr">memory:</span>
+      <span class="hljs-attr">min:</span> <span class="hljs-string">&quot;128Mi&quot;</span>
+      <span class="hljs-attr">max:</span> <span class="hljs-string">&quot;8Gi&quot;</span>
+
+  <span class="hljs-attr">updateStrategy:</span>
+    <span class="hljs-attr">allowInPlaceResize:</span> <span class="hljs-literal">true</span>
+    <span class="hljs-attr">allowRecreate:</span> <span class="hljs-literal">false</span>
+    <span class="hljs-attr">updateRequestsOnly:</span> <span class="hljs-literal">true</span>
+    <span class="hljs-attr">useServerSideApply:</span> <span class="hljs-literal">true</span>  <span class="hljs-comment"># Default: true</span></code></pre>
+          <h3 id="argocd-configuration">ArgoCD Configuration</h3>
+          <h4 id="option-1-argocd-25-automatic-recommended">Option 1: ArgoCD 2.5+ (Automatic - Recommended)</h4>
+          <p>ArgoCD 2.5+ automatically respects SSA field ownership. No additional configuration needed!</p>
+          <p>Simply deploy your application as usual:</p>
+          <pre><code class="hljs language-yaml"><span class="hljs-attr">apiVersion:</span> <span class="hljs-string">argoproj.io/v1alpha1</span>
+<span class="hljs-attr">kind:</span> <span class="hljs-string">Application</span>
+<span class="hljs-attr">metadata:</span>
+  <span class="hljs-attr">name:</span> <span class="hljs-string">my-app</span>
+  <span class="hljs-attr">namespace:</span> <span class="hljs-string">argocd</span>
+<span class="hljs-attr">spec:</span>
+  <span class="hljs-attr">project:</span> <span class="hljs-string">default</span>
+  <span class="hljs-attr">source:</span>
+    <span class="hljs-attr">repoURL:</span> <span class="hljs-string">https://github.com/myorg/myapp</span>
+    <span class="hljs-attr">targetRevision:</span> <span class="hljs-string">main</span>
+    <span class="hljs-attr">path:</span> <span class="hljs-string">k8s</span>
+  <span class="hljs-attr">destination:</span>
+    <span class="hljs-attr">server:</span> <span class="hljs-string">https://kubernetes.default.svc</span>
+    <span class="hljs-attr">namespace:</span> <span class="hljs-string">production</span>
+  <span class="hljs-attr">syncPolicy:</span>
+    <span class="hljs-attr">automated:</span>
+      <span class="hljs-attr">prune:</span> <span class="hljs-literal">true</span>
+      <span class="hljs-attr">selfHeal:</span> <span class="hljs-literal">true</span></code></pre>
+          <h4 id="option-2-explicit-ignore-differences-argocd-25">Option 2: Explicit Ignore Differences (ArgoCD &lt; 2.5)</h4>
+          <p>For older ArgoCD versions, explicitly ignore OptipPod-managed fields:</p>
+          <pre><code class="hljs language-yaml"><span class="hljs-attr">apiVersion:</span> <span class="hljs-string">argoproj.io/v1alpha1</span>
+<span class="hljs-attr">kind:</span> <span class="hljs-string">Application</span>
+<span class="hljs-attr">metadata:</span>
+  <span class="hljs-attr">name:</span> <span class="hljs-string">my-app</span>
+<span class="hljs-attr">spec:</span>
+  <span class="hljs-comment"># ... other fields ...</span>
+  <span class="hljs-attr">ignoreDifferences:</span>
+  <span class="hljs-bullet">-</span> <span class="hljs-attr">group:</span> <span class="hljs-string">apps</span>
+    <span class="hljs-attr">kind:</span> <span class="hljs-string">Deployment</span>
+    <span class="hljs-attr">managedFieldsManagers:</span>
+    <span class="hljs-bullet">-</span> <span class="hljs-string">optipod</span>
+  <span class="hljs-bullet">-</span> <span class="hljs-attr">group:</span> <span class="hljs-string">apps</span>
+    <span class="hljs-attr">kind:</span> <span class="hljs-string">StatefulSet</span>
+    <span class="hljs-attr">managedFieldsManagers:</span>
+    <span class="hljs-bullet">-</span> <span class="hljs-string">optipod</span>
+  <span class="hljs-bullet">-</span> <span class="hljs-attr">group:</span> <span class="hljs-string">apps</span>
+    <span class="hljs-attr">kind:</span> <span class="hljs-string">DaemonSet</span>
+    <span class="hljs-attr">managedFieldsManagers:</span>
+    <span class="hljs-bullet">-</span> <span class="hljs-string">optipod</span></code></pre>
+          <h4 id="option-3-server-side-apply-for-argocd">Option 3: Server-Side Apply for ArgoCD</h4>
+          <p>Enable SSA for ArgoCD itself (requires ArgoCD 2.5+):</p>
+          <pre><code class="hljs language-yaml"><span class="hljs-attr">apiVersion:</span> <span class="hljs-string">argoproj.io/v1alpha1</span>
+<span class="hljs-attr">kind:</span> <span class="hljs-string">Application</span>
+<span class="hljs-attr">metadata:</span>
+  <span class="hljs-attr">name:</span> <span class="hljs-string">my-app</span>
+<span class="hljs-attr">spec:</span>
+  <span class="hljs-comment"># ... other fields ...</span>
+  <span class="hljs-attr">syncPolicy:</span>
+    <span class="hljs-attr">syncOptions:</span>
+    <span class="hljs-bullet">-</span> <span class="hljs-string">ServerSideApply=true</span>
+    <span class="hljs-bullet">-</span> <span class="hljs-string">RespectIgnoreDifferences=true</span></code></pre>
+          <h2 id="deployment-workflow">Deployment Workflow</h2>
+          <h3 id="step-1-deploy-application-with-argocd">Step 1: Deploy Application with ArgoCD</h3>
+          <p>Create your application manifest (without resource requests/limits or with initial values):</p>
+          <pre><code class="hljs language-yaml"><span class="hljs-comment"># k8s/deployment.yaml</span>
+<span class="hljs-attr">apiVersion:</span> <span class="hljs-string">apps/v1</span>
+<span class="hljs-attr">kind:</span> <span class="hljs-string">Deployment</span>
+<span class="hljs-attr">metadata:</span>
+  <span class="hljs-attr">name:</span> <span class="hljs-string">web-app</span>
+  <span class="hljs-attr">labels:</span>
+    <span class="hljs-attr">app:</span> <span class="hljs-string">web-app</span>
+    <span class="hljs-attr">optimize:</span> <span class="hljs-string">&quot;true&quot;</span>  <span class="hljs-comment"># Enable OptiPod optimization</span>
+<span class="hljs-attr">spec:</span>
+  <span class="hljs-attr">replicas:</span> <span class="hljs-number">3</span>
+  <span class="hljs-attr">selector:</span>
+    <span class="hljs-attr">matchLabels:</span>
+      <span class="hljs-attr">app:</span> <span class="hljs-string">web-app</span>
+  <span class="hljs-attr">template:</span>
+    <span class="hljs-attr">metadata:</span>
+      <span class="hljs-attr">labels:</span>
+        <span class="hljs-attr">app:</span> <span class="hljs-string">web-app</span>
+        <span class="hljs-attr">optimize:</span> <span class="hljs-string">&quot;true&quot;</span>
+    <span class="hljs-attr">spec:</span>
+      <span class="hljs-attr">containers:</span>
+      <span class="hljs-bullet">-</span> <span class="hljs-attr">name:</span> <span class="hljs-string">nginx</span>
+        <span class="hljs-attr">image:</span> <span class="hljs-string">nginx:1.21</span>
+        <span class="hljs-attr">ports:</span>
+        <span class="hljs-bullet">-</span> <span class="hljs-attr">containerPort:</span> <span class="hljs-number">80</span>
+        <span class="hljs-comment"># Optional: Set initial resource requests</span>
+        <span class="hljs-comment"># OptiPod will optimize these based on actual usage</span>
+        <span class="hljs-attr">resources:</span>
+          <span class="hljs-attr">requests:</span>
+            <span class="hljs-attr">cpu:</span> <span class="hljs-string">&quot;100m&quot;</span>
+            <span class="hljs-attr">memory:</span> <span class="hljs-string">&quot;128Mi&quot;</span></code></pre>
+          <p>Deploy via ArgoCD:</p>
+          <pre><code class="hljs language-bash">argocd app create web-app \
+  --repo https://github.com/myorg/myapp \
+  --path k8s \
+  --dest-server https://kubernetes.default.svc \
+  --dest-namespace production \
+  --sync-policy automated</code></pre>
+          <h3 id="step-2-create-optipod-policy">Step 2: Create OptiPod Policy</h3>
+          <pre><code class="hljs language-yaml"><span class="hljs-attr">apiVersion:</span> <span class="hljs-string">optipod.optipod.io/v1alpha1</span>
+<span class="hljs-attr">kind:</span> <span class="hljs-string">OptimizationPolicy</span>
+<span class="hljs-attr">metadata:</span>
+  <span class="hljs-attr">name:</span> <span class="hljs-string">production-optimizer</span>
+  <span class="hljs-attr">namespace:</span> <span class="hljs-string">production</span>
+<span class="hljs-attr">spec:</span>
+  <span class="hljs-attr">mode:</span> <span class="hljs-string">Auto</span>
+
+  <span class="hljs-attr">selector:</span>
+    <span class="hljs-attr">workloadSelector:</span>
+      <span class="hljs-attr">matchLabels:</span>
+        <span class="hljs-attr">optimize:</span> <span class="hljs-string">&quot;true&quot;</span>
+
+  <span class="hljs-attr">metricsConfig:</span>
+    <span class="hljs-attr">provider:</span> <span class="hljs-string">prometheus</span>
+    <span class="hljs-attr">rollingWindow:</span> <span class="hljs-string">24h</span>
+    <span class="hljs-attr">percentile:</span> <span class="hljs-string">P90</span>
+    <span class="hljs-attr">safetyFactor:</span> <span class="hljs-number">1.2</span>
+
+  <span class="hljs-attr">resourceBounds:</span>
+    <span class="hljs-attr">cpu:</span>
+      <span class="hljs-attr">min:</span> <span class="hljs-string">&quot;100m&quot;</span>
+      <span class="hljs-attr">max:</span> <span class="hljs-string">&quot;4000m&quot;</span>
+    <span class="hljs-attr">memory:</span>
+      <span class="hljs-attr">min:</span> <span class="hljs-string">&quot;128Mi&quot;</span>
+      <span class="hljs-attr">max:</span> <span class="hljs-string">&quot;8Gi&quot;</span>
+
+  <span class="hljs-attr">updateStrategy:</span>
+    <span class="hljs-attr">allowInPlaceResize:</span> <span class="hljs-literal">true</span>
+    <span class="hljs-attr">allowRecreate:</span> <span class="hljs-literal">false</span>
+    <span class="hljs-attr">updateRequestsOnly:</span> <span class="hljs-literal">true</span>
+    <span class="hljs-attr">useServerSideApply:</span> <span class="hljs-literal">true</span>
+
+  <span class="hljs-attr">reconciliationInterval:</span> <span class="hljs-string">5m</span></code></pre>
+          <p>Apply the policy:</p>
+          <pre><code class="hljs language-bash">kubectl apply -f optipod-policy.yaml</code></pre>
+          <h3 id="step-3-verify-field-ownership">Step 3: Verify Field Ownership</h3>
+          <p>Check that both tools are managing their respective fields:</p>
+          <pre><code class="hljs language-bash"><span class="hljs-comment"># View managedFields</span>
+kubectl get deployment web-app -n production -o yaml | grep -A 30 managedFields
+
+<span class="hljs-comment"># Check ArgoCD sync status (should be &quot;Synced&quot;)</span>
+argocd app get web-app
+
+<span class="hljs-comment"># Check OptiPod status</span>
+kubectl describe optimizationpolicy production-optimizer -n production</code></pre>
+          <p>Expected output shows both managers:</p>
+          <pre><code class="hljs language-yaml"><span class="hljs-attr">managedFields:</span>
+<span class="hljs-bullet">-</span> <span class="hljs-attr">manager:</span> <span class="hljs-string">argocd</span>
+  <span class="hljs-attr">operation:</span> <span class="hljs-string">Apply</span>
+  <span class="hljs-attr">fieldsV1:</span>
+    <span class="hljs-attr">f:spec:</span>
+      <span class="hljs-attr">f:replicas:</span> {}
+      <span class="hljs-attr">f:template:</span>
+        <span class="hljs-attr">f:spec:</span>
+          <span class="hljs-attr">f:containers:</span>
+            <span class="hljs-string">k:{&quot;name&quot;:&quot;nginx&quot;}:</span>
+              <span class="hljs-attr">f:image:</span> {}
+              <span class="hljs-attr">f:ports:</span> {}
+
+<span class="hljs-bullet">-</span> <span class="hljs-attr">manager:</span> <span class="hljs-string">optipod</span>
+  <span class="hljs-attr">operation:</span> <span class="hljs-string">Apply</span>
+  <span class="hljs-attr">fieldsV1:</span>
+    <span class="hljs-attr">f:spec:</span>
+      <span class="hljs-attr">f:template:</span>
+        <span class="hljs-attr">f:spec:</span>
+          <span class="hljs-attr">f:containers:</span>
+            <span class="hljs-string">k:{&quot;name&quot;:&quot;nginx&quot;}:</span>
+              <span class="hljs-attr">f:resources:</span>
+                <span class="hljs-attr">f:requests:</span>
+                  <span class="hljs-attr">f:cpu:</span> {}
+                  <span class="hljs-attr">f:memory:</span> {}</code></pre>
+          <h2 id="verification-and-testing">Verification and Testing</h2>
+          <h3 id="1-verify-no-sync-conflicts">1. Verify No Sync Conflicts</h3>
+          <p>After OptiPod optimizes resources, ArgoCD should remain synced:</p>
+          <pre><code class="hljs language-bash"><span class="hljs-comment"># Check ArgoCD status</span>
+argocd app get web-app
+
+<span class="hljs-comment"># Should show:</span>
+<span class="hljs-comment"># Sync Status:        Synced</span>
+<span class="hljs-comment"># Health Status:      Healthy</span></code></pre>
+          <h3 id="2-test-argocd-sync">2. Test ArgoCD Sync</h3>
+          <p>Trigger an ArgoCD sync and verify OptiPod&#39;s changes are preserved:</p>
+          <pre><code class="hljs language-bash"><span class="hljs-comment"># Sync the application</span>
+argocd app <span class="hljs-built_in">sync</span> web-app
+
+<span class="hljs-comment"># Check that resource requests are still optimized</span>
+kubectl get deployment web-app -n production -o jsonpath=<span class="hljs-string">&#x27;{.spec.template.spec.containers[0].resources}&#x27;</span></code></pre>
+          <h3 id="3-test-optipod-updates">3. Test OptiPod Updates</h3>
+          <p>Update the image in Git and verify OptiPod doesn&#39;t interfere:</p>
+          <pre><code class="hljs language-bash"><span class="hljs-comment"># Update image in Git</span>
+<span class="hljs-comment"># ArgoCD will sync the new image</span>
+
+<span class="hljs-comment"># Verify OptiPod still manages resources</span>
+kubectl describe optimizationpolicy production-optimizer -n production</code></pre>
+          <h3 id="4-inspect-field-ownership">4. Inspect Field Ownership</h3>
+          <p>View detailed field ownership:</p>
+          <pre><code class="hljs language-bash">kubectl get deployment web-app -n production -o json | jq <span class="hljs-string">&#x27;.metadata.managedFields&#x27;</span></code></pre>
+          <h2 id="troubleshooting">Troubleshooting</h2>
+          <h3 id="argocd-shows-outofsync">ArgoCD Shows OutOfSync</h3>
+          <p><strong>Symptom</strong>: ArgoCD marks the application as OutOfSync after OptiPod updates resources.</p>
+          <p><strong>Solution</strong>:</p>
+          <ol>
+          <li><strong>Upgrade ArgoCD</strong>: If using ArgoCD &lt; 2.5, upgrade to 2.5+ for automatic SSA support</li>
+          <li><strong>Add ignoreDifferences</strong>: Configure ArgoCD to ignore OptipPod-managed fields (see Option 2 above)</li>
+          <li><strong>Verify SSA is enabled</strong>: Check that <code>useServerSideApply: true</code> in your OptimizationPolicy</li>
+          </ol>
+          <h3 id="optipod-changes-reverted-by-argocd">OptiPod Changes Reverted by ArgoCD</h3>
+          <p><strong>Symptom</strong>: OptiPod updates resources, but ArgoCD reverts them during sync.</p>
+          <p><strong>Solution</strong>:</p>
+          <ol>
+          <li><strong>Check ArgoCD version</strong>: Ensure ArgoCD 2.5+ or configure ignoreDifferences</li>
+          <li><strong>Verify field ownership</strong>: Check managedFields to ensure OptiPod owns resource fields</li>
+          <li><strong>Disable auto-sync temporarily</strong>: Test manual sync to isolate the issue</li>
+          </ol>
+          <pre><code class="hljs language-bash"><span class="hljs-comment"># Check if OptiPod owns resource fields</span>
+kubectl get deployment web-app -n production -o yaml | grep -A 50 managedFields | grep -A 10 optipod</code></pre>
+          <h3 id="field-ownership-conflicts">Field Ownership Conflicts</h3>
+          <p><strong>Symptom</strong>: OptiPod logs show SSA conflicts or errors.</p>
+          <p><strong>Solution</strong>:</p>
+          <ol>
+          <li><strong>Check Force flag</strong>: OptiPod uses <code>Force: true</code> by default to take ownership</li>
+          <li><strong>Review managedFields</strong>: Identify which manager currently owns the fields</li>
+          <li><strong>Clear conflicting ownership</strong>: If needed, manually remove the conflicting manager&#39;s ownership</li>
+          </ol>
+          <pre><code class="hljs language-bash"><span class="hljs-comment"># View OptiPod logs</span>
+kubectl logs -n optipod-system deployment/optipod-controller-manager
+
+<span class="hljs-comment"># Check for SSA conflict events</span>
+kubectl get events -n production --field-selector reason=SSAConflict</code></pre>
+          <h3 id="disabling-ssa">Disabling SSA</h3>
+          <p>If you need to disable SSA (not recommended):</p>
+          <pre><code class="hljs language-yaml"><span class="hljs-attr">apiVersion:</span> <span class="hljs-string">optipod.optipod.io/v1alpha1</span>
+<span class="hljs-attr">kind:</span> <span class="hljs-string">OptimizationPolicy</span>
+<span class="hljs-attr">metadata:</span>
+  <span class="hljs-attr">name:</span> <span class="hljs-string">production-optimizer</span>
+<span class="hljs-attr">spec:</span>
+  <span class="hljs-comment"># ... other fields ...</span>
+  <span class="hljs-attr">updateStrategy:</span>
+    <span class="hljs-attr">useServerSideApply:</span> <span class="hljs-literal">false</span>  <span class="hljs-comment"># Use Strategic Merge Patch instead</span></code></pre>
+          <p><strong>Note</strong>: Disabling SSA will cause sync conflicts with ArgoCD.</p>
+          <h2 id="best-practices">Best Practices</h2>
+          <ol>
+          <li><strong>Use SSA by default</strong>: Keep <code>useServerSideApply: true</code> for ArgoCD compatibility</li>
+          <li><strong>Start with Recommend mode</strong>: Test OptiPod in Recommend mode before enabling Auto</li>
+          <li><strong>Monitor field ownership</strong>: Regularly check managedFields to ensure proper ownership</li>
+          <li><strong>Use ArgoCD 2.5+</strong>: Upgrade to the latest ArgoCD for best SSA support</li>
+          <li><strong>Label workloads explicitly</strong>: Use specific labels to control which workloads OptiPod optimizes</li>
+          <li><strong>Set appropriate bounds</strong>: Configure min/max bounds to prevent unexpected resource changes</li>
+          <li><strong>Monitor both tools</strong>: Watch logs and events from both ArgoCD and OptiPod</li>
+          </ol>
+          <h2 id="example-complete-setup">Example: Complete Setup</h2>
+          <p>Here&#39;s a complete example with ArgoCD and OptiPod:</p>
+          <h3 id="1-application-manifest-in-git">1. Application Manifest (in Git)</h3>
+          <pre><code class="hljs language-yaml"><span class="hljs-comment"># k8s/deployment.yaml</span>
+<span class="hljs-attr">apiVersion:</span> <span class="hljs-string">apps/v1</span>
+<span class="hljs-attr">kind:</span> <span class="hljs-string">Deployment</span>
+<span class="hljs-attr">metadata:</span>
+  <span class="hljs-attr">name:</span> <span class="hljs-string">api-server</span>
+  <span class="hljs-attr">labels:</span>
+    <span class="hljs-attr">app:</span> <span class="hljs-string">api-server</span>
+    <span class="hljs-attr">optimize:</span> <span class="hljs-string">&quot;true&quot;</span>
+<span class="hljs-attr">spec:</span>
+  <span class="hljs-attr">replicas:</span> <span class="hljs-number">5</span>
+  <span class="hljs-attr">selector:</span>
+    <span class="hljs-attr">matchLabels:</span>
+      <span class="hljs-attr">app:</span> <span class="hljs-string">api-server</span>
+  <span class="hljs-attr">template:</span>
+    <span class="hljs-attr">metadata:</span>
+      <span class="hljs-attr">labels:</span>
+        <span class="hljs-attr">app:</span> <span class="hljs-string">api-server</span>
+        <span class="hljs-attr">optimize:</span> <span class="hljs-string">&quot;true&quot;</span>
+    <span class="hljs-attr">spec:</span>
+      <span class="hljs-attr">containers:</span>
+      <span class="hljs-bullet">-</span> <span class="hljs-attr">name:</span> <span class="hljs-string">api</span>
+        <span class="hljs-attr">image:</span> <span class="hljs-string">myorg/api-server:v1.2.3</span>
+        <span class="hljs-attr">ports:</span>
+        <span class="hljs-bullet">-</span> <span class="hljs-attr">containerPort:</span> <span class="hljs-number">8080</span>
+        <span class="hljs-attr">env:</span>
+        <span class="hljs-bullet">-</span> <span class="hljs-attr">name:</span> <span class="hljs-string">LOG_LEVEL</span>
+          <span class="hljs-attr">value:</span> <span class="hljs-string">&quot;info&quot;</span>
+        <span class="hljs-attr">resources:</span>
+          <span class="hljs-attr">requests:</span>
+            <span class="hljs-attr">cpu:</span> <span class="hljs-string">&quot;200m&quot;</span>
+            <span class="hljs-attr">memory:</span> <span class="hljs-string">&quot;256Mi&quot;</span></code></pre>
+          <h3 id="2-argocd-application">2. ArgoCD Application</h3>
+          <pre><code class="hljs language-yaml"><span class="hljs-attr">apiVersion:</span> <span class="hljs-string">argoproj.io/v1alpha1</span>
+<span class="hljs-attr">kind:</span> <span class="hljs-string">Application</span>
+<span class="hljs-attr">metadata:</span>
+  <span class="hljs-attr">name:</span> <span class="hljs-string">api-server</span>
+  <span class="hljs-attr">namespace:</span> <span class="hljs-string">argocd</span>
+<span class="hljs-attr">spec:</span>
+  <span class="hljs-attr">project:</span> <span class="hljs-string">default</span>
+  <span class="hljs-attr">source:</span>
+    <span class="hljs-attr">repoURL:</span> <span class="hljs-string">https://github.com/myorg/api-server</span>
+    <span class="hljs-attr">targetRevision:</span> <span class="hljs-string">main</span>
+    <span class="hljs-attr">path:</span> <span class="hljs-string">k8s</span>
+  <span class="hljs-attr">destination:</span>
+    <span class="hljs-attr">server:</span> <span class="hljs-string">https://kubernetes.default.svc</span>
+    <span class="hljs-attr">namespace:</span> <span class="hljs-string">production</span>
+  <span class="hljs-attr">syncPolicy:</span>
+    <span class="hljs-attr">automated:</span>
+      <span class="hljs-attr">prune:</span> <span class="hljs-literal">true</span>
+      <span class="hljs-attr">selfHeal:</span> <span class="hljs-literal">true</span>
+    <span class="hljs-attr">syncOptions:</span>
+    <span class="hljs-bullet">-</span> <span class="hljs-string">ServerSideApply=true</span>  <span class="hljs-comment"># Optional but recommended</span></code></pre>
+          <h3 id="3-optipod-policy">3. OptiPod Policy</h3>
+          <pre><code class="hljs language-yaml"><span class="hljs-attr">apiVersion:</span> <span class="hljs-string">optipod.optipod.io/v1alpha1</span>
+<span class="hljs-attr">kind:</span> <span class="hljs-string">OptimizationPolicy</span>
+<span class="hljs-attr">metadata:</span>
+  <span class="hljs-attr">name:</span> <span class="hljs-string">api-optimizer</span>
+  <span class="hljs-attr">namespace:</span> <span class="hljs-string">production</span>
+<span class="hljs-attr">spec:</span>
+  <span class="hljs-attr">mode:</span> <span class="hljs-string">Auto</span>
+
+  <span class="hljs-attr">selector:</span>
+    <span class="hljs-attr">workloadSelector:</span>
+      <span class="hljs-attr">matchLabels:</span>
+        <span class="hljs-attr">optimize:</span> <span class="hljs-string">&quot;true&quot;</span>
+
+  <span class="hljs-attr">metricsConfig:</span>
+    <span class="hljs-attr">provider:</span> <span class="hljs-string">prometheus</span>
+    <span class="hljs-attr">rollingWindow:</span> <span class="hljs-string">24h</span>
+    <span class="hljs-attr">percentile:</span> <span class="hljs-string">P90</span>
+    <span class="hljs-attr">safetyFactor:</span> <span class="hljs-number">1.2</span>
+
+  <span class="hljs-attr">resourceBounds:</span>
+    <span class="hljs-attr">cpu:</span>
+      <span class="hljs-attr">min:</span> <span class="hljs-string">&quot;100m&quot;</span>
+      <span class="hljs-attr">max:</span> <span class="hljs-string">&quot;2000m&quot;</span>
+    <span class="hljs-attr">memory:</span>
+      <span class="hljs-attr">min:</span> <span class="hljs-string">&quot;128Mi&quot;</span>
+      <span class="hljs-attr">max:</span> <span class="hljs-string">&quot;4Gi&quot;</span>
+
+  <span class="hljs-attr">updateStrategy:</span>
+    <span class="hljs-attr">allowInPlaceResize:</span> <span class="hljs-literal">true</span>
+    <span class="hljs-attr">allowRecreate:</span> <span class="hljs-literal">false</span>
+    <span class="hljs-attr">updateRequestsOnly:</span> <span class="hljs-literal">true</span>
+    <span class="hljs-attr">useServerSideApply:</span> <span class="hljs-literal">true</span>
+
+  <span class="hljs-attr">reconciliationInterval:</span> <span class="hljs-string">5m</span></code></pre>
+          <h3 id="4-deploy-everything">4. Deploy Everything</h3>
+          <pre><code class="hljs language-bash"><span class="hljs-comment"># Deploy via ArgoCD</span>
+argocd app create api-server \
+  --repo https://github.com/myorg/api-server \
+  --path k8s \
+  --dest-server https://kubernetes.default.svc \
+  --dest-namespace production \
+  --sync-policy automated
+
+<span class="hljs-comment"># Create OptiPod policy</span>
+kubectl apply -f optipod-policy.yaml
+
+<span class="hljs-comment"># Verify both are working</span>
+argocd app get api-server
+kubectl describe optimizationpolicy api-optimizer -n production</code></pre>
+          <h2 id="additional-resources">Additional Resources</h2>
+          <ul>
+          <li><a href="https://kubernetes.io/docs/reference/using-api/server-side-apply/">Kubernetes Server-Side Apply Documentation</a></li>
+          <li><a href="https://argo-cd.readthedocs.io/en/stable/user-guide/sync-options/#server-side-apply">ArgoCD Server-Side Apply Support</a></li>
+          <li><a href="../crd-reference/">OptiPod CRD Reference</a></li>
+          <li><a href="../examples/">OptiPod Examples</a></li>
+          </ul>
+          <h2 id="support">Support</h2>
+          <p>If you encounter issues with ArgoCD integration:</p>
+          <ol>
+          <li>Check OptiPod logs: <code>kubectl logs -n optipod-system deployment/optipod-controller-manager</code></li>
+          <li>Check ArgoCD application status: <code>argocd app get &lt;app-name&gt;</code></li>
+          <li>Inspect managedFields: <code>kubectl get deployment &lt;name&gt; -o yaml | grep -A 50 managedFields</code></li>
+          <li>Review events: <code>kubectl get events -n &lt;namespace&gt;</code></li>
+          <li>Open an issue: <a href="https://github.com/Sagart-cactus/optipod/issues">GitHub Issues</a></li>
+          </ol>
+        </article>
+      </main>
+    </div>
+
+    <footer class="docs-footer">
+      <div class="docs-container">
+        <div>Found an issue? Open a ticket on <a href="https://github.com/Sagart-cactus/optipod/issues" target="_blank" rel="noreferrer">GitHub Issues</a>.</div>
+      </div>
+    </footer>
+  </body>
+</html>
