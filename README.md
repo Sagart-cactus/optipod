@@ -237,7 +237,7 @@ make docker-build docker-push IMG=your-registry/optipod:tag
 
 ## Contributing
 
-Contributions are welcome! Please read our [Contributing Guide](docs/CONTRIBUTING.md) for details on our code of
+Contributions are welcome! Please read our [Contributing Guide](CONTRIBUTING.md) for details on our code of
 conduct, development setup, and the process for submitting pull requests.
 
 [ci-badge]: https://github.com/Sagart-cactus/optipod/actions/workflows/ci.yml/badge.svg
