@@ -948,7 +948,7 @@ kubectl get optimizationpolicy <name> -o jsonpath='{.status.workloadsDiscovered}
 kubectl logs -n optipod-system deployment/optipod-controller-manager --since=10m
 
 # Check that OptiPod wrote recommendation annotations to a workload
-kubectl get deployment <workload> -n <namespace> -o yaml | grep -E 'optipod.io/(managed|policy|last-|recommendation)'
+kubectl get deployment <workload> -n <namespace> -o yaml | grep -E 'optipod.io/(managed|policy|policy-uid|last-|recommendation)'
 ```
 
 #### Common Causes

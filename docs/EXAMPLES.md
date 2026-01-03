@@ -55,6 +55,10 @@ spec:
 
 A comprehensive policy suitable for production workloads:
 
+> Tip: If you plan to use `mode: Auto`, start with `mode: Recommend` first and generate an **impact report** to estimate the replica-weighted change (total CPU/memory request deltas across pods) before opting in.
+>
+> See: [Impact Report](IMPACT_REPORT.md)
+
 ```yaml
 apiVersion: optipod.optipod.io/v1alpha1
 kind: OptimizationPolicy
