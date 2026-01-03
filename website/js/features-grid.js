@@ -195,9 +195,9 @@ class FeaturesGrid {
       `<div class="feature-detail-content">
         <h6>Available modes:</h6>
         <ul>
-          <li><strong>Observe:</strong> Monitor usage without any changes</li>
           <li><strong>Recommend:</strong> Generate recommendations for review</li>
-          <li><strong>Auto:</strong> Apply changes automatically with safety constraints</li>
+          <li><strong>Auto:</strong> Apply changes automatically with policy-driven safety</li>
+          <li><strong>Disabled:</strong> Stop processing workloads under the policy</li>
         </ul>
         <p><strong>Result:</strong> Adopt optimization at your own pace and comfort level.</p>
       </div>`,

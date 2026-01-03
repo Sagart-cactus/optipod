@@ -13,7 +13,7 @@
     <meta name="title" content="OptiPod — Open-Source Kubernetes Resource Optimization">
     <meta
       name="description"
-      content="OptiPod is an open-source Kubernetes-native operator that right-sizes CPU and memory using real workload usage — GitOps-safe, explainable, and safety-first."
+      content="OptiPod is an open-source Kubernetes operator that makes explainable recommendations for CPU/memory requests and limits, and applies them only when you opt in — GitOps-safe with Server-Side Apply (SSA)."
     >
     <meta name="keywords" content="kubernetes, resource optimization, gitops, cpu optimization, memory optimization, kubernetes operator, vpa alternative, kubernetes cost optimization, platform engineering, sre">
     <meta name="author" content="OptipOd Team">
@@ -31,7 +31,7 @@
     <meta property="og:type" content="website">
     <meta property="og:url" content="https://optipod.github.io/">
     <meta property="og:title" content="OptiPod — Open-Source Kubernetes Resource Optimization">
-    <meta property="og:description" content="OptiPod is an open-source Kubernetes-native operator that right-sizes CPU and memory using real workload usage — GitOps-safe, explainable, and safety-first.">
+    <meta property="og:description" content="OptiPod makes explainable recommendations for CPU/memory requests and limits, and applies them only when you opt in — GitOps-safe with Server-Side Apply (SSA).">
     <meta property="og:image" content="https://optipod.github.io/images/optipod-social-preview.svg">
     <meta property="og:image:width" content="1200">
     <meta property="og:image:height" content="630">
@@ -43,7 +43,7 @@
     <meta property="twitter:card" content="summary_large_image">
     <meta property="twitter:url" content="https://optipod.github.io/">
     <meta property="twitter:title" content="OptiPod — Open-Source Kubernetes Resource Optimization">
-    <meta property="twitter:description" content="OptiPod is an open-source Kubernetes-native operator that right-sizes CPU and memory using real workload usage — GitOps-safe, explainable, and safety-first.">
+    <meta property="twitter:description" content="OptiPod makes explainable recommendations for CPU/memory requests and limits, and applies them only when you opt in — GitOps-safe with Server-Side Apply (SSA).">
     <meta property="twitter:image" content="https://optipod.github.io/images/optipod-social-preview.svg">
     <meta property="twitter:image:alt" content="OptiPod - Safe, GitOps-friendly Kubernetes resource optimization">
     <meta property="twitter:creator" content="@optipod">
@@ -60,7 +60,7 @@
       "@context": "https://schema.org",
       "@type": "SoftwareApplication",
       "name": "OptiPod",
-      "description": "OptiPod is an open-source Kubernetes-native operator that right-sizes CPU and memory using real workload usage — GitOps-safe, explainable, and safety-first.",
+      "description": "OptiPod makes explainable recommendations for CPU/memory requests and limits, and applies them only when you opt in — GitOps-safe with Server-Side Apply (SSA).",
       "url": "https://optipod.github.io/",
       "downloadUrl": "https://github.com/Sagart-cactus/optipod/releases",
       "applicationCategory": "DeveloperApplication",
@@ -124,7 +124,7 @@
       "@type": "WebSite",
       "name": "OptiPod",
       "url": "https://optipod.github.io/",
-      "description": "OptiPod is an open-source Kubernetes-native operator that right-sizes CPU and memory using real workload usage — GitOps-safe, explainable, and safety-first.",
+      "description": "OptiPod makes explainable recommendations for CPU/memory requests and limits, and applies them only when you opt in — GitOps-safe with Server-Side Apply (SSA).",
       "publisher": {
         "@type": "Organization",
         "name": "OptipOd Team"
@@ -1262,11 +1262,11 @@
           <div class="hero-grid">
             <div>
               <span class="tag" role="text" aria-label="Product category">Kubernetes Operator · GitOps-safe by design</span>
-              <h1 id="hero-heading" class="reveal">Safe, GitOps-friendly Kubernetes resource optimization</h1>
+              <h1 id="hero-heading" class="reveal">Safe by default Kubernetes resource recommendations</h1>
               <p class="reveal delay-1">
-                OptiPod is a Kubernetes-native operator that right-sizes CPU and
-                memory requests and limits using real workload usage — without
-                breaking GitOps or risking production stability.
+                OptiPod is a Kubernetes operator that makes explainable recommendations
+                for CPU/memory requests and limits. It applies changes only when you
+                opt in, and stays GitOps-safe with Server-Side Apply (SSA).
               </p>
               <div class="cta-row reveal delay-2" role="group" aria-label="Primary actions">
                 <a class="btn btn-primary" href="https://github.com/Sagart-cactus/optipod" target="_blank"
@@ -1275,16 +1275,16 @@
                    aria-label="Read the design principles section">Read the Design Principles</a>
               </div>
               <div class="trust reveal delay-3" role="text">
-                Recommend-only by default. No black-box automation.
+                Safe by default: start in Recommend mode. Nothing mutates without opt-in.
               </div>
             </div>
             <aside class="hero-card reveal delay-2" aria-labelledby="hero-card-heading">
               <h2 id="hero-card-heading">Why teams adopt OptiPod</h2>
               <ul>
                 <li>Field-level ownership keeps GitOps workflows intact.</li>
-                <li>Every recommendation is explainable and auditable.</li>
-                <li>Safety constraints prevent disruptive resizes.</li>
-                <li>Start in observe or recommend mode — no surprises.</li>
+                <li>Explainable recommendations you can review.</li>
+                <li>Policy-driven safety prevents disruptive changes.</li>
+                <li>Start in Recommend mode, then enable Auto when you’re ready.</li>
               </ul>
             </aside>
           </div>
@@ -1326,8 +1326,8 @@
             <h2 id="why-heading" class="section-title">Designed for trust, not surprises</h2>
             <p class="section-subtitle">
               OptiPod takes a fundamentally different approach to resource
-              optimization, focused on safety, explainability, and GitOps-first
-              workflows.
+              optimization: safe by default, GitOps-safe with Server-Side Apply (SSA),
+              and built around explainable recommendations and policy-driven safety.
             </p>
           <div class="why-grid">
             <article class="why-card" aria-labelledby="why-gitops-heading">
@@ -1338,7 +1338,7 @@
               </div>
               <div class="why-copy">
                 <h3 id="why-gitops-heading">GitOps-safe by design</h3>
-                <p>Uses Kubernetes Server-Side Apply with field-level ownership and manages only CPU and memory requests/limits.</p>
+                <p>Uses Kubernetes Server-Side Apply (SSA) with field-level ownership and manages only CPU and memory requests/limits.</p>
               </div>
             </article>
             <article class="why-card" aria-labelledby="why-explainable-heading">
@@ -1348,7 +1348,7 @@
                 </svg>
               </div>
               <div class="why-copy">
-                <h3 id="why-explainable-heading">Explainable decisions</h3>
+                <h3 id="why-explainable-heading">Explainable recommendations</h3>
                 <p>Every recommendation includes usage data and margins, with rationale visible before any action is taken.</p>
               </div>
             </article>
@@ -1359,8 +1359,8 @@
                 </svg>
               </div>
               <div class="why-copy">
-                <h3 id="why-safety-heading">Safety-first automation</h3>
-                <p>Conservative defaults, configurable bounds, controlled change rates, and workload type filtering for gradual adoption.</p>
+                <h3 id="why-safety-heading">Policy-driven safety</h3>
+                <p>Conservative defaults, configurable bounds, controlled change rates, and memory safeguards.</p>
               </div>
             </article>
             <article class="why-card" aria-labelledby="why-gradual-heading">
@@ -1371,7 +1371,7 @@
               </div>
               <div class="why-copy">
                 <h3 id="why-gradual-heading">Adopt gradually</h3>
-                <p>Start in observe or recommend mode, then enable automatic application only when you’re ready.</p>
+                <p>Start in Recommend mode, then enable Auto only when you’re ready.</p>
               </div>
             </article>
           </div>
@@ -1383,10 +1383,10 @@
             <div class="trust-box">
               <h2 id="trust-heading" class="section-title">What OptiPod Will Not Do</h2>
               <ul style="margin: 0; padding-left: 18px; color: var(--ink-muted); line-height: 1.7">
-              <li>OptiPod will never mutate workloads without explicit configuration.</li>
-              <li>OptiPod will never override GitOps ownership.</li>
-              <li>OptiPod will never blindly reduce memory.</li>
-              <li>All changes are observable, auditable, and reversible.</li>
+              <li>Will not mutate workloads unless explicitly configured</li>
+              <li>Will not override GitOps ownership</li>
+              <li>Will not blindly reduce memory</li>
+              <li>Will not require a SaaS backend</li>
             </ul>
           </div>
         </div>
@@ -1405,9 +1405,9 @@
               <li>Discovers workloads matching your policy selectors and workload type filters.</li>
               <li>Collects real-time and historical resource usage.</li>
               <li>Evaluates usage using strategies like P90, P95, P99 percentiles.</li>
-              <li>Generates recommendations with safety constraints applied.</li>
-              <li>Optionally applies changes using Server-Side Apply.</li>
-              <li>Every action is observable, auditable, and reversible.</li>
+              <li>Generates explainable recommendations with policy-driven safety applied.</li>
+              <li>Optionally applies changes using Server-Side Apply (SSA) when you opt in.</li>
+              <li>Records actions for auditing and review.</li>
             </ol>
             <p class="section-subtitle" style="margin-top: 16px">
               No external SaaS dependency. All enforcement happens inside your
@@ -1438,8 +1438,8 @@
               <div>
                 <h3>Automatic Resource Optimization</h3>
                 <p>
-                  Continuously right-sizes CPU and memory requests/limits based on
-                  observed usage patterns.
+                  Continuously computes recommendations to right-size CPU and memory
+                  - applies changes only when you opt in.
                 </p>
               </div>
             </article>
@@ -1466,7 +1466,7 @@
               </div>
               <div>
                 <h3>Multiple Operational Modes</h3>
-                <p>Observe, Recommend, or Auto — adopt automation at your pace.</p>
+                <p>Recommend, Auto, or Disabled — adopt automation at your pace.</p>
               </div>
             </article>
             <article class="capability-card">
@@ -1582,9 +1582,10 @@
               <p class="comparison-label">COMPARISON</p>
               <h2 id="comparison-heading" class="comparison-title">Why choose <strong>OptiPod</strong> over VPA?</h2>
               <p class="comparison-description">
-                OptiPod provides comprehensive GitOps-safe resource optimization, enabling faster and more complete
-                remediation, providing more ways to control the impact of resource changes, protecting against
-                production disruption, and addressing other major Kubernetes optimization risks.
+                OptiPod is built for GitOps-safe, Recommend mode first workflows with policy-driven safety and clear explainability.
+              </p>
+              <p class="comparison-description" style="margin-top: 12px">
+                Legend: ✅ supported, ❌ not supported, ⚠️ supported with caveats.
               </p>
             </div>
 
@@ -1609,8 +1610,8 @@
                     </svg>
                   </div>
                   <div class="feature-content">
-                    <h4>GitOps-safe</h4>
-                    <p>Uses Server-Side Apply for field-level ownership, coexists with ArgoCD/Flux.</p>
+                    <h4>GitOps-safe (Server-Side Apply (SSA))</h4>
+                    <p>Uses Server-Side Apply (SSA) for field-level ownership, coexists with ArgoCD/Flux.</p>
                     <details class="comparison-details">
                       <summary class="comparison-toggle">Show details</summary>
                       <div class="feature-details" id="comparison-detail-1">
@@ -1625,16 +1626,16 @@
                   </div>
                 </div>
                 <div class="status-cell">
-                  <div class="status-indicator status-yes">
-                    <svg viewBox="0 0 20 20" width="20" height="20">
+                  <div class="status-indicator status-yes" role="img" aria-label="Supported">
+                    <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
                       <path d="M7.8 14.2L3.6 10l1.4-1.4 2.8 2.8 6.8-6.8 1.4 1.4z" fill="currentColor"/>
                     </svg>
                   </div>
                 </div>
                 <div class="status-cell">
-                  <div class="status-indicator status-no">
-                    <svg viewBox="0 0 20 20" width="20" height="20">
-                      <path d="M5 5l10 10m0-10L5 15" stroke="currentColor" stroke-width="2" fill="none"/>
+                  <div class="status-indicator status-no" role="img" aria-label="Not supported">
+                    <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+                      <path d="M6 6l8 8m0-8l-8 8" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" fill="none"/>
                     </svg>
                   </div>
                 </div>
@@ -1648,33 +1649,35 @@
                     </svg>
                   </div>
                   <div class="feature-content">
-                    <h4>Recommend-Only Mode</h4>
-                    <p>Clear progression: Observe → Recommend → Auto with safety constraints.</p>
+                    <h4>Safe by default (Recommend mode)</h4>
+                    <p>Clear separation: Recommend (no mutations) → Auto (opt-in) with safety constraints.</p>
                     <details class="comparison-details">
                       <summary class="comparison-toggle">Show details</summary>
                       <div class="feature-details" id="comparison-detail-2">
                       <div class="detail-section">
-                        <strong>OptiPod:</strong> Observe (monitor usage), Recommend (generate recommendations), Auto (apply with safety constraints). Clear progression path for adoption.
+                        <strong>OptiPod:</strong> Recommend mode records recommendations for review. Auto applies changes only when you explicitly opt in.
                       </div>
                       <div class="detail-section">
-                        <strong>VPA:</strong> Recommendations available but mixed with mutation, less clear separation of concerns, harder to adopt gradually.
+                        <strong>VPA:</strong> Recommendation-only usage is possible, but adoption can be less predictable in GitOps workflows depending on configuration.
                       </div>
                       </div>
                     </details>
                   </div>
                 </div>
                 <div class="status-cell">
-                  <div class="status-indicator status-yes">
-                    <svg viewBox="0 0 20 20" width="20" height="20">
+                  <div class="status-indicator status-yes" role="img" aria-label="Supported">
+                    <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
                       <path d="M7.8 14.2L3.6 10l1.4-1.4 2.8 2.8 6.8-6.8 1.4 1.4z" fill="currentColor"/>
                     </svg>
                   </div>
                 </div>
                 <div class="status-cell">
-                  <div class="status-indicator status-partial">
-                    <span>Partial</span>
-                    <svg viewBox="0 0 16 16" width="16" height="16">
-                      <circle cx="8" cy="8" r="3" fill="currentColor"/>
+                  <div class="status-indicator status-partial" role="img" aria-label="Supported with caveats">
+                    <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+                      <path d="M10 2.2L18.4 17H1.6L10 2.2z" fill="currentColor" opacity="0.18"/>
+                      <path d="M10 7v5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                      <circle cx="10" cy="14.8" r="1.1" fill="currentColor"/>
+                      <path d="M10 2.2L18.4 17H1.6L10 2.2z" stroke="currentColor" stroke-width="1.2" fill="none" opacity="0.7"/>
                     </svg>
                   </div>
                 </div>
@@ -1688,7 +1691,7 @@
                     </svg>
                   </div>
                   <div class="feature-content">
-                    <h4>Explainable Decisions</h4>
+                    <h4>Explainable recommendations</h4>
                     <p>Shows usage data, percentiles, safety margins, and recommendation rationale.</p>
                     <details class="comparison-details">
                       <summary class="comparison-toggle">Show details</summary>
@@ -1697,22 +1700,27 @@
                         <strong>OptiPod:</strong> Shows actual usage data and percentiles, explains safety margin calculations, documents bound enforcement rationale, provides historical recommendation tracking.
                       </div>
                       <div class="detail-section">
-                        <strong>VPA:</strong> Limited visibility into calculation methods, difficult to understand recommendation rationale, hard to debug unexpected recommendations.
+                        <strong>VPA:</strong> Provides recommendations, but the rationale and rollout behavior can be harder to reason about depending on configuration.
                       </div>
                       </div>
                     </details>
                   </div>
                 </div>
                 <div class="status-cell">
-                  <div class="status-indicator status-yes">
-                    <svg viewBox="0 0 20 20" width="20" height="20">
+                  <div class="status-indicator status-yes" role="img" aria-label="Supported">
+                    <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
                       <path d="M7.8 14.2L3.6 10l1.4-1.4 2.8 2.8 6.8-6.8 1.4 1.4z" fill="currentColor"/>
                     </svg>
                   </div>
                 </div>
                 <div class="status-cell">
-                  <div class="status-indicator status-no">
-                    <span>—</span>
+                  <div class="status-indicator status-partial" role="img" aria-label="Supported with caveats">
+                    <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+                      <path d="M10 2.2L18.4 17H1.6L10 2.2z" fill="currentColor" opacity="0.18"/>
+                      <path d="M10 7v5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                      <circle cx="10" cy="14.8" r="1.1" fill="currentColor"/>
+                      <path d="M10 2.2L18.4 17H1.6L10 2.2z" stroke="currentColor" stroke-width="1.2" fill="none" opacity="0.7"/>
+                    </svg>
                   </div>
                 </div>
               </div>
@@ -1725,7 +1733,7 @@
                     </svg>
                   </div>
                   <div class="feature-content">
-                    <h4>Policy-Driven Safety</h4>
+                    <h4>Policy-driven safety</h4>
                     <p>Configurable bounds, safety margins, change-rate limits, memory protection.</p>
                     <details class="comparison-details">
                       <summary class="comparison-toggle">Show details</summary>
@@ -1741,20 +1749,28 @@
                   </div>
                 </div>
                 <div class="status-cell">
-                  <div class="status-indicator status-yes">
-                    <svg viewBox="0 0 20 20" width="20" height="20">
+                  <div class="status-indicator status-yes" role="img" aria-label="Supported">
+                    <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
                       <path d="M7.8 14.2L3.6 10l1.4-1.4 2.8 2.8 6.8-6.8 1.4 1.4z" fill="currentColor"/>
                     </svg>
                   </div>
                 </div>
                 <div class="status-cell">
-                  <div class="status-indicator status-no">
-                    <span>—</span>
+                  <div class="status-indicator status-partial" role="img" aria-label="Supported with caveats">
+                    <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+                      <path d="M10 2.2L18.4 17H1.6L10 2.2z" fill="currentColor" opacity="0.18"/>
+                      <path d="M10 7v5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                      <circle cx="10" cy="14.8" r="1.1" fill="currentColor"/>
+                      <path d="M10 2.2L18.4 17H1.6L10 2.2z" stroke="currentColor" stroke-width="1.2" fill="none" opacity="0.7"/>
+                    </svg>
                   </div>
                 </div>
               </div>
 
             </div>
+            <p class="comparison-description" style="margin: 14px auto 0">
+              ⚠️ Typically means you <em>can</em> achieve the outcome, but it’s easier to run into GitOps conflicts and/or less predictable rollouts depending on configuration and workload constraints.
+            </p>
           </div>
         </section>
 
@@ -1778,9 +1794,9 @@
 
       <section id="quickstart" aria-labelledby="quickstart-heading" tabindex="-1">
         <div class="container">
-          <h2 id="quickstart-heading" class="section-title">Start safely in recommend mode</h2>
+          <h2 id="quickstart-heading" class="section-title">Start safely in Recommend mode</h2>
           <p class="section-subtitle">
-            No mutations are applied until you explicitly allow them.
+            In Recommend mode, no resources are changed and no pods are restarted.
           </p>
           <div class="quickstart">
             <article class="quickstart-step" id="quickstart-step-1">
@@ -1804,13 +1820,16 @@
                 <div class="step-number">2</div>
                 <div>
                   <h4>Create a policy</h4>
-                  <p class="step-subtitle">Start in Recommend mode with a Basic or Advanced policy.</p>
+                  <p class="step-subtitle">Start in Recommend mode and review recommendations before opting in to Auto.</p>
                 </div>
               </div>
               <div class="policy-examples">
                 <div class="code-block">
                   <pre><code>apiVersion: optipod.optipod.io/v1alpha1
 kind: OptimizationPolicy
+metadata:
+  name: safe-recommendations
+  namespace: default
 spec:
   mode: Recommend
   selector:
@@ -1835,7 +1854,7 @@ spec:
     updateRequestsOnly: true</code></pre>
                 </div>
               </div>
-              <p class="step-note">Basic is a single selector with conservative bounds. Advanced adds change-rate limits, workload filters, and limit multipliers.</p>
+              <p class="step-note">Safety confirmation: as long as <code>spec.mode: Recommend</code>, OptiPod will not change workload specs.</p>
             </article>
           </div>
         </div>
@@ -1857,6 +1876,11 @@ spec:
                 >See the quick start</a
               >
             </div>
+            <p class="section-subtitle" style="margin-top: 12px">
+              <a href="https://github.com/Sagart-cactus/optipod/blob/main/CONTRIBUTING.md" target="_blank" style="color: var(--accent);">Contributing</a>
+              · <a href="https://github.com/Sagart-cactus/optipod/blob/main/GOVERNANCE.md" target="_blank" style="color: var(--accent);">Governance</a>
+              · <a href="https://github.com/Sagart-cactus/optipod/blob/main/CODE_OF_CONDUCT.md" target="_blank" style="color: var(--accent);">Code of Conduct</a>
+            </p>
           </div>
           <div class="future" aria-labelledby="development-heading">
             <h2 id="development-heading" class="section-title">Current development</h2>
@@ -1884,7 +1908,7 @@ spec:
                 >View the project on GitHub</a
               >
               <a class="btn btn-secondary" href="#quickstart-step-1"
-                >Try it in recommend mode</a
+                >Try it in Recommend mode</a
               >
             </div>
           </div>
@@ -1893,8 +1917,8 @@ spec:
       </main>
 
       <footer class="footer container">
-        OptiPod is an open-source Kubernetes-native operator focused on safe, explainable
-        resource optimization. Licensed under Apache 2.0.
+        OptiPod is an open-source Kubernetes operator focused on safe by default,
+        explainable recommendations, and policy-driven safety. Licensed under Apache 2.0.
       </footer>
     </div>
 
