@@ -119,6 +119,7 @@ development approach with comprehensive testing.
   - Cost savings reporting and dashboards
   - Historical trend analysis
   - Recommendation confidence scoring
+  - Export Prometheus metrics for recommended CPU/memory requests/limits (per workload/container) to enable dashboards showing current vs recommended values (with careful cardinality controls)
 
 ### Q2 2025
 

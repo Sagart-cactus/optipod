@@ -483,6 +483,7 @@ func (wp *WorkloadProcessor) addRecommendationAnnotations(ctx context.Context, w
 		// Add management annotations
 		annotations[optipodv1alpha1.AnnotationManaged] = "true"
 		annotations[optipodv1alpha1.AnnotationPolicy] = policy.Name
+		annotations[optipodv1alpha1.AnnotationPolicyUID] = string(policy.UID)
 		annotations[optipodv1alpha1.AnnotationLastRecommendation] = time.Now().Format(time.RFC3339)
 
 		// Add per-container recommendations (requests)

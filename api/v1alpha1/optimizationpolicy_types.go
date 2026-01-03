@@ -31,6 +31,9 @@ const (
 	// AnnotationPolicy indicates which policy manages this workload
 	AnnotationPolicy = "optipod.io/policy"
 
+	// AnnotationPolicyUID stores the unique identifier of the acting optimization policy
+	AnnotationPolicyUID = "optipod.io/policy-uid"
+
 	// AnnotationLastRecommendation is the timestamp of the last recommendation
 	AnnotationLastRecommendation = "optipod.io/last-recommendation"
 

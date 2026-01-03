@@ -161,6 +161,24 @@ Legend: ✅ supported, ❌ not supported, ⚠️ supported with caveats.
 - Emits Kubernetes events for important actions and failures
 - Writes recommendations and evaluation results to `OptimizationPolicy` status
 
+## Estimate impact before switching to Auto
+
+Before you change a policy to `mode: Auto`, you can generate a report that summarizes the *replica-weighted* impact (total CPU/memory request deltas across pods) based on OptiPod’s recommendations.
+
+This is especially useful to answer: “If I opt in to Auto, what will change, and by how much?”
+
+Generate an HTML report:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Sagart-cactus/optipod/main/optipod-recommendation-report.sh -o optipod-recommendation-report.sh
+chmod +x optipod-recommendation-report.sh
+./optipod-recommendation-report.sh -o html -f optipod-impact.html
+```
+
+The report only includes workloads that have OptiPod recommendation annotations (generated in Recommend mode), and highlights warnings (for example: when `updateRequestsOnly=true` but recommended requests would exceed existing limits).
+
+![OptiPod Impact Report HTML](scripts/report-html.png)
+
 ## Project status
 
 OptiPod has core functionality implemented and tested, and is in active development.
@@ -179,6 +197,7 @@ OptiPod has core functionality implemented and tested, and is in active developm
 - **Documentation**
   - [Installation Guide](docs/INSTALLATION.md)
   - [Example Policies](docs/EXAMPLES.md)
+  - [Impact Report](docs/IMPACT_REPORT.md)
   - [CRD Reference](docs/CRD_REFERENCE.md)
   - [Prometheus Setup](docs/PROMETHEUS_SETUP.md)
   - [ArgoCD Integration](docs/ARGOCD_INTEGRATION.md)
