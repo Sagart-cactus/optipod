@@ -2,6 +2,15 @@
 
 This document outlines the current implementation status and future plans for OptiPod features.
 
+## 🚫 Non-goals
+
+OptiPod is intentionally scoped. The project is **not** trying to be:
+
+- A replacement for HPA/cluster autoscaling (replica counts and node provisioning are out of scope)
+- A full FinOps platform (billing ingestion, cost allocation, chargeback/showback)
+- A generic “mutate anything” controller (OptiPod only targets container `resources` fields)
+- A black-box auto-tuner that changes workloads without guardrails (safety bounds and review-first workflows are core)
+
 ## 🎯 Current Status
 
 OptiPod is in **active development** with core functionality implemented and tested. The project follows a spec-driven
@@ -173,7 +182,7 @@ We welcome contributions to accelerate the roadmap! Priority areas:
 3. **Integration**: Build integrations with popular tools and platforms
 4. **Performance**: Contribute benchmarks and optimization improvements
 
-See [CONTRIBUTING.md](docs/CONTRIBUTING.md) for detailed contribution guidelines.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed contribution guidelines.
 
 ## 📞 Feedback
 
