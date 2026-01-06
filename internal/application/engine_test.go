@@ -1421,11 +1421,6 @@ func createMockEngineWithDynamicClient(dynamicClient dynamic.Interface) *Engine 
 	return engine
 }
 
-// createFakeClient creates a minimal fake client for testing
-func createFakeClient() client.Client {
-	return createFakeClientWithObjects()
-}
-
 // createFakeClientWithObjects creates a fake client with pre-populated objects
 func createFakeClientWithObjects(objects ...client.Object) client.Client {
 	scheme := runtime.NewScheme()
