@@ -1,0 +1,79 @@
+# Kustomization for webhook-enabled deployment
+# This overlay enables the mutating webhook functionality
+
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Base configuration
+resources:
+- ../default
+- ../webhook
+
+# Patches to enable webhook functionality
+patches:
+# Enable webhook in the main controller
+- path: manager_webhook_patch.yaml
+  target:
+    kind: Deployment
+    name: controller-manager
+
+# Configure webhook service references
+replacements:
+# Configure webhook service name in MutatingWebhookConfiguration
+- source:
+    kind: Service
+    version: v1
+    name: optipod-webhook-service
+    fieldPath: metadata.name
+  targets:
+  - select:
+      kind: MutatingAdmissionWebhook
+      name: mutating-webhook-configuration
+    fieldPaths:
+    - webhooks.[name=pod-resource-mutator.optipod.io].clientConfig.service.name
+
+# Configure webhook service namespace in MutatingWebhookConfiguration
+- source:
+    kind: Service
+    version: v1
+    name: optipod-webhook-service
+    fieldPath: metadata.namespace
+  targets:
+  - select:
+      kind: MutatingAdmissionWebhook
+      name: mutating-webhook-configuration
+    fieldPaths:
+    - webhooks.[name=pod-resource-mutator.optipod.io].clientConfig.service.namespace
+
+# Configure certificate injection for webhook
+- source:
+    kind: Certificate
+    group: cert-manager.io
+    version: v1
+    name: serving-cert
+    fieldPath: metadata.namespace
+  targets:
+  - select:
+      kind: MutatingAdmissionWebhook
+    fieldPaths:
+    - metadata.annotations.[cert-manager.io/inject-ca-from]
+    options:
+      delimiter: '/'
+      index: 0
+      create: true
+
+- source:
+    kind: Certificate
+    group: cert-manager.io
+    version: v1
+    name: serving-cert
+    fieldPath: metadata.name
+  targets:
+  - select:
+      kind: MutatingAdmissionWebhook
+    fieldPaths:
+    - metadata.annotations.[cert-manager.io/inject-ca-from]
+    options:
+      delimiter: '/'
+      index: 1
+      create: true

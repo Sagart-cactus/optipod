@@ -20,6 +20,7 @@ import (
 	"crypto/tls"
 	"flag"
 	"os"
+	"path/filepath"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -46,6 +47,7 @@ import (
 	"github.com/optipod/optipod/internal/metrics"
 	"github.com/optipod/optipod/internal/observability"
 	"github.com/optipod/optipod/internal/recommendation"
+	webhookpkg "github.com/optipod/optipod/internal/webhook"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -70,6 +72,8 @@ func main() {
 	var metricsAddr string
 	var metricsCertPath, metricsCertName, metricsCertKey string
 	var webhookCertPath, webhookCertName, webhookCertKey string
+	var webhookServiceName, webhookServiceNamespace string
+	var enableWebhook bool
 	var probeAddr string
 	var secureMetrics bool
 	var enableHTTP2 bool
@@ -82,6 +86,11 @@ func main() {
 	flag.StringVar(&webhookCertPath, "webhook-cert-path", "", "The directory that contains the webhook certificate.")
 	flag.StringVar(&webhookCertName, "webhook-cert-name", "tls.crt", "The name of the webhook certificate file.")
 	flag.StringVar(&webhookCertKey, "webhook-cert-key", "tls.key", "The name of the webhook key file.")
+	flag.StringVar(&webhookServiceName, "webhook-service-name", "optipod-webhook-service",
+		"The name of the webhook service.")
+	flag.StringVar(&webhookServiceNamespace, "webhook-service-namespace", "optipod-system",
+		"The namespace of the webhook service.")
+	flag.BoolVar(&enableWebhook, "enable-webhook", true, "Enable the mutating webhook for pod resource modification.")
 	flag.StringVar(&metricsCertPath, "metrics-cert-path", "",
 		"The directory that contains the metrics server certificate.")
 	flag.StringVar(&metricsCertName, "metrics-cert-name", "tls.crt", "The name of the metrics server certificate file.")
@@ -312,6 +321,54 @@ func main() {
 		setupLog.Error(err, "unable to create controller", "controller", "OptimizationPolicy")
 		os.Exit(1)
 	}
+
+	// Setup webhook lifecycle management if enabled
+	if enableWebhook && len(webhookCertPath) > 0 {
+		setupLog.Info("Setting up webhook lifecycle management",
+			"webhook-cert-path", webhookCertPath,
+			"webhook-service-name", webhookServiceName,
+			"webhook-service-namespace", webhookServiceNamespace)
+
+		// Read CA bundle from certificate file for webhook configuration
+		var caBundle []byte
+		caCertPath := filepath.Join(webhookCertPath, "ca.crt")
+		if _, err := os.Stat(caCertPath); err == nil {
+			caBundle, err = os.ReadFile(caCertPath)
+			if err != nil {
+				setupLog.Error(err, "failed to read CA certificate", "path", caCertPath)
+				os.Exit(1)
+			}
+		} else {
+			setupLog.Info("CA certificate not found, webhook will use service CA", "path", caCertPath)
+		}
+
+		// Create webhook lifecycle manager
+		webhookLifecycle := webhookpkg.NewLifecycleManager(mgr.GetClient(), webhookpkg.LifecycleConfig{
+			WebhookName:       "optipod-mutating-webhook",
+			ServiceName:       webhookServiceName,
+			ServiceNamespace:  webhookServiceNamespace,
+			ServicePath:       "/mutate",
+			CertPath:          filepath.Join(webhookCertPath, webhookCertName),
+			KeyPath:           filepath.Join(webhookCertPath, webhookCertKey),
+			CABundle:          caBundle,
+			FailurePolicy:     nil,  // Use default (Fail)
+			NamespaceSelector: nil,  // Use default (all namespaces)
+			Port:              9443, // Default webhook port
+		})
+
+		// Add webhook lifecycle manager to the manager
+		if err := mgr.Add(webhookLifecycle); err != nil {
+			setupLog.Error(err, "unable to add webhook lifecycle manager")
+			os.Exit(1)
+		}
+
+		setupLog.Info("Webhook lifecycle management configured successfully")
+	} else if enableWebhook {
+		setupLog.Info("Webhook enabled but no certificate path provided, skipping webhook setup")
+	} else {
+		setupLog.Info("Webhook disabled, skipping webhook setup")
+	}
+
 	// +kubebuilder:scaffold:builder
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {

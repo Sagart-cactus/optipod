@@ -272,6 +272,17 @@ func (wp *WorkloadProcessor) ProcessWorkload(
 				Memory: *rec.Memory,
 			}
 
+			// Log the strategy being used for this policy
+			strategy := policy.GetStrategy()
+			log := logf.FromContext(ctx)
+			log.V(1).Info("Applying recommendation with strategy",
+				"workload", fmt.Sprintf("%s/%s", workload.Namespace, workload.Name),
+				"container", rec.Container,
+				"policy", policy.Name,
+				"strategy", strategy,
+				"rolloutStrategy", policy.GetRolloutStrategy(),
+			)
+
 			// Check if we can apply
 			decision, err := wp.applicationEngine.CanApply(ctx, appWorkload, rec.Container, appRec, policy)
 			if err != nil {
@@ -286,7 +297,7 @@ func (wp *WorkloadProcessor) ProcessWorkload(
 				return status, nil
 			}
 
-			// Apply the changes
+			// Apply the changes using strategy-based routing
 			applyResult, err := wp.applicationEngine.Apply(ctx, appWorkload, rec.Container, appRec, policy)
 			if err != nil {
 				status.Status = StatusError
@@ -304,7 +315,7 @@ func (wp *WorkloadProcessor) ProcessWorkload(
 			}
 		}
 
-		// Update status with SSA information
+		// Update status with apply method information
 		if lastApplyResult != nil {
 			status.LastApplyMethod = lastApplyResult.Method
 			status.FieldOwnership = lastApplyResult.FieldOwnership

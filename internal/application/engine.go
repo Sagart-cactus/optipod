@@ -23,11 +23,13 @@ import (
 	"strings"
 	"time"
 
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/discovery"
@@ -38,6 +40,7 @@ import (
 	optipodv1alpha1 "github.com/optipod/optipod/api/v1alpha1"
 	"github.com/optipod/optipod/internal/observability"
 	"github.com/optipod/optipod/internal/recommendation"
+	"github.com/optipod/optipod/internal/webhook"
 )
 
 // Workload kind constants
@@ -100,19 +103,23 @@ type Workload struct {
 
 // Engine handles application of resource recommendations to workloads
 type Engine struct {
-	client          client.Client
-	dynamicClient   dynamic.Interface
-	discoveryClient discovery.DiscoveryInterface
-	dryRun          bool
+	client            client.Client
+	dynamicClient     dynamic.Interface
+	discoveryClient   discovery.DiscoveryInterface
+	dryRun            bool
+	annotationManager *webhook.AnnotationManager
+	rolloutController *webhook.RolloutController
 }
 
 // NewEngine creates a new application engine
 func NewEngine(c client.Client, dynamicClient dynamic.Interface, discoveryClient discovery.DiscoveryInterface, dryRun bool) *Engine {
 	return &Engine{
-		client:          c,
-		dynamicClient:   dynamicClient,
-		discoveryClient: discoveryClient,
-		dryRun:          dryRun,
+		client:            c,
+		dynamicClient:     dynamicClient,
+		discoveryClient:   discoveryClient,
+		dryRun:            dryRun,
+		annotationManager: webhook.NewAnnotationManager(c),
+		rolloutController: webhook.NewRolloutController(c),
 	}
 }
 
@@ -391,11 +398,11 @@ func (e *Engine) getCurrentResources(workload *Workload) (map[string]corev1.Reso
 
 // ApplyResult contains information about the apply operation
 type ApplyResult struct {
-	Method         string // "ServerSideApply" or "StrategicMergePatch"
+	Method         string // "ServerSideApply", "StrategicMergePatch", or "Webhook"
 	FieldOwnership bool   // true if SSA was used
 }
 
-// Apply applies resource recommendations using the configured patch strategy
+// Apply applies resource recommendations using the configured strategy
 func (e *Engine) Apply(
 	ctx context.Context,
 	workload *Workload,
@@ -403,32 +410,51 @@ func (e *Engine) Apply(
 	rec *recommendation.Recommendation,
 	policy *optipodv1alpha1.OptimizationPolicy,
 ) (*ApplyResult, error) {
-	// Determine if SSA should be used (default to true if not specified)
-	useSSA := true
-	if policy.Spec.UpdateStrategy.UseServerSideApply != nil {
-		useSSA = *policy.Spec.UpdateStrategy.UseServerSideApply
-	}
+	log := ctrl.LoggerFrom(ctx)
 
-	if useSSA {
-		err := e.ApplyWithSSA(ctx, workload, containerName, rec, policy)
+	// Determine strategy - webhook is the default
+	strategy := policy.GetStrategy()
+
+	log.V(1).Info("Applying resource recommendations",
+		"workload", fmt.Sprintf("%s/%s", workload.Namespace, workload.Name),
+		"container", containerName,
+		"strategy", strategy,
+	)
+
+	// Route to appropriate apply method based on strategy
+	switch strategy {
+	case optipodv1alpha1.StrategyWebhook:
+		return e.ApplyWithWebhook(ctx, workload, containerName, rec, policy)
+	case optipodv1alpha1.StrategySSA:
+		// Determine if SSA should be used (backward compatibility)
+		useSSA := true
+		if policy.Spec.UpdateStrategy.UseServerSideApply != nil {
+			useSSA = *policy.Spec.UpdateStrategy.UseServerSideApply
+		}
+
+		if useSSA {
+			err := e.ApplyWithSSA(ctx, workload, containerName, rec, policy)
+			if err != nil {
+				return nil, err
+			}
+			return &ApplyResult{
+				Method:         "ServerSideApply",
+				FieldOwnership: true,
+			}, nil
+		}
+
+		// Fall back to Strategic Merge Patch
+		err := e.ApplyWithStrategicMerge(ctx, workload, containerName, rec, policy)
 		if err != nil {
 			return nil, err
 		}
 		return &ApplyResult{
-			Method:         "ServerSideApply",
-			FieldOwnership: true,
+			Method:         "StrategicMergePatch",
+			FieldOwnership: false,
 		}, nil
+	default:
+		return nil, fmt.Errorf("unknown strategy: %s", strategy)
 	}
-
-	// Fall back to Strategic Merge Patch
-	err := e.ApplyWithStrategicMerge(ctx, workload, containerName, rec, policy)
-	if err != nil {
-		return nil, err
-	}
-	return &ApplyResult{
-		Method:         "StrategicMergePatch",
-		FieldOwnership: false,
-	}, nil
 }
 
 // ApplyWithStrategicMerge applies resource recommendations using Strategic Merge Patch
@@ -822,6 +848,200 @@ func (e *Engine) ApplyWithSSA(
 	return nil
 }
 
+// ApplyWithWebhook applies resource recommendations using webhook strategy
+func (e *Engine) ApplyWithWebhook(
+	ctx context.Context,
+	workload *Workload,
+	containerName string,
+	rec *recommendation.Recommendation,
+	policy *optipodv1alpha1.OptimizationPolicy,
+) (*ApplyResult, error) {
+	log := ctrl.LoggerFrom(ctx)
+	startTime := time.Now()
+
+	// Get current resources for before/after comparison
+	currentResources, err := e.getCurrentResources(workload)
+	if err != nil {
+		log.Error(err, "Failed to get current resources for logging",
+			"workload", fmt.Sprintf("%s/%s", workload.Namespace, workload.Name),
+			"container", containerName,
+		)
+		// Continue with empty current resources for logging
+		currentResources = make(map[string]corev1.ResourceRequirements)
+	}
+
+	currentReqs := currentResources[containerName]
+	beforeCPU := "0"
+	beforeMemory := "0"
+	beforeCPULimit := noneValue
+	beforeMemoryLimit := noneValue
+
+	if currentReqs.Requests != nil {
+		if cpu, exists := currentReqs.Requests[corev1.ResourceCPU]; exists {
+			beforeCPU = cpu.String()
+		}
+		if memory, exists := currentReqs.Requests[corev1.ResourceMemory]; exists {
+			beforeMemory = memory.String()
+		}
+	}
+	if currentReqs.Limits != nil {
+		if cpu, exists := currentReqs.Limits[corev1.ResourceCPU]; exists {
+			beforeCPULimit = cpu.String()
+		}
+		if memory, exists := currentReqs.Limits[corev1.ResourceMemory]; exists {
+			beforeMemoryLimit = memory.String()
+		}
+	}
+
+	log.Info("Starting optimization with webhook strategy",
+		"workload", fmt.Sprintf("%s/%s", workload.Namespace, workload.Name),
+		"kind", workload.Kind,
+		"container", containerName,
+		"policy", policy.Name,
+		"rolloutStrategy", policy.GetRolloutStrategy(),
+		"updateRequestsOnly", policy.Spec.UpdateStrategy.UpdateRequestsOnly,
+		"beforeCPURequest", beforeCPU,
+		"beforeMemoryRequest", beforeMemory,
+		"beforeCPULimit", beforeCPULimit,
+		"beforeMemoryLimit", beforeMemoryLimit,
+		"afterCPURequest", rec.CPU.String(),
+		"afterMemoryRequest", rec.Memory.String(),
+		"reason", "Webhook strategy - storing annotations for mutating webhook",
+	)
+
+	// Convert workload to client.Object for annotation manager
+	workloadObj, err := e.convertToClientObject(workload)
+	if err != nil {
+		log.Error(err, "Failed to convert workload to client object",
+			"workload", fmt.Sprintf("%s/%s", workload.Namespace, workload.Name),
+			"container", containerName,
+		)
+		return nil, fmt.Errorf("failed to convert workload: %w", err)
+	}
+
+	// Build resource recommendations for annotation storage
+	recommendations := []webhook.ResourceRecommendation{
+		{
+			ContainerName: containerName,
+			CPU:           &rec.CPU,
+			Memory:        &rec.Memory,
+		},
+	}
+
+	// Calculate limits if not updating requests only
+	if !policy.Spec.UpdateStrategy.UpdateRequestsOnly {
+		requests := corev1.ResourceList{
+			corev1.ResourceCPU:    rec.CPU,
+			corev1.ResourceMemory: rec.Memory,
+		}
+		limits, err := e.CalculateLimitsWithDefaults(requests, policy.Spec.UpdateStrategy.LimitConfig)
+		if err != nil {
+			log.Error(err, "Failed to calculate limits for webhook strategy",
+				"workload", fmt.Sprintf("%s/%s", workload.Namespace, workload.Name),
+				"container", containerName,
+			)
+			return nil, fmt.Errorf("failed to calculate limits: %w", err)
+		}
+
+		// Add limits to recommendation
+		if cpuLimit, exists := limits[corev1.ResourceCPU]; exists {
+			recommendations[0].CPULimit = &cpuLimit
+		}
+		if memoryLimit, exists := limits[corev1.ResourceMemory]; exists {
+			recommendations[0].MemoryLimit = &memoryLimit
+		}
+	}
+
+	// Store recommendations as annotations
+	if err := e.annotationManager.StoreRecommendations(ctx, workloadObj, recommendations); err != nil {
+		log.Error(err, "Failed to store recommendations as annotations",
+			"workload", fmt.Sprintf("%s/%s", workload.Namespace, workload.Name),
+			"container", containerName,
+			"reason", "Annotation storage failed",
+		)
+		// Record webhook failure
+		observability.RecordOptimizationFailure(
+			policy.Name,
+			workload.Namespace,
+			workload.Name,
+			workload.Kind,
+			"Webhook",
+			"AnnotationStorageFailed",
+		)
+		return nil, fmt.Errorf("failed to store annotations: %w", err)
+	}
+
+	// Handle rollout strategy
+	if policy.GetRolloutStrategy() == optipodv1alpha1.RolloutImmediate {
+		if err := e.rolloutController.TriggerRollingRestart(ctx, workloadObj, policy); err != nil {
+			log.Error(err, "Failed to trigger rolling restart",
+				"workload", fmt.Sprintf("%s/%s", workload.Namespace, workload.Name),
+				"container", containerName,
+				"rolloutStrategy", policy.GetRolloutStrategy(),
+			)
+			// Don't fail the entire operation if rollout fails
+			// The annotations are still stored and will take effect on next restart
+			log.Info("Continuing with annotation storage despite rollout failure")
+		} else {
+			log.Info("Rolling restart triggered successfully",
+				"workload", fmt.Sprintf("%s/%s", workload.Namespace, workload.Name),
+				"rolloutStrategy", policy.GetRolloutStrategy(),
+			)
+		}
+	}
+
+	// Record resource change magnitudes
+	e.recordResourceChangeMagnitudes(policy.Name, workload.Namespace, workload.Name, beforeCPU, beforeMemory, rec)
+
+	// Calculate expected limits for logging
+	expectedLimits := make(map[string]string)
+	if !policy.Spec.UpdateStrategy.UpdateRequestsOnly && len(recommendations) > 0 {
+		if recommendations[0].CPULimit != nil {
+			expectedLimits["cpu"] = recommendations[0].CPULimit.String()
+		}
+		if recommendations[0].MemoryLimit != nil {
+			expectedLimits["memory"] = recommendations[0].MemoryLimit.String()
+		}
+	}
+
+	duration := time.Since(startTime).Seconds()
+	log.Info("Successfully applied resource changes via webhook strategy",
+		"workload", fmt.Sprintf("%s/%s", workload.Namespace, workload.Name),
+		"container", containerName,
+		"method", "Webhook",
+		"policy", policy.Name,
+		"rolloutStrategy", policy.GetRolloutStrategy(),
+		"duration", fmt.Sprintf("%.3fs", duration),
+		"reason", "Optimization completed successfully",
+		"beforeCPURequest", beforeCPU,
+		"beforeMemoryRequest", beforeMemory,
+		"beforeCPULimit", beforeCPULimit,
+		"beforeMemoryLimit", beforeMemoryLimit,
+		"afterCPURequest", rec.CPU.String(),
+		"afterMemoryRequest", rec.Memory.String(),
+		"afterCPULimit", expectedLimits["cpu"],
+		"afterMemoryLimit", expectedLimits["memory"],
+		"updateRequestsOnly", policy.Spec.UpdateStrategy.UpdateRequestsOnly,
+	)
+
+	// Record successful webhook operation
+	observability.RecordOptimizationSuccess(
+		policy.Name,
+		workload.Namespace,
+		workload.Name,
+		workload.Kind,
+		"Webhook",
+	)
+
+	// Record webhook-specific metrics
+	observability.RecordOptimizationDecisionDuration(policy.Name, workload.Kind, duration)
+
+	return &ApplyResult{
+		Method:         "Webhook",
+		FieldOwnership: false, // Webhooks don't use field ownership
+	}, nil
+}
+
 // handleSSAError processes SSA-specific errors and provides helpful messages
 func (e *Engine) handleSSAError(err error) error {
 	if errors.IsConflict(err) {
@@ -1162,5 +1382,37 @@ func (e *Engine) recordResourceChangeMagnitudes(policyName, namespace, workloadN
 			changePercent := float64(afterMemoryValue-beforeMemoryValue) / float64(beforeMemoryValue) * 100
 			observability.RecordResourceChangeMagnitude(policyName, namespace, workloadName, "memory", changePercent)
 		}
+	}
+}
+
+// convertToClientObject converts an application.Workload to client.Object for webhook operations
+func (e *Engine) convertToClientObject(workload *Workload) (client.Object, error) {
+	switch workload.Kind {
+	case kindDeployment:
+		// Convert unstructured to typed Deployment
+		deployment := &appsv1.Deployment{}
+		if err := runtime.DefaultUnstructuredConverter.FromUnstructured(workload.Object.Object, deployment); err != nil {
+			return nil, fmt.Errorf("failed to convert to Deployment: %w", err)
+		}
+		return deployment, nil
+
+	case kindStatefulSet:
+		// Convert unstructured to typed StatefulSet
+		statefulSet := &appsv1.StatefulSet{}
+		if err := runtime.DefaultUnstructuredConverter.FromUnstructured(workload.Object.Object, statefulSet); err != nil {
+			return nil, fmt.Errorf("failed to convert to StatefulSet: %w", err)
+		}
+		return statefulSet, nil
+
+	case kindDaemonSet:
+		// Convert unstructured to typed DaemonSet
+		daemonSet := &appsv1.DaemonSet{}
+		if err := runtime.DefaultUnstructuredConverter.FromUnstructured(workload.Object.Object, daemonSet); err != nil {
+			return nil, fmt.Errorf("failed to convert to DaemonSet: %w", err)
+		}
+		return daemonSet, nil
+
+	default:
+		return nil, fmt.Errorf("unsupported workload kind: %s", workload.Kind)
 	}
 }

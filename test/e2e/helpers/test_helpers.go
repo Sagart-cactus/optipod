@@ -79,16 +79,35 @@ func (w *WorkloadHelper) WaitForWorkloadReady(workloadName, namespace string, ti
 // GetWorkloadAnnotations retrieves OptipPod annotations from a workload
 func (w *WorkloadHelper) GetWorkloadAnnotations(workloadName, namespace string) (map[string]string, error) {
 	cmd := exec.Command("kubectl", "get", "deployment", workloadName, "-n", namespace,
-		"-o", "jsonpath={.metadata.annotations}")
+		"-o", "jsonpath={.spec.template.metadata.annotations}")
 	output, err := utils.Run(cmd)
 	if err != nil {
 		return nil, err
 	}
 
-	// Simple parsing - in a real implementation you'd use JSON parsing
 	annotations := make(map[string]string)
+
+	// Parse JSON-like output from kubectl
+	output = strings.TrimSpace(output)
+	if output == "" || output == "{}" {
+		return annotations, nil
+	}
+
+	// Simple parsing for common OptipPod annotations
 	if strings.Contains(output, "optipod.io/managed") {
 		annotations["optipod.io/managed"] = "true"
+	}
+	if strings.Contains(output, "optipod.io/webhook-enabled") {
+		if strings.Contains(output, `"optipod.io/webhook-enabled":"true"`) {
+			annotations["optipod.io/webhook-enabled"] = "true"
+		}
+	}
+	if strings.Contains(output, "optipod.io/strategy") {
+		if strings.Contains(output, `"optipod.io/strategy":"webhook"`) {
+			annotations["optipod.io/strategy"] = "webhook"
+		} else if strings.Contains(output, `"optipod.io/strategy":"ssa"`) {
+			annotations["optipod.io/strategy"] = "ssa"
+		}
 	}
 
 	return annotations, nil

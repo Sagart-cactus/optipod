@@ -1,0 +1,40 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingAdmissionWebhook
+metadata:
+  name: mutating-webhook-configuration
+  labels:
+    app.kubernetes.io/name: optipod-webhook
+    app.kubernetes.io/managed-by: kustomize
+webhooks:
+- name: pod-resource-mutator.optipod.io
+  clientConfig:
+    service:
+      name: optipod-webhook-service
+      namespace: system
+      path: /mutate-v1-pod
+  rules:
+  - operations: ["CREATE"]
+    apiGroups: [""]
+    apiVersions: ["v1"]
+    resources: ["pods"]
+  # Exclude system namespaces and webhook namespace itself
+  namespaceSelector:
+    matchExpressions:
+    - key: name
+      operator: NotIn
+      values: ["kube-system", "kube-public", "kube-node-lease"]
+    - key: control-plane
+      operator: DoesNotExist
+  # Only target pods with optipod annotations
+  objectSelector:
+    matchExpressions:
+    - key: optipod.io/webhook-enabled
+      operator: In
+      values: ["true"]
+  admissionReviewVersions: ["v1", "v1beta1"]
+  sideEffects: None
+  # Fail policy ensures webhook availability doesn't block pod creation
+  # Change to "Fail" for stricter enforcement in production
+  failurePolicy: Ignore
+  timeoutSeconds: 10
+  reinvocationPolicy: Never

@@ -46,8 +46,8 @@ import (
 )
 
 const (
+	// serverSideApplyMethod is the method name for Server-Side Apply
 	serverSideApplyMethod = "ServerSideApply"
-	webhookMethod         = "Webhook"
 )
 
 // mockDiscoveryClient is a mock implementation of discovery.DiscoveryInterface
@@ -561,8 +561,6 @@ func TestProperty_RBACRespect(t *testing.T) {
 			workload := createMockWorkload()
 			rec := createMockRecommendation()
 			policy := createMockPolicy(true, false)
-			// Set strategy to SSA so the test uses the mock dynamic client
-			policy.Spec.UpdateStrategy.Strategy = stringPtr(string(optipodv1alpha1.StrategySSA))
 
 			_, err := engine.Apply(context.Background(), workload, "test-container", rec, policy)
 
@@ -1435,6 +1433,11 @@ func TestProperty_ConfigurationDeterminesPatchMethod(t *testing.T) {
 				dynamicClient: mockDynamic,
 			}
 
+			// Initialize the engine properly to avoid nil pointer dereference
+			if engine.annotationManager == nil {
+				engine.annotationManager = &mockAnnotationManager{}
+			}
+
 			// Create workload
 			workload := createMockWorkload()
 
@@ -1447,7 +1450,6 @@ func TestProperty_ConfigurationDeterminesPatchMethod(t *testing.T) {
 
 			// Create policy with useServerSideApply = true
 			policy := createMockPolicy(true, false)
-			policy.Spec.UpdateStrategy.Strategy = stringPtr(string(optipodv1alpha1.StrategySSA))
 			useSSA := true
 			policy.Spec.UpdateStrategy.UseServerSideApply = &useSSA
 
@@ -1489,6 +1491,11 @@ func TestProperty_ConfigurationDeterminesPatchMethod(t *testing.T) {
 				dynamicClient: mockDynamic,
 			}
 
+			// Initialize the engine properly to avoid nil pointer dereference
+			if engine.annotationManager == nil {
+				engine.annotationManager = &mockAnnotationManager{}
+			}
+
 			// Create workload
 			workload := createMockWorkload()
 
@@ -1501,7 +1508,6 @@ func TestProperty_ConfigurationDeterminesPatchMethod(t *testing.T) {
 
 			// Create policy with useServerSideApply = false
 			policy := createMockPolicy(true, false)
-			policy.Spec.UpdateStrategy.Strategy = stringPtr(string(optipodv1alpha1.StrategySSA))
 			useSSA := false
 			policy.Spec.UpdateStrategy.UseServerSideApply = &useSSA
 
@@ -1553,6 +1559,11 @@ func TestProperty_DefaultToSSA(t *testing.T) {
 				dynamicClient: mockDynamic,
 			}
 
+			// Initialize the engine properly to avoid nil pointer dereference
+			if engine.annotationManager == nil {
+				engine.annotationManager = &mockAnnotationManager{}
+			}
+
 			// Create workload
 			workload := createMockWorkload()
 
@@ -1565,7 +1576,6 @@ func TestProperty_DefaultToSSA(t *testing.T) {
 
 			// Create policy with useServerSideApply = nil (default)
 			policy := createMockPolicy(true, false)
-			policy.Spec.UpdateStrategy.Strategy = stringPtr(string(optipodv1alpha1.StrategySSA))
 			policy.Spec.UpdateStrategy.UseServerSideApply = nil
 
 			// Apply
@@ -2937,6 +2947,11 @@ func TestOptimizationApplication(t *testing.T) {
 
 		engine := createMockEngineWithDynamicClient(mockDynamic)
 
+		// Initialize the engine properly to avoid nil pointer dereference
+		if engine.annotationManager == nil {
+			engine.annotationManager = &mockAnnotationManager{}
+		}
+
 		workload := createMockWorkload()
 		rec := createMockRecommendation()
 
@@ -3013,7 +3028,7 @@ func TestProperty_SSACompatibilityPreservation(t *testing.T) {
 			// When strategy is SSA and useServerSideApply is true, should use SSA
 			if useSSA {
 				// Should use ServerSideApply method
-				if result.Method != serverSideApplyMethod {
+				if result.Method != "ServerSideApply" {
 					return false
 				}
 				// Should have field ownership
@@ -3104,7 +3119,7 @@ func TestProperty_SSACompatibilityPreservation(t *testing.T) {
 			}
 
 			// Should still use SSA despite webhook-specific options
-			if result.Method != serverSideApplyMethod {
+			if result.Method != "ServerSideApply" {
 				return false
 			}
 			if !result.FieldOwnership {
@@ -3189,25 +3204,25 @@ func TestProperty_SSACompatibilityPreservation(t *testing.T) {
 
 			// Verify first policy behavior
 			if useSSAForFirst {
-				if result1.Method != serverSideApplyMethod || !result1.FieldOwnership {
+				if result1.Method != "ServerSideApply" || !result1.FieldOwnership {
 					return false
 				}
 				if capturedPatchType1 != types.ApplyPatchType {
 					return false
 				}
 			} else {
-				if result1.Method != webhookMethod || result1.FieldOwnership {
+				if result1.Method != "Webhook" || result1.FieldOwnership {
 					return false
 				}
 			}
 
 			// Verify second policy behavior
 			if useWebhookForSecond {
-				if result2.Method != webhookMethod || result2.FieldOwnership {
+				if result2.Method != "Webhook" || result2.FieldOwnership {
 					return false
 				}
 			} else {
-				if result2.Method != serverSideApplyMethod || !result2.FieldOwnership {
+				if result2.Method != "ServerSideApply" || !result2.FieldOwnership {
 					return false
 				}
 				if capturedPatchType2 != types.ApplyPatchType {
@@ -3266,7 +3281,7 @@ func TestProperty_SSACompatibilityPreservation(t *testing.T) {
 
 			// Should default to webhook strategy when strategy field is nil
 			// But still respect useServerSideApply for backward compatibility
-			if result.Method != webhookMethod {
+			if result.Method != "Webhook" {
 				return false
 			}
 			if result.FieldOwnership {

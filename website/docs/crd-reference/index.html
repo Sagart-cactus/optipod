@@ -73,7 +73,7 @@
           <p><strong>Type</strong>: <code>string</code><br><strong>Enum</strong>: <code>Auto</code>, <code>Recommend</code>, <code>Disabled</code><br><strong>Description</strong>: Operational mode for the policy</p>
           <ul>
           <li><strong>Auto</strong>: Automatically applies resource recommendations to matching workloads</li>
-          <li><strong>Recommend</strong>: Computes recommendations but stores them in status without applying</li>
+          <li><strong>Recommend</strong>: Computes recommendations and stores them as workload annotations without applying</li>
           <li><strong>Disabled</strong>: Stops processing workloads while preserving historical status</li>
           </ul>
           <p><strong>Example</strong>:</p>
@@ -388,7 +388,7 @@
     <span class="hljs-attr">daemonSets:</span> <span class="hljs-number">3</span></code></pre>
           <h3 id="lastreconciliation">lastReconciliation</h3>
           <p><strong>Type</strong>: <code>Time</code><br><strong>Description</strong>: Timestamp of the last policy reconciliation</p>
-          <p><strong>Note</strong>: The CRD status currently exposes summary fields (counts/timestamp). It does not include per-workload recommendation details.</p>
+          <p><strong>Note</strong>: The CRD status exposes summary fields (counts/timestamp) only. Individual workload recommendations are stored as annotations on each workload, not in the policy status.</p>
           <h2 id="complete-example">Complete Example</h2>
           <pre><code class="hljs language-yaml"><span class="hljs-attr">apiVersion:</span> <span class="hljs-string">optipod.optipod.io/v1alpha1</span>
 <span class="hljs-attr">kind:</span> <span class="hljs-string">OptimizationPolicy</span>

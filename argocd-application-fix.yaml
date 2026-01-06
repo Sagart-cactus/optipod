@@ -1,0 +1,33 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: test-argo-ssa
+  namespace: argocd
+spec:
+  destination:
+    namespace: argo-ssa-test
+    server: https://kubernetes.default.svc
+  project: default
+  source:
+    path: .
+    repoURL: https://github.com/Sagart-cactus/optipod/
+    targetRevision: feat/webiste
+  syncPolicy:
+    syncOptions:
+    - ServerSideApply=true
+  ignoreDifferences:
+  - group: apps
+    kind: Deployment
+    jqPathExpressions:
+    - '.spec.template.spec.containers[].resources.requests'
+    - '.spec.template.spec.containers[].resources.limits'
+  - group: apps
+    kind: StatefulSet
+    jqPathExpressions:
+    - '.spec.template.spec.containers[].resources.requests'
+    - '.spec.template.spec.containers[].resources.limits'
+  - group: apps
+    kind: DaemonSet
+    jqPathExpressions:
+    - '.spec.template.spec.containers[].resources.requests'
+    - '.spec.template.spec.containers[].resources.limits'
