@@ -3155,7 +3155,6 @@ func TestProperty_SSACompatibilityPreservation(t *testing.T) {
 		func(cpuReq, memReq int64, useSSAForFirst, useWebhookForSecond bool) bool {
 			// TODO: Fix flaky test - temporarily skipping
 			return true
-			//nolint:govet // unreachable code is intentional for temporarily skipped test
 
 			// Generate reasonable resource values
 			if cpuReq < 100 || cpuReq > 4000 || memReq < 128 || memReq > 8192 {
@@ -3260,7 +3259,6 @@ func TestProperty_SSACompatibilityPreservation(t *testing.T) {
 		func(cpuReq, memReq int64, useSSA bool) bool {
 			// TODO: Fix flaky test - temporarily skipping
 			return true
-			//nolint:govet // unreachable code is intentional for temporarily skipped test
 
 			// Generate reasonable resource values
 			if cpuReq < 100 || cpuReq > 4000 || memReq < 128 || memReq > 8192 {

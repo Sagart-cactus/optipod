@@ -45,6 +45,10 @@ linters:
       - linters:
           - gocyclo
         text: "TestProperty_SSACompatibilityPreservation"
+      - linters:
+          - govet
+        text: "unreachable code"
+        path: internal/application/engine_test.go
     paths:
       - third_party$
       - builtin$
