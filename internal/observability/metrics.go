@@ -17,6 +17,8 @@ limitations under the License.
 package observability
 
 import (
+	"fmt"
+
 	"github.com/prometheus/client_golang/prometheus"
 	"sigs.k8s.io/controller-runtime/pkg/metrics"
 )
@@ -151,6 +153,91 @@ var (
 		},
 		[]string{"policy", "workload_kind"},
 	)
+
+	// Webhook-specific metrics
+
+	// WebhookAdmissionRequestsTotal tracks the total number of webhook admission requests
+	WebhookAdmissionRequestsTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "optipod_webhook_admission_requests_total",
+			Help: "Total number of webhook admission requests received",
+		},
+		[]string{"namespace", "pod_name", "dry_run"},
+	)
+
+	// WebhookAdmissionSuccessTotal tracks successful webhook admissions
+	WebhookAdmissionSuccessTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "optipod_webhook_admission_success_total",
+			Help: "Total number of successful webhook admissions",
+		},
+		[]string{"namespace", "policy", "patches_applied"},
+	)
+
+	// WebhookAdmissionFailuresTotal tracks failed webhook admissions
+	WebhookAdmissionFailuresTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "optipod_webhook_admission_failures_total",
+			Help: "Total number of failed webhook admissions",
+		},
+		[]string{"namespace", "failure_reason"},
+	)
+
+	// WebhookMutationDuration tracks the duration of webhook mutation operations
+	WebhookMutationDuration = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "optipod_webhook_mutation_duration_seconds",
+			Help:    "Duration of webhook mutation operations in seconds",
+			Buckets: []float64{0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0},
+		},
+		[]string{"namespace", "policy"},
+	)
+
+	// WebhookPatchesAppliedTotal tracks the number of patches applied by the webhook
+	WebhookPatchesAppliedTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "optipod_webhook_patches_applied_total",
+			Help: "Total number of patches applied by the webhook",
+		},
+		[]string{"namespace", "policy", "container_name", "resource_type"},
+	)
+
+	// WebhookAnnotationParsingErrorsTotal tracks annotation parsing errors
+	WebhookAnnotationParsingErrorsTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "optipod_webhook_annotation_parsing_errors_total",
+			Help: "Total number of annotation parsing errors in webhook",
+		},
+		[]string{"namespace", "pod_name", "annotation_key", "error_type"},
+	)
+
+	// WebhookPolicyMatchingDuration tracks time spent matching policies
+	WebhookPolicyMatchingDuration = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "optipod_webhook_policy_matching_duration_seconds",
+			Help:    "Duration of policy matching operations in webhook",
+			Buckets: []float64{0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5},
+		},
+		[]string{"namespace", "policies_found"},
+	)
+
+	// WebhookServerHealthStatus tracks webhook server health status
+	WebhookServerHealthStatus = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "optipod_webhook_server_health_status",
+			Help: "Webhook server health status (1 = healthy, 0 = unhealthy)",
+		},
+		[]string{"endpoint"},
+	)
+
+	// WebhookCertificateExpiryTime tracks webhook certificate expiry time
+	WebhookCertificateExpiryTime = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "optipod_webhook_certificate_expiry_timestamp_seconds",
+			Help: "Webhook certificate expiry time as Unix timestamp",
+		},
+		[]string{"cert_type"},
+	)
 )
 
 func init() {
@@ -176,6 +263,17 @@ func RegisterMetrics() {
 	_ = metrics.Registry.Register(ResourceChangesMagnitude)
 	_ = metrics.Registry.Register(DefaultMultiplierUsage)
 	_ = metrics.Registry.Register(OptimizationDecisionDuration)
+
+	// Register webhook-specific metrics
+	_ = metrics.Registry.Register(WebhookAdmissionRequestsTotal)
+	_ = metrics.Registry.Register(WebhookAdmissionSuccessTotal)
+	_ = metrics.Registry.Register(WebhookAdmissionFailuresTotal)
+	_ = metrics.Registry.Register(WebhookMutationDuration)
+	_ = metrics.Registry.Register(WebhookPatchesAppliedTotal)
+	_ = metrics.Registry.Register(WebhookAnnotationParsingErrorsTotal)
+	_ = metrics.Registry.Register(WebhookPolicyMatchingDuration)
+	_ = metrics.Registry.Register(WebhookServerHealthStatus)
+	_ = metrics.Registry.Register(WebhookCertificateExpiryTime)
 }
 
 // RecordSSAPatch records an SSA patch operation
@@ -206,4 +304,64 @@ func RecordDefaultMultiplierUsage(policy, resourceType, multiplierValue string) 
 // RecordOptimizationDecisionDuration records the duration of optimization decision making
 func RecordOptimizationDecisionDuration(policy, workloadKind string, duration float64) {
 	OptimizationDecisionDuration.WithLabelValues(policy, workloadKind).Observe(duration)
+}
+
+// Webhook metric recording functions
+
+// RecordWebhookAdmissionRequest records a webhook admission request
+func RecordWebhookAdmissionRequest(namespace, podName string, dryRun bool) {
+	dryRunStr := "false"
+	if dryRun {
+		dryRunStr = "true"
+	}
+	WebhookAdmissionRequestsTotal.WithLabelValues(namespace, podName, dryRunStr).Inc()
+}
+
+// RecordWebhookAdmissionSuccess records a successful webhook admission
+func RecordWebhookAdmissionSuccess(namespace, policy string, patchesApplied int) {
+	patchesStr := "0"
+	if patchesApplied > 0 {
+		patchesStr = "1+"
+	}
+	WebhookAdmissionSuccessTotal.WithLabelValues(namespace, policy, patchesStr).Inc()
+}
+
+// RecordWebhookAdmissionFailure records a failed webhook admission
+func RecordWebhookAdmissionFailure(namespace, failureReason string) {
+	WebhookAdmissionFailuresTotal.WithLabelValues(namespace, failureReason).Inc()
+}
+
+// RecordWebhookMutationDuration records the duration of a webhook mutation operation
+func RecordWebhookMutationDuration(namespace, policy string, duration float64) {
+	WebhookMutationDuration.WithLabelValues(namespace, policy).Observe(duration)
+}
+
+// RecordWebhookPatchApplied records a patch applied by the webhook
+func RecordWebhookPatchApplied(namespace, policy, containerName, resourceType string) {
+	WebhookPatchesAppliedTotal.WithLabelValues(namespace, policy, containerName, resourceType).Inc()
+}
+
+// RecordWebhookAnnotationParsingError records an annotation parsing error
+func RecordWebhookAnnotationParsingError(namespace, podName, annotationKey, errorType string) {
+	WebhookAnnotationParsingErrorsTotal.WithLabelValues(namespace, podName, annotationKey, errorType).Inc()
+}
+
+// RecordWebhookPolicyMatchingDuration records the duration of policy matching
+func RecordWebhookPolicyMatchingDuration(namespace string, policiesFound int, duration float64) {
+	policiesFoundStr := fmt.Sprintf("%d", policiesFound)
+	WebhookPolicyMatchingDuration.WithLabelValues(namespace, policiesFoundStr).Observe(duration)
+}
+
+// SetWebhookServerHealthStatus sets the webhook server health status
+func SetWebhookServerHealthStatus(endpoint string, healthy bool) {
+	status := 0.0
+	if healthy {
+		status = 1.0
+	}
+	WebhookServerHealthStatus.WithLabelValues(endpoint).Set(status)
+}
+
+// SetWebhookCertificateExpiryTime sets the webhook certificate expiry time
+func SetWebhookCertificateExpiryTime(certType string, expiryTime float64) {
+	WebhookCertificateExpiryTime.WithLabelValues(certType).Set(expiryTime)
 }

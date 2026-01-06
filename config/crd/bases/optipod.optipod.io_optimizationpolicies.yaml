@@ -391,6 +391,21 @@ spec:
                         minimum: 1
                         type: number
                     type: object
+                  rolloutStrategy:
+                    default: onNextRestart
+                    description: RolloutStrategy defines when resource changes take
+                      effect (webhook strategy only)
+                    enum:
+                    - immediate
+                    - onNextRestart
+                    type: string
+                  strategy:
+                    default: webhook
+                    description: Strategy defines how resource updates are applied
+                    enum:
+                    - ssa
+                    - webhook
+                    type: string
                   updateRequestsOnly:
                     default: true
                     description: UpdateRequestsOnly controls whether to update only

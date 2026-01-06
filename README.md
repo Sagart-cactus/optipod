@@ -38,12 +38,29 @@ In **Recommend mode**:
 
 - No resources are changed.
 - No pods are restarted.
-- Recommendations are written to the `OptimizationPolicy` status for review.
+- Recommendations are written as annotations on individual workloads for review.
+- Policy status shows aggregate counts (workloads discovered/processed) but not individual recommendations.
 
 ### 1) Install
 
+Choose your installation method based on your environment:
+
+**For ArgoCD/GitOps environments (Recommended):**
 ```bash
+# Install with webhook strategy (ArgoCD compatible)
+kubectl apply -f https://github.com/Sagart-cactus/optipod/releases/latest/download/install-webhook.yaml
+```
+
+**For traditional Kubernetes environments:**
+```bash
+# Install with SSA strategy
 kubectl apply -f https://github.com/Sagart-cactus/optipod/releases/latest/download/install.yaml
+```
+
+**Automated installation:**
+```bash
+# Download and run installation script with options
+curl -sSL https://raw.githubusercontent.com/Sagart-cactus/optipod/main/config/webhook/install.sh | bash
 ```
 
 ### 2) Create a minimal policy (Recommend mode)
@@ -95,9 +112,43 @@ kubectl apply -f optipod-policy.yaml
 ```bash
 kubectl label deployment my-app optimize=true
 kubectl describe optimizationpolicy safe-recommendations -n default
+# View individual workload recommendations:
+kubectl get deployment my-app -o yaml | grep -A5 -B5 "optipod.io/recommendation"
 ```
 
 Safety confirmation: as long as `spec.mode: Recommend`, OptiPod will not change workload specs.
+
+## Where recommendations are stored
+
+OptiPod stores recommendations in two places:
+
+### Individual Workload Annotations
+Each workload (Deployment, StatefulSet, DaemonSet) gets recommendation annotations:
+
+```yaml
+metadata:
+  annotations:
+    optipod.io/recommendation.app-container.cpu-request: "250m"
+    optipod.io/recommendation.app-container.memory-request: "512Mi"
+    optipod.io/recommendation.explanation: "P90 over 24h with 1.2x safety factor"
+    optipod.io/last-updated: "2025-01-04T10:30:00Z"
+```
+
+### Policy Status (Aggregate Only)
+The OptimizationPolicy status shows aggregate counts, not individual recommendations:
+
+```yaml
+status:
+  workloadsDiscovered: 150
+  workloadsProcessed: 145
+  workloadsByType:
+    deployment: 120
+    statefulset: 25
+    daemonset: 5
+  lastReconciliation: "2025-01-04T10:30:00Z"
+```
+
+This design keeps the policy status lightweight while making individual recommendations visible on each workload for GitOps workflows.
 
 ## What OptiPod actually does (high-level flow)
 
@@ -106,7 +157,7 @@ Safety confirmation: as long as `spec.mode: Recommend`, OptiPod will not change 
 3. Computes recommendations (percentiles over a rolling window + safety factor)
 4. Applies **policy-driven safety** (bounds, change controls, memory safeguards)
 5. Either:
-   - writes **explainable recommendations** to policy status (Recommend mode), or
+   - writes **explainable recommendations** as annotations on individual workloads (Recommend mode), or
    - applies changes via **Server-Side Apply (SSA)** (Auto mode)
 
 ## Key concepts / terminology
@@ -121,8 +172,42 @@ Safety confirmation: as long as `spec.mode: Recommend`, OptiPod will not change 
 ## Operational modes
 
 - **Recommend**: Compute and record recommendations; do not mutate workloads.
-- **Auto**: Apply recommendations (within your safety policy) using Server-Side Apply (SSA).
+- **Auto**: Apply recommendations (within your safety policy) using the configured strategy.
 - **Disabled**: Stop processing workloads under the policy.
+
+## Update Strategies
+
+OptiPod supports two strategies for applying resource recommendations:
+
+### Webhook Strategy (Default)
+**Best for**: ArgoCD, GitOps workflows, environments without SSA permissions
+
+- ✅ **ArgoCD Compatible**: Works seamlessly with GitOps tools
+- ✅ **No SSA Required**: Doesn't need Server Side Apply permissions  
+- ✅ **Automatic Application**: Applies changes during pod creation
+- ❌ **Infrastructure Required**: Needs webhook server and certificates
+
+```yaml
+spec:
+  updateStrategy:
+    strategy: webhook                    # Use webhook strategy
+    rolloutStrategy: onNextRestart      # Control when changes take effect
+```
+
+### SSA Strategy (Traditional)
+**Best for**: Direct Kubernetes API access, environments with full SSA permissions
+
+- ✅ **Direct Updates**: Immediate API updates with Server Side Apply
+- ✅ **No Infrastructure**: No additional components required
+- ❌ **ArgoCD Conflicts**: May conflict with GitOps tools
+- ❌ **SSA Required**: Needs Server Side Apply permissions
+
+```yaml
+spec:
+  updateStrategy:
+    strategy: ssa                       # Use SSA strategy
+    useServerSideApply: true           # Enable SSA features
+```
 
 ## Safety model
 
@@ -130,7 +215,7 @@ OptiPod is built around conservative defaults and explicit, policy-driven contro
 
 - **Policy-driven safety**: min/max bounds, safety factors, and (where configured) change-rate limits.
 - **Conservative memory handling**: avoids “blind” memory reductions; requires explicit bounds/constraints.
-- **GitOps-safe**: uses **Server-Side Apply (SSA)** so OptiPod owns only resource fields, not your whole manifest.
+- **GitOps-safe**: supports both **webhook strategy** (ArgoCD compatible) and **Server-Side Apply (SSA)** for different environments.
 - **Explainable recommendations**: usage window, percentile choice, and safety margin are visible before applying.
 - **Update strategy control**: allow/disallow in-place resize; block disruptive recreation unless you opt in.
 
@@ -140,10 +225,12 @@ Legend: ✅ supported, ❌ not supported, ⚠️ supported with caveats.
 
 | Capability | OptiPod | Kubernetes VPA |
 | --- | --- | --- |
-| GitOps-safe (Server-Side Apply (SSA)) | ✅ | ❌ |
+| GitOps-safe (ArgoCD compatible) | ✅ | ❌ |
+| Server-Side Apply (SSA) support | ✅ | ❌ |
 | Safe by default (Recommend mode) | ✅ | ⚠️ |
 | Explainable recommendations | ✅ | ⚠️ |
 | Policy-driven safety | ✅ | ⚠️ |
+| Multiple update strategies | ✅ | ❌ |
 
 ⚠️ Typically means you *can* achieve the outcome, but it’s easier to run into GitOps conflicts and/or less predictable rollouts depending on configuration and workload constraints.
 
@@ -159,7 +246,7 @@ Legend: ✅ supported, ❌ not supported, ⚠️ supported with caveats.
 - Metrics backends: `metrics-server` and `prometheus`
 - Exposes Prometheus metrics from the controller
 - Emits Kubernetes events for important actions and failures
-- Writes recommendations and evaluation results to `OptimizationPolicy` status
+- Writes recommendations as annotations on workloads and aggregate results to `OptimizationPolicy` status
 
 ## Estimate impact before switching to Auto
 
@@ -175,7 +262,20 @@ chmod +x optipod-recommendation-report.sh
 ./optipod-recommendation-report.sh -o html -f optipod-impact.html
 ```
 
+Generate a JSON report for programmatic analysis:
+
+```bash
+./optipod-recommendation-report.sh -o json -f optipod-impact.json
+```
+
 The report only includes workloads that have OptiPod recommendation annotations (generated in Recommend mode), and highlights warnings (for example: when `updateRequestsOnly=true` but recommended requests would exceed existing limits).
+
+**How the impact report works:**
+- Scans all workloads in the cluster for OptiPod recommendation annotations
+- Consolidates individual workload recommendations into aggregate totals
+- Calculates replica-weighted impact (recommendation delta × number of pods)
+- Provides both per-workload details and cluster-wide summaries
+- Available in JSON format for automation or HTML for human review
 
 ![OptiPod Impact Report HTML](scripts/report-html.png)
 
@@ -202,6 +302,8 @@ OptiPod has core functionality implemented and tested, and is in active developm
   - [Prometheus Setup](docs/PROMETHEUS_SETUP.md)
   - [ArgoCD Integration](docs/ARGOCD_INTEGRATION.md)
   - [Pre-commit Setup](docs/PRE_COMMIT_SETUP.md)
+  - [Webhook Troubleshooting](docs/WEBHOOK_TROUBLESHOOTING.md)
+  - [Webhook Examples](docs/WEBHOOK_EXAMPLES.md)
 
 - Docs: `docs/` (source) and `website/docs/` (rendered site)
 - Roadmap: [ROADMAP.md](ROADMAP.md)

@@ -256,7 +256,7 @@ class FeaturesGrid {
         <ul>
           <li>Prometheus metrics for monitoring and alerting</li>
           <li>Kubernetes events for audit trails</li>
-          <li>Per-workload status and recommendation history</li>
+          <li>Per-workload recommendations stored as workload annotations</li>
           <li>Detailed logging with structured output</li>
         </ul>
         <p><strong>Result:</strong> Full visibility into optimization decisions and outcomes.</p>

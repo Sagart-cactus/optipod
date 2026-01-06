@@ -44,6 +44,23 @@ const (
 	// Format: optipod.io/recommendation.<container-name>.cpu
 	//         optipod.io/recommendation.<container-name>.memory
 	AnnotationRecommendationPrefix = "optipod.io/recommendation"
+
+	// Webhook-specific annotations
+	// AnnotationWebhookEnabled indicates the workload should be processed by webhook
+	AnnotationWebhookEnabled = "optipod.io/webhook-enabled"
+
+	// AnnotationStrategy indicates which strategy is used for this workload
+	AnnotationStrategy = "optipod.io/strategy"
+
+	// Resource recommendation annotations (per container)
+	// Format: optipod.io/cpu-request.<container-name>
+	//         optipod.io/memory-request.<container-name>
+	//         optipod.io/cpu-limit.<container-name>
+	//         optipod.io/memory-limit.<container-name>
+	AnnotationCPURequestPrefix    = "optipod.io/cpu-request"
+	AnnotationMemoryRequestPrefix = "optipod.io/memory-request"
+	AnnotationCPULimitPrefix      = "optipod.io/cpu-limit"
+	AnnotationMemoryLimitPrefix   = "optipod.io/memory-limit"
 )
 
 // PolicyMode defines the operational mode of the optimization policy
@@ -57,6 +74,26 @@ const (
 	ModeRecommend PolicyMode = "Recommend"
 	// ModeDisabled stops processing workloads under this policy
 	ModeDisabled PolicyMode = "Disabled"
+)
+
+// UpdateStrategyType defines how resource updates are applied
+type UpdateStrategyType string
+
+const (
+	// StrategySSA uses Server-Side Apply for resource updates
+	StrategySSA UpdateStrategyType = "ssa"
+	// StrategyWebhook uses mutating webhooks for resource updates
+	StrategyWebhook UpdateStrategyType = "webhook"
+)
+
+// RolloutStrategyType defines when resource changes take effect
+type RolloutStrategyType string
+
+const (
+	// RolloutImmediate triggers rolling restart after applying annotations
+	RolloutImmediate RolloutStrategyType = "immediate"
+	// RolloutOnNextRestart only applies annotations without triggering restarts
+	RolloutOnNextRestart RolloutStrategyType = "onNextRestart"
 )
 
 // OptimizationPolicySpec defines the desired state of OptimizationPolicy
@@ -211,6 +248,18 @@ type ResourceBound struct {
 
 // UpdateStrategy defines how resource updates are applied to workloads
 type UpdateStrategy struct {
+	// Strategy defines how resource updates are applied
+	// +kubebuilder:validation:Enum=ssa;webhook
+	// +kubebuilder:default="webhook"
+	// +optional
+	Strategy *string `json:"strategy,omitempty"`
+
+	// RolloutStrategy defines when resource changes take effect (webhook strategy only)
+	// +kubebuilder:validation:Enum=immediate;onNextRestart
+	// +kubebuilder:default="onNextRestart"
+	// +optional
+	RolloutStrategy *string `json:"rolloutStrategy,omitempty"`
+
 	// AllowInPlaceResize enables in-place pod resize when supported
 	// +kubebuilder:default=true
 	// +optional
@@ -509,6 +558,37 @@ func (r *OptimizationPolicy) GetTotalWorkloadsByType() int {
 		r.Status.WorkloadsByType.DaemonSets
 }
 
+// GetStrategy returns the update strategy, defaulting to "webhook" if not specified
+func (r *OptimizationPolicy) GetStrategy() UpdateStrategyType {
+	if r.Spec.UpdateStrategy.Strategy != nil {
+		return UpdateStrategyType(*r.Spec.UpdateStrategy.Strategy)
+	}
+	return StrategyWebhook // Default to webhook strategy
+}
+
+// GetRolloutStrategy returns the rollout strategy, defaulting to "onNextRestart" if not specified
+func (r *OptimizationPolicy) GetRolloutStrategy() RolloutStrategyType {
+	if r.Spec.UpdateStrategy.RolloutStrategy != nil {
+		return RolloutStrategyType(*r.Spec.UpdateStrategy.RolloutStrategy)
+	}
+	return RolloutOnNextRestart // Default to onNextRestart
+}
+
+// IsWebhookStrategy returns true if the policy uses webhook strategy
+func (r *OptimizationPolicy) IsWebhookStrategy() bool {
+	return r.GetStrategy() == StrategyWebhook
+}
+
+// IsSSAStrategy returns true if the policy uses SSA strategy
+func (r *OptimizationPolicy) IsSSAStrategy() bool {
+	return r.GetStrategy() == StrategySSA
+}
+
+// IsImmediateRollout returns true if the policy uses immediate rollout strategy
+func (r *OptimizationPolicy) IsImmediateRollout() bool {
+	return r.GetRolloutStrategy() == RolloutImmediate
+}
+
 func init() {
 	SchemeBuilder.Register(&OptimizationPolicy{}, &OptimizationPolicyList{})
 }
@@ -624,6 +704,22 @@ func (r *OptimizationPolicy) validateOptimizationPolicy() error {
 	if r.Spec.UpdateStrategy.GradualDecreaseConfig != nil {
 		if err := validateGradualDecreaseConfig(r.Spec.UpdateStrategy.GradualDecreaseConfig); err != nil {
 			return err
+		}
+	}
+
+	// Validate strategy field
+	if r.Spec.UpdateStrategy.Strategy != nil {
+		strategy := *r.Spec.UpdateStrategy.Strategy
+		if strategy != string(StrategySSA) && strategy != string(StrategyWebhook) {
+			return fmt.Errorf("invalid strategy %q, must be one of: ssa, webhook", strategy)
+		}
+	}
+
+	// Validate rollout strategy field
+	if r.Spec.UpdateStrategy.RolloutStrategy != nil {
+		rolloutStrategy := *r.Spec.UpdateStrategy.RolloutStrategy
+		if rolloutStrategy != string(RolloutImmediate) && rolloutStrategy != string(RolloutOnNextRestart) {
+			return fmt.Errorf("invalid rolloutStrategy %q, must be one of: immediate, onNextRestart", rolloutStrategy)
 		}
 	}
 

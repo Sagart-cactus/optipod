@@ -1,0 +1,14 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: webhook-pdb
+  namespace: system
+  labels:
+    app.kubernetes.io/name: optipod-webhook
+    app.kubernetes.io/managed-by: kustomize
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      control-plane: webhook-server
+      app.kubernetes.io/name: optipod-webhook

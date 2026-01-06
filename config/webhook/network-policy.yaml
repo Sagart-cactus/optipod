@@ -1,0 +1,65 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: webhook-network-policy
+  namespace: system
+  labels:
+    app.kubernetes.io/name: optipod-webhook
+    app.kubernetes.io/managed-by: kustomize
+spec:
+  podSelector:
+    matchLabels:
+      control-plane: webhook-server
+      app.kubernetes.io/name: optipod-webhook
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Allow webhook traffic from API server
+  - from:
+    - namespaceSelector: {}  # Allow from any namespace (API server calls)
+    ports:
+    - protocol: TCP
+      port: 9443
+  # Allow metrics scraping
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: monitoring
+    - podSelector:
+        matchLabels:
+          app: prometheus
+    ports:
+    - protocol: TCP
+      port: 8080
+  # Allow health checks
+  - from: []  # Allow from any source for health checks
+    ports:
+    - protocol: TCP
+      port: 8081
+  egress:
+  # Allow DNS resolution
+  - to: []
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+  # Allow access to Kubernetes API server
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 443
+    - protocol: TCP
+      port: 6443
+  # Allow access to metrics server (if needed)
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: kube-system
+    - podSelector:
+        matchLabels:
+          k8s-app: metrics-server
+    ports:
+    - protocol: TCP
+      port: 443

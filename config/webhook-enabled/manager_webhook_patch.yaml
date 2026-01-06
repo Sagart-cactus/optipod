@@ -1,0 +1,36 @@
+# Patch to enable webhook functionality in the main controller
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: controller-manager
+  namespace: system
+spec:
+  template:
+    spec:
+      containers:
+      - name: manager
+        args:
+        - --leader-elect=true
+        - --health-probe-bind-address=:8081
+        - --metrics-bind-address=:8080
+        - --metrics-provider=metrics-server
+        - --prometheus-url=http://prometheus-k8s.monitoring.svc:9090
+        - --dry-run=false
+        - --reconciliation-interval=1m
+        # Enable webhook functionality
+        - --enable-webhook=true
+        - --webhook-port=9443
+        - --webhook-cert-dir=/tmp/k8s-webhook-server/serving-certs
+        ports:
+        - containerPort: 9443
+          name: webhook-server
+          protocol: TCP
+        volumeMounts:
+        - mountPath: /tmp/k8s-webhook-server/serving-certs
+          name: cert
+          readOnly: true
+      volumes:
+      - name: cert
+        secret:
+          defaultMode: 420
+          secretName: webhook-server-certs  # pragma: allowlist secret

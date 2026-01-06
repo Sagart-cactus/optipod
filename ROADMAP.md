@@ -93,6 +93,25 @@ development approach with comprehensive testing.
   - 🔄 Backward compatible implementation
   - 📋 Dynamic provider switching and resource management
 
+### Configuration System
+
+- **Command-Line Configuration**: ✅ Fully implemented
+  - ✅ Complete flag-based configuration system
+  - ✅ Production-ready deployment args support
+  - ✅ Override capability for all operator settings
+
+- **ConfigMap Integration**: 🚧 Planned for next release
+  - ⚠️ ConfigMap defined but not actively read by application
+  - 🔄 Dynamic configuration loading from ConfigMap
+  - 🔄 Hot-reload capability without pod restart
+  - 📋 Environment variable support
+
+- **Configuration Precedence**: ✅ Documented
+  - ✅ Command-line flags (highest priority)
+  - ✅ Built-in defaults (fallback)
+  - 🔄 ConfigMap integration (planned)
+  - 📋 Environment variables (planned)
+
 ### Advanced Features
 
 - **Custom Metrics Providers**: 🚧 Framework in progress
@@ -109,6 +128,12 @@ development approach with comprehensive testing.
 ## 📋 Planned Features
 
 ### Q1 2025
+
+- **Configuration System Enhancements**
+  - ConfigMap integration and dynamic loading
+  - Environment variable support
+  - Hot-reload capability without pod restart
+  - Configuration validation and error reporting
 
 - **Performance & Scale Enhancements**
   - Cluster-wide performance benchmarks

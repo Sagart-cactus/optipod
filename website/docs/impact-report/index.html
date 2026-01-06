@@ -61,6 +61,16 @@
             <figcaption>Preview of the generated HTML report. Click to open full size.</figcaption>
           </figure>
 
+          <h2>How the report works</h2>
+          <p>The impact report consolidates individual workload recommendations into a unified view:</p>
+          <ul>
+            <li><strong>Scans all workloads</strong> in the cluster for OptiPod recommendation annotations</li>
+            <li><strong>Aggregates recommendations</strong> from individual workload annotations into totals</li>
+            <li><strong>Calculates replica-weighted impact</strong> (recommendation delta × number of pods)</li>
+            <li><strong>Provides multiple output formats</strong>: HTML for human review, JSON for automation</li>
+            <li><strong>Highlights potential issues</strong> like requests exceeding limits</li>
+          </ul>
+
           <h2>What the report shows</h2>
           <ul>
             <li>Only workloads that have OptiPod recommendation annotations.</li>
@@ -86,6 +96,9 @@ chmod +x optipod-recommendation-report.sh
 
           <p>Open the file in a browser:</p>
           <pre><code class="hljs language-bash">open optipod-impact.html</code></pre>
+
+          <p>Or generate a JSON report for programmatic analysis:</p>
+          <pre><code class="hljs language-bash">./optipod-recommendation-report.sh -o json -f optipod-impact.json</code></pre>
 
           <h2>How to use it for Auto adoption</h2>
           <ol>
