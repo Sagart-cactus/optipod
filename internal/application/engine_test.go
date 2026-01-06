@@ -1380,16 +1380,41 @@ func createMockEngineWithDynamicClient(dynamicClient dynamic.Interface) *Engine 
 		dynamicClient: dynamicClient,
 	}
 
+	// Create a mock deployment for the fake client
+	mockDeployment := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-deployment",
+			Namespace: "default",
+		},
+		Spec: appsv1.DeploymentSpec{
+			Template: corev1.PodTemplateSpec{
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{
+						{
+							Name: "test-container",
+							Resources: corev1.ResourceRequirements{
+								Requests: corev1.ResourceList{
+									corev1.ResourceCPU:    resource.MustParse("500m"),
+									corev1.ResourceMemory: resource.MustParse("1Gi"),
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
 	// Initialize required components to avoid nil pointer dereferences
 	// For testing, we'll create minimal webhook components
 	if engine.annotationManager == nil {
-		// Create a fake client for the annotation manager
-		fakeClient := createFakeClient()
+		// Create a fake client with mock deployment for the annotation manager
+		fakeClient := createFakeClientWithObjects(mockDeployment)
 		engine.annotationManager = webhook.NewAnnotationManager(fakeClient)
 	}
 	if engine.rolloutController == nil {
-		// Create a fake client for the rollout controller
-		fakeClient := createFakeClient()
+		// Create a fake client with mock deployment for the rollout controller
+		fakeClient := createFakeClientWithObjects(mockDeployment)
 		engine.rolloutController = webhook.NewRolloutController(fakeClient)
 	}
 
@@ -1398,14 +1423,21 @@ func createMockEngineWithDynamicClient(dynamicClient dynamic.Interface) *Engine 
 
 // createFakeClient creates a minimal fake client for testing
 func createFakeClient() client.Client {
+	return createFakeClientWithObjects()
+}
+
+// createFakeClientWithObjects creates a fake client with pre-populated objects
+func createFakeClientWithObjects(objects ...client.Object) client.Client {
 	scheme := runtime.NewScheme()
 	_ = optipodv1alpha1.AddToScheme(scheme)
 	_ = corev1.AddToScheme(scheme)
 	_ = appsv1.AddToScheme(scheme)
 
-	return fake.NewClientBuilder().
-		WithScheme(scheme).
-		Build()
+	builder := fake.NewClientBuilder().WithScheme(scheme)
+	if len(objects) > 0 {
+		builder = builder.WithObjects(objects...)
+	}
+	return builder.Build()
 }
 
 // Feature: server-side-apply-support, Property 1: Configuration determines patch method
@@ -2943,7 +2975,9 @@ func TestOptimizationApplication(t *testing.T) {
 		// Test SSA strategy
 		policy := createMockPolicy(true, false)
 		useSSA := true
+		ssaStrategy := string(optipodv1alpha1.StrategySSA)
 		policy.Spec.UpdateStrategy.UseServerSideApply = &useSSA
+		policy.Spec.UpdateStrategy.Strategy = &ssaStrategy
 
 		result, err := engine.Apply(context.Background(), workload, "test-container", rec, policy)
 		if err != nil {
@@ -3144,8 +3178,8 @@ func TestProperty_SSACompatibilityPreservation(t *testing.T) {
 				capturedPatchType:    &capturedPatchType2,
 			}
 
-			engine1 := &Engine{dynamicClient: mockDynamic1}
-			engine2 := &Engine{dynamicClient: mockDynamic2}
+			engine1 := createMockEngineWithDynamicClient(mockDynamic1)
+			engine2 := createMockEngineWithDynamicClient(mockDynamic2)
 
 			// Create workload and recommendation
 			workload := createMockWorkload()
@@ -3239,9 +3273,7 @@ func TestProperty_SSACompatibilityPreservation(t *testing.T) {
 				capturedPatchType:    &capturedPatchType,
 			}
 
-			engine := &Engine{
-				dynamicClient: mockDynamic,
-			}
+			engine := createMockEngineWithDynamicClient(mockDynamic)
 
 			// Create workload
 			workload := createMockWorkload()
