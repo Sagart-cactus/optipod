@@ -8,6 +8,8 @@ kind: Kustomization
 resources:
 - ../default
 - ../webhook
+- issuer.yaml
+- certificate.yaml
 
 # Patches to enable webhook functionality
 patches:
