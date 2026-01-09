@@ -1,0 +1,24 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: serving-cert
+  namespace: system
+spec:
+  secretName: webhook-server-certs  # pragma: allowlist secret
+  dnsNames:
+    - optipod-webhook-service.system.svc
+    - optipod-webhook-service.system.svc.cluster.local
+  issuerRef:
+    name: optipod-selfsigned-issuer
+  duration: 8760h # 1 year
+  renewBefore: 720h # 30 days
+  subject:
+    organizations:
+    - optipod
+  privateKey:
+    algorithm: RSA
+    size: 2048
+  usages:
+  - digital signature
+  - key encipherment
+  - server auth

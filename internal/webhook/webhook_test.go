@@ -18,6 +18,12 @@ package webhook
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/pem"
+	"math/big"
 	"os"
 	"path/filepath"
 	"strings"
@@ -1095,25 +1101,39 @@ func genLifecycleConfig() gopter.Gen {
 
 // createMockCertificates creates mock certificate files for testing
 func createMockCertificates(certPath, keyPath string) error {
-	// Create mock certificate content
-	certContent := `-----BEGIN CERTIFICATE-----
-MIICljCCAX4CCQDKOGJQnQwgXjANBgkqhkiG9w0BAQsFADCBjTELMAkGA1UEBhMC
-VVMxCzAJBgNVBAgMAkNBMRYwFAYDVQQHDA1TYW4gRnJhbmNpc2NvMRMwEQYDVQQK
-DApPcHRpUG9kIEluYzEQMA4GA1UECwwHVGVzdGluZzEQMA4GA1UEAwwHdGVzdC1j
-YTEgMB4GCSqGSIb3DQEJARYRdGVzdEBvcHRpcG9kLmlvMB4XDTIzMDEwMTAwMDAw
-MFoXDTI0MDEwMTAwMDAwMFowgY0xCzAJBgNVBAYTAlVTMQswCQYDVQQIDAJDQTEW
-MBQGA1UEBwwNU2FuIEZyYW5jaXNjbzETMBEGA1UECgwKT3B0aVBvZCBJbmMxEDAO
-BgNVBAsMB1Rlc3RpbmcxEDAOBgNVBAMMB3Rlc3QtY2ExIDAeBgkqhkiG9w0BCQEW
-EXRlc3RAb3B0aXBvZC5pbzCBnzANBgkqhkiG9w0BAQEFAAOBjQAwgYkCgYEA1234
------END CERTIFICATE-----`
+	// Generate a proper self-signed certificate for testing
+	priv, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		return err
+	}
 
-	keyContent := `-----BEGIN PRIVATE KEY-----  // pragma: allowlist secret
-MIICdgIBADANBgkqhkiG9w0BAQEFAASCAmAwggJcAgEAAoGBANTU1NTU1NTU1NTU
-1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU
-1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU
-1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU
-1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU1NTU
------END PRIVATE KEY-----`
+	// Create certificate template
+	notBefore := time.Now()
+	notAfter := notBefore.Add(365 * 24 * time.Hour)
+
+	serialNumber, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128))
+	if err != nil {
+		return err
+	}
+
+	template := x509.Certificate{
+		SerialNumber: serialNumber,
+		Subject: pkix.Name{
+			Organization: []string{"OptipodTest"},
+			CommonName:   "localhost",
+		},
+		NotBefore:             notBefore,
+		NotAfter:              notAfter,
+		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		BasicConstraintsValid: true,
+	}
+
+	// Create self-signed certificate
+	derBytes, err := x509.CreateCertificate(rand.Reader, &template, &template, &priv.PublicKey, priv)
+	if err != nil {
+		return err
+	}
 
 	// Create directories if they don't exist
 	if err := os.MkdirAll(filepath.Dir(certPath), 0755); err != nil {
@@ -1123,13 +1143,27 @@ MIICdgIBADANBgkqhkiG9w0BAQEFAASCAmAwggJcAgEAAoGBANTU1NTU1NTU1NTU
 		return err
 	}
 
-	// Write certificate file
-	if err := os.WriteFile(certPath, []byte(certContent), 0600); err != nil {
+	// Encode and write certificate file
+	certOut, err := os.Create(certPath)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = certOut.Close() }()
+	if err := pem.Encode(certOut, &pem.Block{Type: "CERTIFICATE", Bytes: derBytes}); err != nil {
 		return err
 	}
 
-	// Write key file
-	if err := os.WriteFile(keyPath, []byte(keyContent), 0600); err != nil {
+	// Encode and write key file
+	keyOut, err := os.OpenFile(keyPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = keyOut.Close() }()
+	privBytes, err := x509.MarshalPKCS8PrivateKey(priv)
+	if err != nil {
+		return err
+	}
+	if err := pem.Encode(keyOut, &pem.Block{Type: "PRIVATE KEY", Bytes: privBytes}); err != nil {
 		return err
 	}
 

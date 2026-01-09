@@ -241,6 +241,23 @@ deploy: manifests kustomize ## Deploy controller to the K8s cluster specified in
 undeploy: kustomize ## Undeploy controller from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
 	"$(KUSTOMIZE)" build config/default | "$(KUBECTL)" delete --ignore-not-found=$(ignore-not-found) -f -
 
+##@ Webhook Installation
+
+.PHONY: kind-install
+kind-install: ## Install OptipPod with webhook support for kind clusters (manual certificates)
+	@echo "Installing OptipPod for kind cluster with manual certificates..."
+	CERT_MANAGER=manual ./config/webhook/install.sh
+
+.PHONY: webhook-certmanager
+webhook-certmanager: ## Install OptipPod with webhook support using cert-manager
+	@echo "Installing OptipPod with cert-manager certificates..."
+	CERT_MANAGER=cert-manager ./config/webhook/install.sh
+
+.PHONY: webhook-manual
+webhook-manual: ## Install OptipPod with webhook support using manual certificates
+	@echo "Installing OptipPod with manual certificates..."
+	CERT_MANAGER=manual ./config/webhook/install.sh
+
 ##@ E2E Tests
 
 .PHONY: setup-e2e
