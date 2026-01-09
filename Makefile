@@ -41,6 +41,11 @@ help: ## Display this help.
 
 ##@ Code Quality
 
+.PHONY: ci-checks-local
+ci-checks-local: ## Run all CI checks locally (mirrors GitHub Actions exactly)
+	@echo "🚀 Running local CI checks that mirror GitHub Actions..."
+	@./scripts/ci-checks-local.sh
+
 .PHONY: setup-pre-commit
 setup-pre-commit: ## Set up pre-commit hooks
 	@echo "Setting up pre-commit hooks..."
