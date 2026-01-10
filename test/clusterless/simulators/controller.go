@@ -208,8 +208,10 @@ func (s *ControllerSimulator) SimulateReconcileLoop(
 			return fmt.Errorf("reconcile cycle %d failed: %w", i+1, err)
 		}
 
-		// If requeue is requested, we would normally wait, but in tests we continue immediately
-		_ = result.Requeue // Acknowledge the requeue flag
+		// If requeue is requested, we would normally wait, but in tests we continue immediately.
+		if result.RequeueAfter > 0 {
+			continue
+		}
 	}
 	return nil
 }
