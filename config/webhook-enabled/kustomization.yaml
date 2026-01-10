@@ -29,7 +29,7 @@ replacements:
     fieldPath: metadata.name
   targets:
   - select:
-      kind: MutatingAdmissionWebhook
+      kind: MutatingWebhookConfiguration
       name: mutating-webhook-configuration
     fieldPaths:
     - webhooks.[name=pod-resource-mutator.optipod.io].clientConfig.service.name
@@ -42,7 +42,7 @@ replacements:
     fieldPath: metadata.namespace
   targets:
   - select:
-      kind: MutatingAdmissionWebhook
+      kind: MutatingWebhookConfiguration
       name: mutating-webhook-configuration
     fieldPaths:
     - webhooks.[name=pod-resource-mutator.optipod.io].clientConfig.service.namespace
@@ -56,7 +56,7 @@ replacements:
     fieldPath: metadata.namespace
   targets:
   - select:
-      kind: MutatingAdmissionWebhook
+      kind: MutatingWebhookConfiguration
     fieldPaths:
     - metadata.annotations.[cert-manager.io/inject-ca-from]
     options:
@@ -72,7 +72,7 @@ replacements:
     fieldPath: metadata.name
   targets:
   - select:
-      kind: MutatingAdmissionWebhook
+      kind: MutatingWebhookConfiguration
     fieldPaths:
     - metadata.annotations.[cert-manager.io/inject-ca-from]
     options:

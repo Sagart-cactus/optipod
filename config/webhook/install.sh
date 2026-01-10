@@ -95,6 +95,7 @@ install_webhook() {
         if check_cert_manager && check_cert_manager_usable; then
             echo "Using cert-manager for certificate management"
             kubectl apply -k config/webhook-enabled/
+            wait_for_cert_manager_ca_bundle
         else
             echo "Using manual certificate management (cert-manager not usable)"
             generate_certs
@@ -108,7 +109,37 @@ install_webhook() {
     else
         echo "Using cert-manager for certificate management"
         kubectl apply -k config/webhook-enabled/
+        wait_for_cert_manager_ca_bundle
     fi
+}
+
+# Wait for cert-manager to inject CA bundle into webhook configuration
+wait_for_cert_manager_ca_bundle() {
+    echo "Waiting for cert-manager to inject CA bundle into webhook configuration..."
+
+    local max_wait=120  # Maximum wait time in seconds
+    local wait_interval=5  # Check interval in seconds
+    local elapsed=0
+
+    while [ $elapsed -lt $max_wait ]; do
+        # Check if CA bundle is present in webhook configuration
+        CA_BUNDLE=$(kubectl get mutatingwebhookconfiguration optipod-webhook-mutating-webhook-configuration \
+            -o jsonpath='{.webhooks[0].clientConfig.caBundle}' 2>/dev/null || echo "")
+
+        if [ -n "$CA_BUNDLE" ] && [ "$CA_BUNDLE" != "null" ]; then
+            echo "✓ CA bundle injected by cert-manager"
+            return 0
+        fi
+
+        echo "  Waiting for CA bundle injection... ($elapsed/${max_wait}s)"
+        sleep $wait_interval
+        elapsed=$((elapsed + wait_interval))
+    done
+
+    echo "⚠️  Timeout waiting for cert-manager to inject CA bundle"
+    echo "   The webhook may not work properly until the CA bundle is injected"
+    echo "   Check cert-manager logs: kubectl logs -n cert-manager -l app=cert-manager"
+    return 1
 }
 
 # Verify installation
