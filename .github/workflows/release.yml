@@ -222,6 +222,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [setup, package-helm-chart, security-scan]
     permissions:
+      actions: read
       packages: write
       contents: read
     steps:
