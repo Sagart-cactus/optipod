@@ -1,0 +1,312 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Webhook Configuration | OptiPod Docs</title>
+    <meta name="robots" content="index, follow">
+    <link rel="canonical" href="https://sagart-cactus.github.io/optipod/docs/webhook-configuration/">
+    <link rel="icon" type="image/svg+xml" href="../../images/favicon.svg">
+    <link rel="stylesheet" href="../../css/docs.css">
+    <link rel="stylesheet" href="../../css/hljs.css">
+  </head>
+  <body class="docs">
+    <header class="docs-header">
+      <div class="docs-container docs-header-inner">
+        <a class="docs-brand" href="../../" aria-label="OptiPod home">
+          <img src="../../images/optipod-logo-themed.svg" alt="OptiPod" width="34" height="34">
+          <span>OptiPod Docs</span>
+        </a>
+        <nav class="docs-toplinks" aria-label="Top links">
+          <a class="docs-pill" href="../">Docs</a>
+          <a class="docs-pill" href="https://github.com/Sagart-cactus/optipod" target="_blank" rel="noreferrer">GitHub</a>
+        </nav>
+      </div>
+    </header>
+
+    <div class="docs-container docs-layout">
+      <nav class="docs-nav" aria-label="Docs navigation">
+
+<nav class="docs-nav" aria-label="Docs navigation">
+<a class="docs-pill" href="../">Docs Home</a>
+<h2>Getting Started</h2>
+<a href="../installation/">Installation Guide</a>
+<a href="../examples/">Examples</a>
+<a href="../impact-report/">Impact Report</a>
+<h2>Configuration</h2>
+<a href="../crd-reference/">CRD Reference</a>
+<a href="../webhook-configuration/" aria-current="page">Webhook Configuration</a>
+<a href="../prometheus-setup/">Prometheus Setup</a>
+<a href="../metrics-server-sampling/">Metrics Server Sampling</a>
+<h2>Integration</h2>
+<a href="../argocd-integration/">ArgoCD Integration</a>
+<h2>Development</h2>
+<a href="../contributing/">Contributing</a>
+<a href="../pre-commit-setup/">Pre-commit Setup</a>
+</nav>
+</nav>
+      <main class="docs-main" id="main">
+        <div class="docs-meta">
+          <div class="breadcrumbs">Docs / Webhook Configuration</div>
+          <div class="actions"><a href="https://github.com/Sagart-cactus/optipod/blob/main/config/webhook/README.md" target="_blank" rel="noreferrer">View source (Markdown)</a></div>
+        </div>
+        <article class="doc-content">
+          <h1 id="webhook-configuration">OptiPod Webhook Configuration</h1>
+          <p>The OptiPod mutating webhook provides an alternative to Server Side Apply (SSA) for applying resource recommendations, making OptiPod compatible with ArgoCD and other GitOps tools that don't support SSA field-level ownership.</p>
+
+          <h2 id="overview">Overview</h2>
+          <p>The webhook intercepts pod creation requests and mutates them to apply OptipPod recommendations before the pods are created. This approach:</p>
+          <ul>
+          <li>Works seamlessly with GitOps tools like ArgoCD</li>
+          <li>Applies recommendations without modifying workload resources directly</li>
+          <li>Supports rolling restarts to apply changes</li>
+          <li>Provides high availability and observability</li>
+          </ul>
+
+          <h2 id="components">Components</h2>
+
+          <h3 id="core-components">Core Components</h3>
+          <ul>
+          <li><strong>service.yaml</strong> - Kubernetes service for the webhook endpoint</li>
+          <li><strong>deployment.yaml</strong> - Webhook server deployment with high availability</li>
+          <li><strong>webhook-config.yaml</strong> - MutatingAdmissionWebhook configuration</li>
+          <li><strong>rbac.yaml</strong> - RBAC permissions for webhook operations</li>
+          </ul>
+
+          <h3 id="security-configuration">Security &amp; Configuration</h3>
+          <ul>
+          <li><strong>certificates.yaml</strong> - TLS certificate management (cert-manager and manual options)</li>
+          <li><strong>network-policy.yaml</strong> - Network security policies</li>
+          <li><strong>config.yaml</strong> - Webhook server configuration</li>
+          <li><strong>pdb.yaml</strong> - Pod Disruption Budget for high availability</li>
+          </ul>
+
+          <h2 id="installation">Installation</h2>
+
+          <h3 id="prerequisites">Prerequisites</h3>
+          <ol>
+          <li>Kubernetes cluster (v1.19+)</li>
+          <li>kubectl configured</li>
+          <li>(Optional) cert-manager for automatic certificate management</li>
+          </ol>
+
+          <h3 id="option-1-automatic">Option 1: Automatic Installation (Recommended)</h3>
+          <pre><code class="hljs language-bash"><span class="hljs-comment"># Install with webhook enabled (default)</span>
+./config/webhook/install.sh
+
+<span class="hljs-comment"># Install in custom namespace</span>
+NAMESPACE=my-optipod ./config/webhook/install.sh
+
+<span class="hljs-comment"># Install without cert-manager (manual certificates)</span>
+CERT_MANAGER=manual ./config/webhook/install.sh</code></pre>
+
+          <h3 id="option-2-kustomize">Option 2: Manual Installation with Kustomize</h3>
+          <pre><code class="hljs language-bash"><span class="hljs-comment"># With cert-manager</span>
+kubectl apply -k config/webhook-enabled/
+
+<span class="hljs-comment"># Without cert-manager (manual certificates required)</span>
+kubectl apply -k config/webhook/</code></pre>
+
+          <h3 id="option-3-ssa-mode">Option 3: Traditional SSA Mode (No Webhook)</h3>
+          <pre><code class="hljs language-bash"><span class="hljs-comment"># Install without webhook support</span>
+WEBHOOK_MODE=disabled ./config/webhook/install.sh</code></pre>
+
+          <h2 id="policy-configuration">Configuration in OptimizationPolicy</h2>
+
+          <h3 id="webhook-strategy">Using Webhook Strategy</h3>
+          <pre><code class="hljs language-yaml"><span class="hljs-attr">apiVersion:</span> <span class="hljs-string">optipod.optipod.io/v1alpha1</span>
+<span class="hljs-attr">kind:</span> <span class="hljs-string">OptimizationPolicy</span>
+<span class="hljs-attr">metadata:</span>
+  <span class="hljs-attr">name:</span> <span class="hljs-string">my-policy</span>
+<span class="hljs-attr">spec:</span>
+  <span class="hljs-attr">mode:</span> <span class="hljs-string">Auto</span>
+  <span class="hljs-attr">updateStrategy:</span>
+    <span class="hljs-attr">strategy:</span> <span class="hljs-string">webhook</span>              <span class="hljs-comment"># Use webhook instead of SSA</span>
+    <span class="hljs-attr">rolloutStrategy:</span> <span class="hljs-string">onNextRestart</span> <span class="hljs-comment"># Control when changes take effect</span>
+  <span class="hljs-comment"># ... other configuration</span></code></pre>
+
+          <h3 id="strategy-options">Strategy Options</h3>
+          <ul>
+          <li><code>strategy: webhook</code> - Use mutating webhook (default, ArgoCD compatible)</li>
+          <li><code>strategy: ssa</code> - Use Server Side Apply (requires SSA permissions)</li>
+          </ul>
+
+          <h3 id="rollout-options">Rollout Strategy Options</h3>
+          <ul>
+          <li><code>rolloutStrategy: onNextRestart</code> - Apply changes on next pod restart (default)</li>
+          <li><code>rolloutStrategy: immediate</code> - Trigger rolling restart immediately</li>
+          </ul>
+
+          <h2 id="certificate-management">Certificate Management</h2>
+
+          <h3 id="cert-manager">Option 1: cert-manager (Recommended)</h3>
+          <p>Automatically manages certificate lifecycle:</p>
+          <pre><code class="hljs language-bash"><span class="hljs-comment"># Install cert-manager first</span>
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.13.0/cert-manager.yaml
+
+<span class="hljs-comment"># Then install OptipPod webhook</span>
+kubectl apply -k config/webhook-enabled/</code></pre>
+
+          <h3 id="manual-certificates">Option 2: Manual Certificates</h3>
+          <p>Generate and manage certificates manually:</p>
+          <pre><code class="hljs language-bash"><span class="hljs-comment"># Generate certificates</span>
+openssl req -x509 -newkey rsa:2048 -keyout tls.key -out tls.crt -days 365 -nodes \
+  -subj <span class="hljs-string">&quot;/CN=optipod-webhook-service.optipod-system.svc&quot;</span> \
+  -addext <span class="hljs-string">&quot;subjectAltName=DNS:optipod-webhook-service.optipod-system.svc,DNS:optipod-webhook-service.optipod-system.svc.cluster.local&quot;</span>
+
+<span class="hljs-comment"># Create secret</span>
+kubectl create secret tls webhook-server-certs \
+  --cert=tls.crt --key=tls.key \
+  --namespace=optipod-system</code></pre>
+
+          <h2 id="security">Security Configuration</h2>
+
+          <h3 id="network-policies">Network Policies</h3>
+          <p>The webhook includes network policies that:</p>
+          <ul>
+          <li>Allow webhook traffic from the API server</li>
+          <li>Allow metrics scraping from monitoring namespace</li>
+          <li>Allow health checks from any source</li>
+          <li>Restrict egress to necessary services only</li>
+          </ul>
+
+          <h3 id="rbac">RBAC Permissions</h3>
+          <p>The webhook requires permissions for:</p>
+          <ul>
+          <li>Reading pods and OptimizationPolicies</li>
+          <li>Updating workload annotations</li>
+          <li>Managing webhook configurations</li>
+          <li>Creating events for observability</li>
+          </ul>
+
+          <h3 id="failure-policy">Failure Policy</h3>
+          <p>The webhook is configured with <code>failurePolicy: Ignore</code> by default, meaning:</p>
+          <ul>
+          <li>Pod creation continues if webhook is unavailable</li>
+          <li>Reduces risk of cluster disruption</li>
+          <li>Change to <code>Fail</code> for stricter enforcement in production</li>
+          </ul>
+
+          <h2 id="monitoring">Monitoring and Observability</h2>
+
+          <h3 id="metrics">Metrics</h3>
+          <p>The webhook exposes metrics on port 8080:</p>
+          <ul>
+          <li><code>optipod_webhook_admission_requests_total</code> - Total admission requests</li>
+          <li><code>optipod_webhook_admission_duration_seconds</code> - Request duration</li>
+          <li><code>optipod_webhook_mutations_total</code> - Total pod mutations</li>
+          <li><code>optipod_webhook_errors_total</code> - Total errors</li>
+          </ul>
+
+          <h3 id="health-checks">Health Checks</h3>
+          <ul>
+          <li><strong>Liveness</strong>: <code>/healthz</code> on port 8081</li>
+          <li><strong>Readiness</strong>: <code>/readyz</code> on port 8081</li>
+          </ul>
+
+          <h3 id="logging">Logging</h3>
+          <p>Structured JSON logging with configurable levels:</p>
+          <ul>
+          <li><code>debug</code> - Detailed operation logs</li>
+          <li><code>info</code> - Standard operation logs (default)</li>
+          <li><code>warn</code> - Warning conditions</li>
+          <li><code>error</code> - Error conditions only</li>
+          </ul>
+
+          <h2 id="troubleshooting">Troubleshooting</h2>
+
+          <h3 id="not-receiving-requests">Webhook Not Receiving Requests</h3>
+          <p>Check webhook configuration:</p>
+          <pre><code class="hljs language-bash">kubectl get mutatingwebhookconfiguration optipod-webhook-mutating-webhook-configuration -o yaml</code></pre>
+          <p>Verify service and endpoints:</p>
+          <pre><code class="hljs language-bash">kubectl get service optipod-webhook-service -n optipod-system
+kubectl get endpoints optipod-webhook-service -n optipod-system</code></pre>
+
+          <h3 id="certificate-issues">Certificate Issues</h3>
+          <p>Check certificate status:</p>
+          <pre><code class="hljs language-bash"><span class="hljs-comment"># With cert-manager</span>
+kubectl get certificate serving-cert -n optipod-system
+
+<span class="hljs-comment"># Manual certificates</span>
+kubectl get secret webhook-server-certs -n optipod-system</code></pre>
+
+          <h3 id="mutations-not-applied">Pod Mutations Not Applied</h3>
+          <p>Check webhook logs:</p>
+          <pre><code class="hljs language-bash">kubectl logs -l control-plane=webhook-server -n optipod-system</code></pre>
+          <p>Verify pod annotations:</p>
+          <pre><code class="hljs language-bash">kubectl get pod &lt;pod-name&gt; -o yaml | grep optipod.io</code></pre>
+
+          <h3 id="ha-issues">High Availability Issues</h3>
+          <p>Check pod disruption budget:</p>
+          <pre><code class="hljs language-bash">kubectl get pdb webhook-pdb -n optipod-system</code></pre>
+          <p>Verify multiple replicas are running:</p>
+          <pre><code class="hljs language-bash">kubectl get deployment optipod-webhook-deployment -n optipod-system</code></pre>
+
+          <h3 id="debug-commands">Debug Commands</h3>
+          <pre><code class="hljs language-bash"><span class="hljs-comment"># Check webhook server status</span>
+kubectl get deployment optipod-webhook-deployment -n optipod-system
+
+<span class="hljs-comment"># View webhook logs</span>
+kubectl logs -l control-plane=webhook-server -n optipod-system -f
+
+<span class="hljs-comment"># Test webhook connectivity</span>
+kubectl port-forward service/optipod-webhook-service 9443:443 -n optipod-system
+
+<span class="hljs-comment"># Check webhook configuration</span>
+kubectl get mutatingwebhookconfiguration -o yaml
+
+<span class="hljs-comment"># Verify RBAC permissions</span>
+kubectl auth can-i --list --as=system:serviceaccount:optipod-system:webhook-server</code></pre>
+
+          <h2 id="migration">Migration from SSA</h2>
+          <p>To migrate existing OptimizationPolicies from SSA to webhook:</p>
+          <ol>
+          <li><strong>Update policies</strong> to use webhook strategy:
+          <pre><code class="hljs language-yaml"><span class="hljs-attr">spec:</span>
+  <span class="hljs-attr">updateStrategy:</span>
+    <span class="hljs-attr">strategy:</span> <span class="hljs-string">webhook</span>
+    <span class="hljs-attr">rolloutStrategy:</span> <span class="hljs-string">onNextRestart</span></code></pre>
+          </li>
+          <li><strong>Deploy webhook</strong> components:
+          <pre><code class="hljs language-bash">kubectl apply -k config/webhook-enabled/</code></pre>
+          </li>
+          <li><strong>Verify operation</strong> with test workloads</li>
+          <li><strong>Gradual rollout</strong> - migrate policies one by one</li>
+          </ol>
+
+          <h2 id="performance">Performance Considerations</h2>
+
+          <h3 id="resource-requirements">Resource Requirements</h3>
+          <ul>
+          <li><strong>CPU</strong>: 50m request, 200m limit per replica</li>
+          <li><strong>Memory</strong>: 64Mi request, 256Mi limit per replica</li>
+          <li><strong>Replicas</strong>: 2 for high availability</li>
+          </ul>
+
+          <h3 id="scaling">Scaling</h3>
+          <p>The webhook can be scaled based on:</p>
+          <ul>
+          <li>Pod creation rate in the cluster</li>
+          <li>Number of OptimizationPolicies</li>
+          <li>Webhook response time requirements</li>
+          </ul>
+          <p>Monitor <code>optipod_webhook_admission_duration_seconds</code> to determine if scaling is needed.</p>
+
+          <h2 id="next-steps">Next Steps</h2>
+          <ul>
+          <li><a href="../installation/">Install OptiPod with webhook support</a></li>
+          <li><a href="../argocd-integration/">Integrate with ArgoCD</a></li>
+          <li><a href="../crd-reference/">Configure OptimizationPolicies</a></li>
+          <li><a href="../examples/">Review example configurations</a></li>
+          </ul>
+        </article>
+      </main>
+    </div>
+
+    <footer class="docs-footer">
+      <div class="docs-container">
+        <div>Found an issue? Open a ticket on <a href="https://github.com/Sagart-cactus/optipod/issues" target="_blank" rel="noreferrer">GitHub Issues</a>.</div>
+      </div>
+    </footer>
+  </body>
+</html>

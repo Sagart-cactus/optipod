@@ -48,3 +48,11 @@ coverage.*
 E2E_TEST_IMPLEMENTATION.md
 TASK_*.md
 TEST_*.md
+
+# AI assistant and deployment folders
+.claude/
+.deploy/
+
+# Test files and temporary artifacts
+test-*.yaml
+temp-*.yaml

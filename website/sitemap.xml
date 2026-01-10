@@ -58,7 +58,7 @@
 
   <url>
     <loc>https://sagart-cactus.github.io/optipod/docs/installation/</loc>
-    <lastmod>2026-01-02</lastmod>
+    <lastmod>2026-01-10</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
@@ -75,6 +75,13 @@
     <lastmod>2026-01-02</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
+  </url>
+
+  <url>
+    <loc>https://sagart-cactus.github.io/optipod/docs/webhook-configuration/</loc>
+    <lastmod>2026-01-10</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
   </url>
 
   <url>

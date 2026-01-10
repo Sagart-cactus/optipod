@@ -130,12 +130,16 @@ else
 fi
 
 if [ -n "$DETECT_SECRETS" ]; then  # pragma: allowlist secret
-    if $DETECT_SECRETS scan --baseline .secrets.baseline --force-use-all-plugins; then  # pragma: allowlist secret
+    # Use a temp baseline to avoid touching the tracked file.
+    TEMP_BASELINE="$(mktemp)"
+    cp .secrets.baseline "$TEMP_BASELINE"
+    if $DETECT_SECRETS scan --baseline "$TEMP_BASELINE" --exclude-files '\.secrets\.baseline$'; then  # pragma: allowlist secret
         print_success "Security scan passed"
     else
         print_error "Potential secrets detected! Please review and update .secrets.baseline if needed."  # pragma: allowlist secret
         OVERALL_SUCCESS=false
     fi
+    rm -f "$TEMP_BASELINE"
 fi
 
 # =============================================================================

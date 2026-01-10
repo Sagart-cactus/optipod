@@ -279,6 +279,41 @@ setup-e2e: ## Set up Kind cluster for e2e tests
 		echo "Kind cluster optipod-e2e-test already exists"; \
 	fi
 
+##@ Cluster-Free E2E Tests
+
+.PHONY: test-clusterless
+test-clusterless: ## Run cluster-free E2E tests
+	@echo "🧪 Running cluster-free E2E tests..."
+	go test -v ./test/clusterless/workflows/... \
+		-coverprofile=coverage-clusterless.out \
+		-timeout=10m
+
+.PHONY: test-clusterless-fast
+test-clusterless-fast: ## Run cluster-free tests in parallel (fast mode)
+	@echo "⚡ Running cluster-free E2E tests (fast mode)..."
+	go test -v ./test/clusterless/workflows/... \
+		-coverprofile=coverage-clusterless.out \
+		-timeout=5m
+
+.PHONY: test-clusterless-verbose
+test-clusterless-verbose: ## Run with verbose output
+	go test -v ./test/clusterless/workflows/... \
+		-ginkgo.v
+
+.PHONY: test-clusterless-focus
+test-clusterless-focus: ## Run focused cluster-free tests
+	@echo "🎯 Running focused cluster-free E2E tests..."
+	go test -v ./test/clusterless/workflows/... \
+		-ginkgo.focus="$(FOCUS)" \
+		-ginkgo.v \
+		-timeout=10m
+
+.PHONY: test-all
+test-all: test test-clusterless ## Run all tests (unit + cluster-free E2E)
+	@echo "✅ All tests completed"
+
+##@ Traditional E2E Tests (Cluster-Based)
+
 .PHONY: test-e2e
 test-e2e: setup-e2e manifests generate fmt vet ## Run e2e tests
 	@echo "Running comprehensive e2e tests..."

@@ -43,23 +43,29 @@ In **Recommend mode**:
 
 ### 1) Install
 
-Choose your installation method based on your environment:
-
-**For ArgoCD/GitOps environments (Recommended):**
+**Recommended: Helm Installation**
 ```bash
-# Install with webhook strategy (ArgoCD compatible)
-kubectl apply -f https://github.com/Sagart-cactus/optipod/releases/latest/download/install-webhook.yaml
+# Add the Helm repository (when published)
+helm repo add optipod https://optipod.github.io/charts
+helm repo update
+
+# Install OptipPod (auto-detects and installs cert-manager if needed)
+helm install optipod optipod/optipod \
+  --namespace optipod-system \
+  --create-namespace
 ```
 
-**For traditional Kubernetes environments:**
+**Alternative: kubectl**
 ```bash
-# Install with SSA strategy
+# For ArgoCD/GitOps environments (webhook strategy)
+kubectl apply -f https://github.com/Sagart-cactus/optipod/releases/latest/download/install-webhook.yaml
+
+# For traditional Kubernetes environments (SSA strategy)
 kubectl apply -f https://github.com/Sagart-cactus/optipod/releases/latest/download/install.yaml
 ```
 
-**Automated installation:**
+**Automated installation script:**
 ```bash
-# Download and run installation script with options
 curl -sSL https://raw.githubusercontent.com/Sagart-cactus/optipod/main/config/webhook/install.sh | bash
 ```
 

@@ -12,6 +12,11 @@ This feature adds mutating webhook support as an alternative to Server Side Appl
 - **ResourceRecommendation**: Calculated CPU/memory requests and limits for workloads
 - **RollingRestart**: Process of restarting workload pods to apply new configurations
 - **AnnotationBasedRecommendation**: Resource recommendations stored as pod annotations
+- **CertManager**: Kubernetes certificate management operator for automated TLS certificate provisioning
+- **CABundle**: Certificate Authority bundle used to validate TLS connections to the webhook
+- **MutatingAdmissionWebhook**: Kubernetes resource that configures admission webhook behavior
+- **SelfSignedCertificate**: TLS certificate signed by its own private key, used for testing and development
+- **WebhookConfiguration**: Kubernetes configuration that defines how admission webhooks are called
 
 ## Requirements
 
@@ -98,3 +103,59 @@ This feature adds mutating webhook support as an alternative to Server Side Appl
 3. THE System SHALL emit metrics for webhook admission requests, successes, and failures
 4. WHEN annotation parsing fails, THE System SHALL log the error and allow pod creation to proceed
 5. THE System SHALL provide debugging information for webhook configuration and operation
+
+### Requirement 8: Certificate Management and CA Bundle Injection
+
+**User Story:** As a cluster administrator, I want automatic certificate management and CA bundle injection for the mutating webhook, so that the webhook can establish trusted TLS connections with the Kubernetes API server.
+
+#### Acceptance Criteria
+
+1. WHEN cert-manager is available, THE System SHALL use cert-manager to generate and manage webhook certificates
+2. WHEN cert-manager is not available, THE System SHALL support manual certificate provisioning
+3. WHEN certificates are generated or updated, THE System SHALL automatically inject the CA bundle into the MutatingWebhookConfiguration
+4. THE System SHALL define a proper Issuer resource for cert-manager certificate generation
+5. THE System SHALL define a Certificate resource with appropriate DNS names and certificate properties
+6. WHEN using manual certificates, THE install script SHALL extract the CA bundle and update the webhook configuration
+7. THE System SHALL validate certificate expiration and provide warnings for certificates expiring within 30 days
+
+### Requirement 9: Webhook Infrastructure Configuration
+
+**User Story:** As a platform administrator, I want proper Kubernetes webhook infrastructure configuration, so that the mutating webhook integrates correctly with the Kubernetes admission control system.
+
+#### Acceptance Criteria
+
+1. THE System SHALL define a MutatingAdmissionWebhook configuration with proper service references
+2. THE System SHALL configure appropriate namespace and object selectors to target only relevant pods
+3. THE System SHALL set reasonable timeout values and failure policies for webhook operations
+4. THE System SHALL include the webhook infrastructure in the webhook-enabled kustomization overlay
+5. THE System SHALL ensure the webhook service points to the correct controller deployment
+6. WHEN using cert-manager, THE System SHALL configure automatic CA bundle injection annotations
+7. THE System SHALL validate that all webhook configuration references resolve correctly
+
+### Requirement 10: Installation Script Enhancements
+
+**User Story:** As a system operator, I want an enhanced installation script that properly handles certificate management for both cert-manager and manual modes, so that webhook installation is reliable and automated.
+
+#### Acceptance Criteria
+
+1. WHEN cert-manager is detected, THE install script SHALL use cert-manager for certificate management
+2. WHEN cert-manager is not available, THE install script SHALL generate self-signed certificates
+3. WHEN generating manual certificates, THE install script SHALL create certificates with proper DNS names and extensions
+4. THE install script SHALL extract the CA bundle from generated certificates and inject it into the MutatingWebhookConfiguration
+5. THE install script SHALL verify that the webhook configuration is properly updated with the CA bundle
+6. THE install script SHALL validate that all required resources are created and ready
+7. WHEN installation fails, THE install script SHALL provide clear error messages and cleanup instructions
+
+### Requirement 11: Webhook Startup Validation and Fail-Fast Behavior
+
+**User Story:** As a system operator, I want the webhook server to validate its configuration and fail fast if requirements are not met, so that I can quickly identify and resolve configuration issues.
+
+#### Acceptance Criteria
+
+1. WHEN the webhook server starts, THE System SHALL validate that required certificates exist and are valid
+2. WHEN certificate validation fails, THE System SHALL fail to start and log detailed error information
+3. WHEN the webhook service is unreachable, THE System SHALL detect this condition and report it
+4. THE System SHALL validate that the MutatingWebhookConfiguration exists and is properly configured
+5. THE System SHALL perform a self-test by making a test admission request during startup
+6. WHEN any startup validation fails, THE System SHALL exit with a non-zero status code
+7. THE System SHALL provide clear diagnostic information for each validation failure

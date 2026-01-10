@@ -165,7 +165,89 @@ jobs:
           echo "Contract E2E tests failed. Cleaning up..."
           make cleanup-contract-e2e || true
 
+  package-helm-chart:
+    name: Package Helm Chart
+    runs-on: ubuntu-latest
+    needs: [setup, lint, test]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
 
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: 'v3.14.0'
+
+      - name: Update Chart metadata
+        run: |
+          VERSION="${{ needs.setup.outputs.version }}"
+          VERSION_NO_V="${VERSION#v}"
+
+          # Update Chart.yaml version and appVersion
+          sed -i "s/^version:.*/version: ${VERSION_NO_V}/" charts/optipod/Chart.yaml
+          sed -i "s/^appVersion:.*/appVersion: \"${VERSION_NO_V}\"/" charts/optipod/Chart.yaml
+
+          # Update image tag in values.yaml
+          sed -i "s/tag: .*/tag: \"${VERSION}\"/" charts/optipod/values.yaml
+
+          echo "Updated Chart.yaml and values.yaml with version ${VERSION}"
+          cat charts/optipod/Chart.yaml | grep -E "^version:|^appVersion:"
+          cat charts/optipod/values.yaml | grep "tag:"
+
+      - name: Update Helm dependencies
+        run: |
+          cd charts/optipod
+          helm dependency update
+
+      - name: Lint Helm chart
+        run: |
+          helm lint charts/optipod
+
+      - name: Package Helm chart
+        run: |
+          mkdir -p .deploy
+          helm package charts/optipod --destination .deploy
+          echo "Packaged chart:"
+          ls -lh .deploy/
+
+      - name: Upload chart artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: helm-chart
+          path: .deploy/*.tgz
+          retention-days: 90
+
+  publish-helm-oci:
+    name: Publish Helm Chart to OCI Registry
+    runs-on: ubuntu-latest
+    needs: [setup, package-helm-chart, security-scan]
+    permissions:
+      packages: write
+      contents: read
+    steps:
+      - name: Download chart artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: helm-chart
+          path: charts
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: 'v3.14.0'
+
+      - name: Login to GitHub Container Registry
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: Push chart to OCI registry
+        run: |
+          CHART_FILE=$(ls charts/*.tgz)
+          echo "Pushing chart: ${CHART_FILE}"
+          helm push "${CHART_FILE}" oci://ghcr.io/${{ github.repository_owner }}/charts
+
+          VERSION="${{ needs.setup.outputs.version }}"
+          echo "Chart published: oci://ghcr.io/${{ github.repository_owner }}/charts/optipod:${VERSION#v}"
 
   build:
     name: Build Multi-Architecture Images
@@ -652,7 +734,7 @@ jobs:
   create-release:
     name: Create GitHub Release
     runs-on: ubuntu-latest
-    needs: [setup, publish-ghcr, generate-manifests, generate-checksums, sbom, security-scan]
+    needs: [setup, publish-ghcr, publish-helm-oci, generate-manifests, generate-checksums, sbom, security-scan]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -690,6 +772,12 @@ jobs:
           name: security-scan-results
           path: artifacts
 
+      - name: Download Helm chart
+        uses: actions/download-artifact@v7
+        with:
+          name: helm-chart
+          path: artifacts
+
       - name: Generate release notes
         id: release_notes
         run: |
@@ -714,8 +802,27 @@ jobs:
           - \`ghcr.io/${{ github.repository }}:${VERSION}\`
           - \`ghcr.io/${{ github.repository }}:latest\`
 
+          ### Helm Chart
+
+          - \`oci://ghcr.io/${{ github.repository_owner }}/charts/optipod:${VERSION#v}\`
+
           ### Installation
 
+          **Using Helm (Recommended):**
+          \`\`\`bash
+          # Install from OCI registry
+          helm install optipod oci://ghcr.io/${{ github.repository_owner }}/charts/optipod \\
+            --version ${VERSION#v} \\
+            --namespace optipod-system \\
+            --create-namespace
+
+          # Or download and install from release artifact
+          helm install optipod ./optipod-${VERSION#v}.tgz \\
+            --namespace optipod-system \\
+            --create-namespace
+          \`\`\`
+
+          **Using kubectl:**
           \`\`\`bash
           kubectl apply -f https://github.com/${{ github.repository }}/releases/download/${VERSION}/install.yaml
           \`\`\`
@@ -726,6 +833,7 @@ jobs:
 
           ### Artifacts
 
+          - **optipod-${VERSION#v}.tgz**: Helm chart package
           - **install.yaml**: Complete Kubernetes deployment manifest
           - **Binaries**: Pre-built binaries for multiple platforms
           - **sbom.json**: Software Bill of Materials
@@ -763,6 +871,7 @@ jobs:
           draft: false
           prerelease: ${{ steps.prerelease.outputs.is_prerelease }}
           files: |
+            artifacts/*.tgz
             artifacts/install.yaml
             artifacts/binaries/*
             artifacts/checksums.txt
