@@ -97,7 +97,7 @@ This implementation plan converts the mutating webhook support design into discr
     - **Property 11: SSA compatibility preservation**
     - **Validates: Requirements 5.1, 5.2, 5.3, 5.4, 5.5**
 
-- [-] 7. Implement webhook lifecycle management
+- [x] 7. Implement webhook lifecycle management
   - [x] 7.1 Add webhook registration to controller startup
     - Create mutating webhook configuration during controller initialization
     - Configure appropriate failure policies and namespace selectors
@@ -105,7 +105,7 @@ This implementation plan converts the mutating webhook support design into discr
     - Implement certificate management and rotation support
     - _Requirements: 6.1, 6.2, 6.3, 6.4_
 
-  - [ ] 7.2 Write property tests for webhook lifecycle
+  - [x] 7.2 Write property tests for webhook lifecycle
     - **Property 12: Webhook lifecycle management**
     - **Property 13: Webhook health monitoring**
     - **Validates: Requirements 6.1, 6.2, 6.3, 6.5**
@@ -153,6 +153,46 @@ This implementation plan converts the mutating webhook support design into discr
 
 - [x] 11. Final checkpoint - Complete system validation
   - Ensure all tests pass, ask the user if questions arise.
+
+## Additional Tasks for Complete Requirements Coverage
+
+- [ ] 12. Add missing property tests for certificate management and startup validation
+  - [ ] 12.1 Write property test for certificate management
+    - **Property 16: Certificate management and validation**
+    - **Validates: Requirements 8.1, 8.2, 8.3, 8.4, 8.5, 8.6, 8.7**
+  
+  - [ ] 12.2 Write property test for webhook infrastructure configuration
+    - **Property 17: Webhook configuration validation**
+    - **Validates: Requirements 9.1, 9.2, 9.3, 9.4, 9.5, 9.6, 9.7**
+  
+  - [ ] 12.3 Write property test for installation script behavior
+    - **Property 18: Installation script certificate handling**
+    - **Validates: Requirements 10.1, 10.2, 10.3, 10.4, 10.5, 10.6, 10.7**
+  
+  - [ ] 12.4 Write property test for startup validation
+    - **Property 19: Startup validation and fail-fast behavior**
+    - **Validates: Requirements 11.1, 11.2, 11.3, 11.4, 11.5, 11.6, 11.7**
+
+- [ ] 13. Enhance webhook server startup validation
+  - [ ] 13.1 Add comprehensive startup validation checks
+    - Implement self-test admission request during startup
+    - Add webhook configuration validation
+    - Add service reachability checks
+    - Ensure fail-fast behavior with proper exit codes
+    - _Requirements: 11.1, 11.2, 11.3, 11.4, 11.5, 11.6, 11.7_
+
+- [ ] 14. Final validation and cleanup
+  - [ ] 14.1 Run comprehensive test suite
+    - Execute all property-based tests (minimum 100 iterations each)
+    - Validate all 19 properties pass consistently
+    - Test mixed SSA/webhook environments
+    - Verify backward compatibility
+  
+  - [ ] 14.2 Performance and integration validation
+    - Test webhook performance under load
+    - Validate certificate rotation scenarios
+    - Test installation script in different environments
+    - Verify fail-fast behavior in various failure scenarios
 
 ## Notes
 

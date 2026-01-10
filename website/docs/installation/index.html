@@ -67,21 +67,124 @@
           <h3 id="optional">Optional</h3>
           <ul>
           <li><strong>In-Place Pod Resize</strong>: Kubernetes 1.29+ with <code>InPlacePodVerticalScaling</code> feature gate enabled</li>
-          <li><strong>Helm</strong>: For Helm-based installation (coming soon)</li>
+          <li><strong>Helm 3.8+</strong>: For Helm-based installation</li>
+          <li><strong>cert-manager</strong>: For automatic webhook certificate management (can be auto-installed via Helm)</li>
           </ul>
           <h2 id="installation-methods">Installation Methods</h2>
-          <h3 id="method-1-using-kubectl-recommended">Method 1: Using kubectl (Recommended)</h3>
-          <h4 id="step-1-install-from-latest-release-recommended">Step 1: Install from Latest Release (Recommended)</h4>
-          <pre><code class="hljs language-bash">kubectl apply -f https://github.com/Sagart-cactus/optipod/releases/latest/download/install.yaml</code></pre>
+
+          <p>OptiPod supports two deployment strategies:</p>
+          <ul>
+          <li><strong>Webhook Strategy</strong> (Default): Uses mutating webhooks for ArgoCD compatibility</li>
+          <li><strong>SSA Strategy</strong>: Uses Server Side Apply for direct Kubernetes API updates</li>
+          </ul>
+
+          <h3 id="method-1-using-helm-recommended">Method 1: Using Helm (Recommended)</h3>
+
+          <p>Helm provides the easiest installation with automatic cert-manager detection and certificate management.</p>
+
+          <h4 id="helm-quick-start">Quick Start with Auto cert-manager Detection</h4>
+          <p>The chart automatically detects if cert-manager is installed. If not found, it will install cert-manager for you:</p>
+          <pre><code class="hljs language-bash"><span class="hljs-comment"># Add the Helm repository (when published)</span>
+helm repo add optipod https://optipod.github.io/charts
+helm repo update
+
+<span class="hljs-comment"># Install OptipPod with webhook support</span>
+helm install optipod optipod/optipod \
+  --namespace optipod-system \
+  --create-namespace</code></pre>
+
+          <h4 id="helm-local-install">Install from Local Chart (Development)</h4>
+          <pre><code class="hljs language-bash"><span class="hljs-comment"># Navigate to the project root</span>
+<span class="hljs-built_in">cd</span> /path/to/optipod
+
+<span class="hljs-comment"># Build Helm dependencies</span>
+helm dependency build charts/optipod
+
+<span class="hljs-comment"># Install the chart</span>
+helm install optipod charts/optipod \
+  --namespace optipod-system \
+  --create-namespace</code></pre>
+
+          <h4 id="helm-production-install">Production Installation with Custom Values</h4>
+          <p>Create a custom values file for production:</p>
+          <pre><code class="hljs language-yaml"><span class="hljs-comment"># production-values.yaml</span>
+<span class="hljs-attr">webhook:</span>
+  <span class="hljs-attr">enabled:</span> <span class="hljs-literal">true</span>
+  <span class="hljs-attr">failurePolicy:</span> <span class="hljs-string">Fail</span>  <span class="hljs-comment"># Stricter enforcement</span>
+  <span class="hljs-attr">deployment:</span>
+    <span class="hljs-attr">replicaCount:</span> <span class="hljs-number">3</span>
+    <span class="hljs-attr">resources:</span>
+      <span class="hljs-attr">requests:</span>
+        <span class="hljs-attr">cpu:</span> <span class="hljs-string">100m</span>
+        <span class="hljs-attr">memory:</span> <span class="hljs-string">128Mi</span>
+      <span class="hljs-attr">limits:</span>
+        <span class="hljs-attr">cpu:</span> <span class="hljs-string">500m</span>
+        <span class="hljs-attr">memory:</span> <span class="hljs-string">512Mi</span>
+
+<span class="hljs-attr">certManager:</span>
+  <span class="hljs-attr">install:</span> <span class="hljs-literal">false</span>  <span class="hljs-comment"># Use existing production cert-manager</span>
+
+<span class="hljs-attr">metrics:</span>
+  <span class="hljs-attr">enabled:</span> <span class="hljs-literal">true</span>
+  <span class="hljs-attr">serviceMonitor:</span>
+    <span class="hljs-attr">enabled:</span> <span class="hljs-literal">true</span>  <span class="hljs-comment"># For Prometheus Operator</span></code></pre>
+          <p>Install with custom values:</p>
+          <pre><code class="hljs language-bash">helm install optipod charts/optipod \
+  --namespace optipod-system \
+  --create-namespace \
+  --values production-values.yaml</code></pre>
+
+          <h4 id="helm-ssa-mode">Install SSA Mode Only (No Webhook)</h4>
+          <p>For SSA-only deployments without webhook support:</p>
+          <pre><code class="hljs language-bash">helm install optipod charts/optipod \
+  --namespace optipod-system \
+  --create-namespace \
+  --set webhook.enabled=<span class="hljs-literal">false</span></code></pre>
+
+          <h4 id="helm-verify">Verify Helm Installation</h4>
+          <pre><code class="hljs language-bash"><span class="hljs-comment"># Check installation status</span>
+helm status optipod -n optipod-system
+
+<span class="hljs-comment"># Check webhook deployment</span>
+kubectl get deployment optipod-webhook -n optipod-system
+
+<span class="hljs-comment"># Check certificate status</span>
+kubectl get certificate -n optipod-system
+
+<span class="hljs-comment"># Check cert-manager installation</span>
+kubectl get pods -n cert-manager</code></pre>
+
+          <h3 id="method-2-using-kubectl">Method 2: Using kubectl</h3>
+
+          <h4 id="step-1-choose-installation-mode">Step 1: Choose Installation Mode</h4>
+
+          <h5 id="option-a-webhook-mode">Option A: Webhook Mode (Recommended for ArgoCD/GitOps)</h5>
+          <pre><code class="hljs language-bash"><span class="hljs-comment"># Install with webhook support (default)</span>
+kubectl apply -f https://github.com/Sagart-cactus/optipod/releases/latest/download/install-webhook.yaml</code></pre>
           <p>Or install a specific version:</p>
-          <pre><code class="hljs language-bash">kubectl apply -f https://github.com/Sagart-cactus/optipod/releases/download/v1.0.0/install.yaml</code></pre>
+          <pre><code class="hljs language-bash">kubectl apply -f https://github.com/Sagart-cactus/optipod/releases/download/v1.0.0/install-webhook.yaml</code></pre>
+
+          <h5 id="option-b-ssa-mode">Option B: SSA Mode (Traditional)</h5>
+          <pre><code class="hljs language-bash"><span class="hljs-comment"># Install with SSA support only</span>
+kubectl apply -f https://github.com/Sagart-cactus/optipod/releases/latest/download/install.yaml</code></pre>
+
+          <h5 id="option-c-automated-script">Option C: Automated Installation Script</h5>
+          <pre><code class="hljs language-bash"><span class="hljs-comment"># Download and run installation script</span>
+curl -sSL https://raw.githubusercontent.com/Sagart-cactus/optipod/main/config/webhook/install.sh | bash
+
+<span class="hljs-comment"># Or with custom options</span>
+NAMESPACE=my-optipod WEBHOOK_MODE=enabled ./install.sh</code></pre>
+
           <h4 id="alternative-install-from-source">Alternative: Install from Source</h4>
           <p>If you need to install from the main branch:</p>
           <pre><code class="hljs language-bash"><span class="hljs-comment"># Install CRDs</span>
 kubectl apply -f https://raw.githubusercontent.com/Sagart-cactus/optipod/main/config/crd/bases/optipod.optipod.io_optimizationpolicies.yaml
 
-<span class="hljs-comment"># Deploy the operator</span>
-kubectl apply -f https://raw.githubusercontent.com/Sagart-cactus/optipod/main/config/default</code></pre>
+<span class="hljs-comment"># Deploy with webhook support (recommended)</span>
+kubectl apply -k https://raw.githubusercontent.com/Sagart-cactus/optipod/main/config/webhook-enabled
+
+<span class="hljs-comment"># OR deploy with SSA only</span>
+kubectl apply -k https://raw.githubusercontent.com/Sagart-cactus/optipod/main/config/default</code></pre>
           <p>This creates:</p>
           <ul>
           <li><code>optipod-system</code> namespace</li>
@@ -89,7 +192,11 @@ kubectl apply -f https://raw.githubusercontent.com/Sagart-cactus/optipod/main/co
           <li>Deployment for the operator</li>
           <li>ConfigMap for configuration</li>
           <li>Service for metrics</li>
+          <li><strong>Webhook Mode Only</strong>: Mutating webhook configuration and certificates</li>
           </ul>
+          <blockquote>
+          <p><strong>Strategy Selection</strong>: The webhook strategy is now the default for better ArgoCD compatibility. Use SSA mode only if you specifically need Server Side Apply functionality and have the required permissions.</p>
+          </blockquote>
           <blockquote>
           <p><strong>Security Note</strong>: All release images are signed with cosign and include SBOMs. You can verify signatures using:</p>
           <pre><code class="hljs language-bash">cosign verify ghcr.io/sagart-cactus/optipod:v1.0.0</code></pre>
@@ -97,12 +204,26 @@ kubectl apply -f https://raw.githubusercontent.com/Sagart-cactus/optipod/main/co
           <h4 id="step-2-verify-installation">Step 2: Verify Installation</h4>
           <p>Check that the operator is running:</p>
           <pre><code class="hljs language-bash">kubectl get pods -n optipod-system</code></pre>
-          <p>Expected output:</p>
+          <p>Expected output for <strong>Webhook Mode</strong>:</p>
+          <pre><code class="hljs language-text">NAME                                        READY   STATUS    RESTARTS   AGE
+optipod-controller-manager-xxxxxxxxx-xxxxx   1/1     Running   0          30s
+optipod-webhook-deployment-xxxxxxxxx-xxxxx   1/1     Running   0          30s</code></pre>
+          <p>Expected output for <strong>SSA Mode</strong>:</p>
           <pre><code class="hljs language-text">NAME                                        READY   STATUS    RESTARTS   AGE
 optipod-controller-manager-xxxxxxxxx-xxxxx   1/1     Running   0          30s</code></pre>
           <p>Check operator logs:</p>
           <pre><code class="hljs language-bash">kubectl logs -n optipod-system deployment/optipod-controller-manager -f</code></pre>
-          <h3 id="method-2-using-kustomize">Method 2: Using Kustomize</h3>
+          <p>For webhook mode, also check webhook logs:</p>
+          <pre><code class="hljs language-bash">kubectl logs -n optipod-system deployment/optipod-webhook-deployment -f</code></pre>
+
+          <h4 id="step-3-verify-webhook">Step 3: Verify Webhook Configuration (Webhook Mode Only)</h4>
+          <p>Check webhook registration:</p>
+          <pre><code class="hljs language-bash">kubectl get mutatingwebhookconfiguration optipod-webhook-mutating-webhook-configuration</code></pre>
+          <p>Verify webhook service:</p>
+          <pre><code class="hljs language-bash">kubectl get service optipod-webhook-service -n optipod-system</code></pre>
+          <p>Check certificate status (with cert-manager):</p>
+          <pre><code class="hljs language-bash">kubectl get certificate serving-cert -n optipod-system</code></pre>
+          <h3 id="method-3-using-kustomize">Method 3: Using Kustomize</h3>
           <p>Clone the repository and customize:</p>
           <pre><code class="hljs language-bash">git <span class="hljs-built_in">clone</span> https://github.com/yourusername/optipod.git
 <span class="hljs-built_in">cd</span> optipod
@@ -110,7 +231,7 @@ optipod-controller-manager-xxxxxxxxx-xxxxx   1/1     Running   0          30s</c
 <span class="hljs-comment"># Edit config/default/kustomization.yaml to customize</span>
 <span class="hljs-comment"># Then apply:</span>
 kubectl apply -k config/default</code></pre>
-          <h3 id="method-3-building-from-source">Method 3: Building from Source</h3>
+          <h3 id="method-4-building-from-source">Method 4: Building from Source</h3>
           <pre><code class="hljs language-bash"><span class="hljs-comment"># Clone and build</span>
 git <span class="hljs-built_in">clone</span> https://github.com/yourusername/optipod.git
 <span class="hljs-built_in">cd</span> optipod

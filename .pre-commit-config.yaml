@@ -1,6 +1,7 @@
 # Pre-commit configuration for OptipPod
 # See https://pre-commit.com for more information
 
+exclude: (^|/)\.secrets\.baseline$
 repos:
   # General file checks
   - repo: https://github.com/pre-commit/pre-commit-hooks
@@ -64,8 +65,9 @@ repos:
       - id: detect-secrets
         name: Detect secrets
         description: Scans for potential secrets in code
-        args: ['--baseline', '.secrets.baseline']
-        exclude: '\.lock$|\.sum$|test/.*\.yaml$'
+        args: ['--baseline', '.secrets.baseline', '--exclude-files', '\.secrets\.baseline$']
+        files: '^(?!\.secrets\.baseline$).*'
+        exclude: '\.lock$|\.sum$|test/.*\.yaml$|(^|/)\.secrets\.baseline$'
 
 # Configuration for specific hooks
 ci:
