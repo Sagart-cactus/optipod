@@ -322,47 +322,34 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Setup webhook lifecycle management if enabled
+	// Setup webhook server if enabled
+	// Note: The MutatingWebhookConfiguration is managed by Helm/kubectl, not by the controller.
+	// cert-manager automatically injects the CA bundle via the cert-manager.io/inject-ca-from annotation.
 	if enableWebhook && len(webhookCertPath) > 0 {
-		setupLog.Info("Setting up webhook lifecycle management",
+		setupLog.Info("Starting webhook server",
 			"webhook-cert-path", webhookCertPath,
 			"webhook-service-name", webhookServiceName,
 			"webhook-service-namespace", webhookServiceNamespace)
 
-		// Read CA bundle from certificate file for webhook configuration
-		var caBundle []byte
-		caCertPath := filepath.Join(webhookCertPath, "ca.crt")
-		if _, err := os.Stat(caCertPath); err == nil {
-			caBundle, err = os.ReadFile(caCertPath)
-			if err != nil {
-				setupLog.Error(err, "failed to read CA certificate", "path", caCertPath)
-				os.Exit(1)
-			}
-		} else {
-			setupLog.Info("CA certificate not found, webhook will use service CA", "path", caCertPath)
-		}
+		// Create event recorder for webhook
+		eventRecorder := observability.NewEventRecorder(nil)
 
-		// Create webhook lifecycle manager
-		webhookLifecycle := webhookpkg.NewLifecycleManager(mgr.GetClient(), webhookpkg.LifecycleConfig{
-			WebhookName:       "optipod-mutating-webhook",
-			ServiceName:       webhookServiceName,
-			ServiceNamespace:  webhookServiceNamespace,
-			ServicePath:       "/mutate",
-			CertPath:          filepath.Join(webhookCertPath, webhookCertName),
-			KeyPath:           filepath.Join(webhookCertPath, webhookCertKey),
-			CABundle:          caBundle,
-			FailurePolicy:     nil,  // Use default (Fail)
-			NamespaceSelector: nil,  // Use default (all namespaces)
-			Port:              9443, // Default webhook port
-		})
+		// Create webhook server
+		webhookServer := webhookpkg.NewServer(
+			mgr.GetClient(),
+			filepath.Join(webhookCertPath, webhookCertName),
+			filepath.Join(webhookCertPath, webhookCertKey),
+			9443, // Default webhook port
+			eventRecorder,
+		)
 
-		// Add webhook lifecycle manager to the manager
-		if err := mgr.Add(webhookLifecycle); err != nil {
-			setupLog.Error(err, "unable to add webhook lifecycle manager")
+		// Add webhook server as a runnable to the manager
+		if err := mgr.Add(webhookServer); err != nil {
+			setupLog.Error(err, "unable to add webhook server")
 			os.Exit(1)
 		}
 
-		setupLog.Info("Webhook lifecycle management configured successfully")
+		setupLog.Info("Webhook server configured successfully")
 	} else if enableWebhook {
 		setupLog.Info("Webhook enabled but no certificate path provided, skipping webhook setup")
 	} else {

@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"time"
 
 	admissionv1 "k8s.io/api/admission/v1"
@@ -86,7 +87,28 @@ func NewServer(k8sClient client.Client, certPath, keyPath string, port int, even
 
 // Start starts the webhook server
 func (s *Server) Start(ctx context.Context) error {
-	log.Info("Starting webhook server", "port", s.port)
+	log.Info("Starting webhook server", "port", s.port, "certPath", s.certPath, "keyPath", s.keyPath)
+
+	// Validate certificate paths are set
+	if s.certPath == "" || s.keyPath == "" {
+		err := fmt.Errorf("certificate paths not configured: certPath=%q keyPath=%q", s.certPath, s.keyPath)
+		log.Error(err, "Certificate paths must be set")
+		observability.SetWebhookServerHealthStatus("server", false)
+		if s.eventRecorder != nil {
+			s.eventRecorder.RecordWebhookCertificateError(nil, "config", err)
+		}
+		return err
+	}
+
+	// Check certificate files exist before attempting to load them
+	if err := s.checkCertificateFiles(); err != nil {
+		log.Error(err, "Certificate files validation failed", "certPath", s.certPath, "keyPath", s.keyPath)
+		observability.SetWebhookServerHealthStatus("server", false)
+		if s.eventRecorder != nil {
+			s.eventRecorder.RecordWebhookCertificateError(nil, "file_check", err)
+		}
+		return fmt.Errorf("certificate files validation failed: %w", err)
+	}
 
 	// Load TLS certificates
 	cert, err := tls.LoadX509KeyPair(s.certPath, s.keyPath)
@@ -430,8 +452,12 @@ func (s *Server) processAdmissionRequest(req *admissionv1.AdmissionRequest) *Adm
 
 // parsePodFromRequest extracts a pod from the admission request
 func (s *Server) parsePodFromRequest(req *admissionv1.AdmissionRequest) (*corev1.Pod, error) {
-	if req.Object.Object == nil {
-		return nil, fmt.Errorf("admission request object is nil")
+	if req == nil {
+		return nil, fmt.Errorf("admission request is nil")
+	}
+
+	if len(req.Object.Raw) == 0 {
+		return nil, fmt.Errorf("admission request object is empty")
 	}
 
 	var pod corev1.Pod
@@ -453,6 +479,47 @@ func (s *Server) MutatePod(req *AdmissionRequest) *AdmissionResponse {
 	}
 
 	return s.mutator.MutatePod(req)
+}
+
+// checkCertificateFiles verifies that certificate files exist and are readable
+func (s *Server) checkCertificateFiles() error {
+	// Check certificate file
+	if err := s.checkFileExists(s.certPath, "certificate"); err != nil {
+		return err
+	}
+
+	// Check key file
+	if err := s.checkFileExists(s.keyPath, "private key"); err != nil {
+		return err
+	}
+
+	log.Info("Certificate files validation passed", "certPath", s.certPath, "keyPath", s.keyPath)
+	return nil
+}
+
+// checkFileExists checks if a file exists and is readable
+func (s *Server) checkFileExists(filePath, fileType string) error {
+	// Use os.Stat to check file existence
+	info, err := os.Stat(filePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("%s file does not exist: %s", fileType, filePath)
+		}
+		return fmt.Errorf("failed to stat %s file %s: %w", fileType, filePath, err)
+	}
+
+	// Check if it's actually a file (not a directory)
+	if info.IsDir() {
+		return fmt.Errorf("%s path is a directory, not a file: %s", fileType, filePath)
+	}
+
+	// Check file size (empty files are invalid)
+	if info.Size() == 0 {
+		return fmt.Errorf("%s file is empty: %s", fileType, filePath)
+	}
+
+	log.V(1).Info("Certificate file validated", "type", fileType, "path", filePath, "size", info.Size())
+	return nil
 }
 
 // validateCertificates validates the loaded TLS certificates

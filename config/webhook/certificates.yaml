@@ -1,59 +1,23 @@
 # Certificate management for webhook TLS
-# This uses cert-manager for automatic certificate generation and rotation
-# If cert-manager is not available, certificates must be managed manually
+# This file contains the manual certificate secret template for use when cert-manager is not available.
+# For cert-manager-based certificate management, see config/webhook-enabled/issuer.yaml and certificate.yaml
 
-apiVersion: cert-manager.io/v1
-kind: Issuer
-metadata:
-  name: selfsigned-issuer
-  namespace: system
-spec:
-  selfSigned: {}
----
-apiVersion: cert-manager.io/v1
-kind: Certificate
-metadata:
-  name: serving-cert
-  namespace: system
-spec:
-  # Certificate will be stored in this secret
-  secretName: webhook-server-certs  # pragma: allowlist secret
-  issuerRef:
-    name: selfsigned-issuer
-  # DNS names for the webhook service
-  dnsNames:
-  - optipod-webhook-service.system.svc
-  - optipod-webhook-service.system.svc.cluster.local
-  # Certificate rotation
-  duration: 8760h # 1 year
-  renewBefore: 720h # 30 days
-  subject:
-    organizations:
-    - optipod
-  # Private key configuration
-  privateKey:
-    algorithm: RSA
-    size: 2048
-  # Certificate usage
-  usages:
-  - digital signature
-  - key encipherment
-  - server auth
----
-# Fallback: Manual certificate secret template
-# Use this if cert-manager is not available
+# Manual certificate secret template
+# Use this when cert-manager is not available (e.g., in kind clusters)
+# The install script will generate and populate this secret automatically in manual mode
 apiVersion: v1
 kind: Secret
 metadata:
-  name: webhook-server-certs-manual
+  name: webhook-server-certs
   namespace: system
 type: kubernetes.io/tls
 data:
   # Base64 encoded certificate and key
-  # Generate using:
+  # These fields are populated automatically by the install script when using manual certificate mode
+  # To generate manually:
   # openssl req -x509 -newkey rsa:2048 -keyout tls.key -out tls.crt -days 365 -nodes \
   #   -subj "/CN=optipod-webhook-service.system.svc" \
   #   -addext "subjectAltName=DNS:optipod-webhook-service.system.svc,DNS:optipod-webhook-service.system.svc.cluster.local"
   # Then: base64 -w 0 tls.crt > tls.crt.b64 && base64 -w 0 tls.key > tls.key.b64
-  tls.crt: ""  # Add base64 encoded certificate here
-  tls.key: ""  # Add base64 encoded private key here
+  tls.crt: ""  # Populated by install script or manually
+  tls.key: ""  # Populated by install script or manually
