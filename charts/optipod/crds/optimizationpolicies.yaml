@@ -1,0 +1,161 @@
+# OptimizationPolicy CRD
+# This CRD is automatically installed when the chart is installed
+# It is never deleted on `helm uninstall` for safety
+# To upgrade CRDs, run: kubectl apply -f crds/
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: optimizationpolicies.optipod.optipod.io
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.17.2
+    helm.sh/resource-policy: keep
+spec:
+  group: optipod.optipod.io
+  names:
+    kind: OptimizationPolicy
+    listKind: OptimizationPolicyList
+    plural: optimizationpolicies
+    singular: optimizationpolicy
+    shortNames:
+    - optpol
+    - optpolicies
+  scope: Cluster
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: OptimizationPolicy defines resource optimization rules for pods
+        type: object
+        properties:
+          apiVersion:
+            type: string
+          kind:
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: OptimizationPolicySpec defines the desired state
+            type: object
+            required:
+            - mode
+            - selector
+            properties:
+              mode:
+                description: Mode controls optimization behavior
+                type: string
+                enum:
+                - disabled
+                - monitoring
+                - optimizing
+                default: monitoring
+              strategy:
+                description: Strategy for applying optimizations
+                type: string
+                enum:
+                - ssa
+                - webhook
+                default: ssa
+              selector:
+                description: Selector for targeting workloads
+                type: object
+                properties:
+                  namespaces:
+                    description: Namespace filtering
+                    type: object
+                    properties:
+                      allow:
+                        type: array
+                        items:
+                          type: string
+                      deny:
+                        type: array
+                        items:
+                          type: string
+                  namespaceSelector:
+                    description: Label selector for namespaces
+                    type: object
+                    x-kubernetes-preserve-unknown-fields: true
+                  workloadSelector:
+                    description: Label selector for workloads
+                    type: object
+                    x-kubernetes-preserve-unknown-fields: true
+              optimization:
+                description: Optimization configuration
+                type: object
+                properties:
+                  targetUtilization:
+                    description: Target resource utilization
+                    type: object
+                    properties:
+                      cpu:
+                        type: number
+                        format: double
+                        minimum: 0
+                        maximum: 1
+                      memory:
+                        type: number
+                        format: double
+                        minimum: 0
+                        maximum: 1
+                  updateMode:
+                    description: How to apply updates
+                    type: string
+                    enum:
+                    - auto
+                    - manual
+                    default: auto
+              weight:
+                description: Policy priority weight
+                type: integer
+                minimum: 0
+                maximum: 100
+                default: 50
+          status:
+            description: OptimizationPolicyStatus defines observed state
+            type: object
+            properties:
+              phase:
+                type: string
+              conditions:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    type:
+                      type: string
+                    status:
+                      type: string
+                    lastTransitionTime:
+                      type: string
+                      format: date-time
+                    reason:
+                      type: string
+                    message:
+                      type: string
+              matchedWorkloads:
+                type: integer
+              optimizedPods:
+                type: integer
+              lastUpdate:
+                type: string
+                format: date-time
+    served: true
+    storage: true
+    subresources:
+      status: {}
+    additionalPrinterColumns:
+    - name: Mode
+      type: string
+      jsonPath: .spec.mode
+    - name: Strategy
+      type: string
+      jsonPath: .spec.strategy
+    - name: Weight
+      type: integer
+      jsonPath: .spec.weight
+    - name: Workloads
+      type: integer
+      jsonPath: .status.matchedWorkloads
+    - name: Age
+      type: date
+      jsonPath: .metadata.creationTimestamp

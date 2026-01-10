@@ -1,0 +1,37 @@
+{{- if .Values.webhook.enabled }}
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: {{ include "optipod.webhook.configName" . }}
+  labels:
+    {{- include "optipod.webhook.labels" . | nindent 4 }}
+  annotations:
+    # cert-manager will inject the CA bundle automatically
+    cert-manager.io/inject-ca-from: {{ include "optipod.webhook.certManagerAnnotation" . }}
+webhooks:
+- name: pod-resource-mutator.optipod.io
+  clientConfig:
+    service:
+      name: {{ include "optipod.webhook.serviceName" . }}
+      namespace: {{ include "optipod.namespace" . }}
+      path: /mutate
+      port: {{ .Values.webhook.service.port }}
+  rules:
+  - operations: ["CREATE"]
+    apiGroups: [""]
+    apiVersions: ["v1"]
+    resources: ["pods"]
+  {{- with .Values.webhook.namespaceSelector }}
+  namespaceSelector:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .Values.webhook.objectSelector }}
+  objectSelector:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  admissionReviewVersions: ["v1", "v1beta1"]
+  sideEffects: None
+  failurePolicy: {{ .Values.webhook.failurePolicy }}
+  timeoutSeconds: {{ .Values.webhook.timeoutSeconds }}
+  reinvocationPolicy: Never
+{{- end }}

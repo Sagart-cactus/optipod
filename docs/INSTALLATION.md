@@ -16,11 +16,114 @@ This guide provides detailed instructions for installing and configuring OptiPod
 ### Optional
 
 - **In-Place Pod Resize**: Kubernetes 1.29+ with `InPlacePodVerticalScaling` feature gate enabled
-- **Helm**: For Helm-based installation (coming soon)
+- **Helm 3.8+**: For Helm-based installation (recommended)
+- **cert-manager**: For automatic webhook certificate management (can be auto-installed via Helm)
 
 ## Installation Methods
 
-### Method 1: Using kubectl (Recommended)
+### Method 1: Using Helm (Recommended)
+
+Helm provides the easiest installation with automatic cert-manager detection and certificate management.
+
+#### Quick Start with Auto cert-manager Detection
+
+The chart automatically detects if cert-manager is installed. If not found, it will install cert-manager for you:
+
+```bash
+# Add the Helm repository (when published)
+helm repo add optipod https://optipod.github.io/charts
+helm repo update
+
+# Install OptipPod with webhook support
+helm install optipod optipod/optipod \
+  --namespace optipod-system \
+  --create-namespace
+```
+
+#### Install from Local Chart (Development)
+
+```bash
+# Navigate to the project root
+cd /path/to/optipod
+
+# Build Helm dependencies
+helm dependency build charts/optipod
+
+# Install the chart
+helm install optipod charts/optipod \
+  --namespace optipod-system \
+  --create-namespace
+```
+
+#### Production Installation with Custom Values
+
+Create a custom values file for production:
+
+```yaml
+# production-values.yaml
+webhook:
+  enabled: true
+  failurePolicy: Fail  # Stricter enforcement
+  deployment:
+    replicaCount: 3
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+
+certManager:
+  install: false  # Use existing production cert-manager
+
+metrics:
+  enabled: true
+  serviceMonitor:
+    enabled: true  # For Prometheus Operator
+
+logging:
+  level: info
+  format: json
+```
+
+Install with custom values:
+
+```bash
+helm install optipod charts/optipod \
+  --namespace optipod-system \
+  --create-namespace \
+  --values production-values.yaml
+```
+
+#### Install SSA Mode Only (No Webhook)
+
+For SSA-only deployments without webhook support:
+
+```bash
+helm install optipod charts/optipod \
+  --namespace optipod-system \
+  --create-namespace \
+  --set webhook.enabled=false
+```
+
+#### Verify Helm Installation
+
+```bash
+# Check installation status
+helm status optipod -n optipod-system
+
+# Check webhook deployment
+kubectl get deployment optipod-webhook -n optipod-system
+
+# Check certificate status
+kubectl get certificate -n optipod-system
+
+# Check cert-manager installation
+kubectl get pods -n cert-manager
+```
+
+### Method 2: Using kubectl
 
 OptiPod supports two deployment strategies:
 - **Webhook Strategy** (Default): Uses mutating webhooks for ArgoCD compatibility
@@ -145,7 +248,7 @@ Check certificate status (with cert-manager):
 kubectl get certificate serving-cert -n optipod-system
 ```
 
-### Method 2: Using Kustomize
+### Method 3: Using Kustomize
 
 Clone the repository and customize:
 
@@ -162,7 +265,7 @@ kubectl apply -k config/default
 # For custom configuration, edit kustomization files first
 ```
 
-### Method 3: Building from Source
+### Method 4: Building from Source
 
 ```bash
 # Clone and build

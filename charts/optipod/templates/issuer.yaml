@@ -1,0 +1,15 @@
+{{- if .Values.webhook.enabled }}
+{{- if eq .Values.certManager.issuer.kind "Issuer" }}
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: {{ include "optipod.webhook.issuerName" . }}
+  namespace: {{ include "optipod.namespace" . }}
+  labels:
+    {{- include "optipod.webhook.labels" . | nindent 4 }}
+spec:
+  {{- if .Values.certManager.issuer.selfSigned }}
+  selfSigned: {}
+  {{- end }}
+{{- end }}
+{{- end }}
