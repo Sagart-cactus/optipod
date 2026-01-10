@@ -13,6 +13,7 @@ repos:
         exclude: '\.md$'
       - id: check-yaml
         args: ['--unsafe']
+        exclude: '^charts/.*/templates/'
       - id: check-json
       - id: check-merge-conflict
       - id: check-added-large-files
