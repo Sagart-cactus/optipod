@@ -1,0 +1,20 @@
+{{- if .Values.metrics.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "optipod.fullname" . }}-metrics
+  namespace: {{ include "optipod.namespace" . }}
+  labels:
+    {{- include "optipod.labels" . | nindent 4 }}
+    app.kubernetes.io/component: metrics
+spec:
+  type: ClusterIP
+  ports:
+  - name: metrics
+    port: 8080
+    targetPort: metrics
+    protocol: TCP
+  selector:
+    {{- include "optipod.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: controller
+{{- end }}

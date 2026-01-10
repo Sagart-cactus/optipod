@@ -1,0 +1,28 @@
+{{- if .Values.webhook.enabled }}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ include "optipod.webhook.issuerName" . }}
+  namespace: {{ include "optipod.namespace" . }}
+  labels:
+    {{- include "optipod.webhook.labels" . | nindent 4 }}
+spec:
+  secretName: {{ include "optipod.webhook.certificateSecretName" . }}
+  duration: {{ .Values.certManager.certificate.duration }}
+  renewBefore: {{ .Values.certManager.certificate.renewBefore }}
+  subject:
+    organizations:
+    - {{ .Values.certManager.certificate.organization }}
+  privateKey:
+    algorithm: {{ .Values.certManager.certificate.privateKey.algorithm }}
+    size: {{ .Values.certManager.certificate.privateKey.size }}
+  usages:
+  - digital signature
+  - key encipherment
+  - server auth
+  dnsNames:
+    {{- include "optipod.webhook.certificateDnsNames" . | nindent 4 }}
+  issuerRef:
+    name: {{ include "optipod.webhook.issuerName" . }}
+    kind: {{ .Values.certManager.issuer.kind }}
+{{- end }}

@@ -1,0 +1,14 @@
+{{- if and .Values.webhook.enabled .Values.webhook.pdb.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "optipod.webhook.deploymentName" . }}
+  namespace: {{ include "optipod.namespace" . }}
+  labels:
+    {{- include "optipod.webhook.labels" . | nindent 4 }}
+spec:
+  minAvailable: {{ .Values.webhook.pdb.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "optipod.webhook.selectorLabels" . | nindent 6 }}
+{{- end }}

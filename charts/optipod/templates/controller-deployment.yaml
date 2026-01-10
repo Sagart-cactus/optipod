@@ -1,0 +1,95 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "optipod.fullname" . }}-controller
+  namespace: {{ include "optipod.namespace" . }}
+  labels:
+    {{- include "optipod.labels" . | nindent 4 }}
+    app.kubernetes.io/component: controller
+spec:
+  replicas: {{ .Values.controller.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "optipod.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: controller
+  template:
+    metadata:
+      annotations:
+        {{- with .Values.controller.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "optipod.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: controller
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "optipod.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.controller.podSecurityContext | nindent 8 }}
+      containers:
+      - name: manager
+        image: {{ include "optipod.image" . }}
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        command:
+        - /manager
+        args:
+        {{- if .Values.webhook.enabled }}
+        - --enable-webhook=false
+        {{- else }}
+        - --enable-webhook=false
+        {{- end }}
+        - --health-probe-bind-address=:8081
+        - --metrics-bind-address=:8080
+        - --leader-elect=true
+        {{- if .Values.logging.level }}
+        - --zap-log-level={{ .Values.logging.level }}
+        {{- end }}
+        {{- if eq .Values.logging.format "json" }}
+        - --zap-encoder=json
+        {{- end }}
+        ports:
+        - name: metrics
+          containerPort: 8080
+          protocol: TCP
+        - name: health
+          containerPort: 8081
+          protocol: TCP
+        livenessProbe:
+          {{- toYaml .Values.controller.livenessProbe | nindent 10 }}
+        readinessProbe:
+          {{- toYaml .Values.controller.readinessProbe | nindent 10 }}
+        securityContext:
+          {{- toYaml .Values.controller.securityContext | nindent 10 }}
+        resources:
+          {{- toYaml .Values.controller.resources | nindent 10 }}
+        {{- with .Values.extraVolumeMounts }}
+        volumeMounts:
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+        env:
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        {{- with .Values.extraEnv }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.extraVolumes }}
+      volumes:
+      {{- toYaml . | nindent 6 }}
+      {{- end }}
+      {{- with .Values.controller.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.controller.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.controller.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

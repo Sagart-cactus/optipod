@@ -1,0 +1,105 @@
+{{- if .Values.webhook.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "optipod.webhook.deploymentName" . }}
+  namespace: {{ include "optipod.namespace" . }}
+  labels:
+    {{- include "optipod.webhook.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.webhook.deployment.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "optipod.webhook.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        {{- with .Values.webhook.deployment.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "optipod.webhook.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "optipod.webhook.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.webhook.deployment.podSecurityContext | nindent 8 }}
+      containers:
+      - name: webhook
+        image: {{ include "optipod.image" . }}
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        command:
+        - /manager
+        args:
+        - --enable-webhook=true
+        - --webhook-cert-path={{ .Values.webhook.certDir }}
+        - --health-probe-bind-address=:8081
+        - --metrics-bind-address=:8080
+        - --leader-elect=false
+        {{- if .Values.logging.level }}
+        - --zap-log-level={{ .Values.logging.level }}
+        {{- end }}
+        {{- if eq .Values.logging.format "json" }}
+        - --zap-encoder=json
+        {{- end }}
+        ports:
+        - name: webhook
+          containerPort: {{ .Values.webhook.port }}
+          protocol: TCP
+        - name: metrics
+          containerPort: 8080
+          protocol: TCP
+        - name: health
+          containerPort: 8081
+          protocol: TCP
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: health
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: health
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        securityContext:
+          {{- toYaml .Values.webhook.deployment.securityContext | nindent 10 }}
+        resources:
+          {{- toYaml .Values.webhook.deployment.resources | nindent 10 }}
+        volumeMounts:
+        - name: cert
+          mountPath: {{ .Values.webhook.certDir }}
+          readOnly: true
+        {{- with .Values.extraVolumeMounts }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+        env:
+        {{- with .Values.extraEnv }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      volumes:
+      - name: cert
+        secret:
+          secretName: {{ include "optipod.webhook.certificateSecretName" . }}
+          defaultMode: 420
+      {{- with .Values.extraVolumes }}
+      {{- toYaml . | nindent 6 }}
+      {{- end }}
+      {{- with .Values.webhook.deployment.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.webhook.deployment.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.webhook.deployment.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

@@ -1,0 +1,211 @@
+{{- if .Values.rbac.create }}
+---
+# ClusterRole for controller manager
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "optipod.fullname" . }}-manager-role
+  labels:
+    {{- include "optipod.labels" . | nindent 4 }}
+rules:
+# OptimizationPolicy resources
+- apiGroups:
+  - optipod.optipod.io
+  resources:
+  - optimizationpolicies
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - optipod.optipod.io
+  resources:
+  - optimizationpolicies/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - optipod.optipod.io
+  resources:
+  - optimizationpolicies/finalizers
+  verbs:
+  - update
+# Core resources
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  verbs:
+  - get
+  - list
+  - watch
+  - patch
+  - update
+- apiGroups:
+  - ""
+  resources:
+  - namespaces
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - apps
+  resources:
+  - deployments
+  - statefulsets
+  - daemonsets
+  - replicasets
+  verbs:
+  - get
+  - list
+  - watch
+  - patch
+  - update
+# Events
+- apiGroups:
+  - ""
+  resources:
+  - events
+  verbs:
+  - create
+  - patch
+---
+# ClusterRoleBinding for controller manager
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "optipod.fullname" . }}-manager-rolebinding
+  labels:
+    {{- include "optipod.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "optipod.fullname" . }}-manager-role
+subjects:
+- kind: ServiceAccount
+  name: {{ include "optipod.serviceAccountName" . }}
+  namespace: {{ include "optipod.namespace" . }}
+---
+{{- if .Values.webhook.enabled }}
+# ClusterRole for webhook
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "optipod.fullname" . }}-webhook-role
+  labels:
+    {{- include "optipod.webhook.labels" . | nindent 4 }}
+rules:
+# Read OptimizationPolicies to match against pods
+- apiGroups:
+  - optipod.optipod.io
+  resources:
+  - optimizationpolicies
+  verbs:
+  - get
+  - list
+  - watch
+# Read pods and namespaces for matching
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  - namespaces
+  verbs:
+  - get
+  - list
+  - watch
+# Create events for webhook operations
+- apiGroups:
+  - ""
+  resources:
+  - events
+  verbs:
+  - create
+  - patch
+---
+# ClusterRoleBinding for webhook
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "optipod.fullname" . }}-webhook-rolebinding
+  labels:
+    {{- include "optipod.webhook.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "optipod.fullname" . }}-webhook-role
+subjects:
+- kind: ServiceAccount
+  name: {{ include "optipod.webhook.serviceAccountName" . }}
+  namespace: {{ include "optipod.namespace" . }}
+{{- end }}
+---
+# Role for leader election
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "optipod.fullname" . }}-leader-election-role
+  namespace: {{ include "optipod.namespace" . }}
+  labels:
+    {{- include "optipod.labels" . | nindent 4 }}
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - configmaps
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+  - delete
+- apiGroups:
+  - coordination.k8s.io
+  resources:
+  - leases
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+  - delete
+- apiGroups:
+  - ""
+  resources:
+  - events
+  verbs:
+  - create
+  - patch
+---
+# RoleBinding for leader election
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "optipod.fullname" . }}-leader-election-rolebinding
+  namespace: {{ include "optipod.namespace" . }}
+  labels:
+    {{- include "optipod.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "optipod.fullname" . }}-leader-election-role
+subjects:
+- kind: ServiceAccount
+  name: {{ include "optipod.serviceAccountName" . }}
+  namespace: {{ include "optipod.namespace" . }}
+{{- if .Values.webhook.enabled }}
+- kind: ServiceAccount
+  name: {{ include "optipod.webhook.serviceAccountName" . }}
+  namespace: {{ include "optipod.namespace" . }}
+{{- end }}
+{{- end }}
