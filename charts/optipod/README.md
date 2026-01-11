@@ -125,8 +125,7 @@ metadata:
   name: production-apps
   namespace: default
 spec:
-  mode: monitoring  # or optimizing
-  strategy: webhook # or ssa
+  mode: Recommend  # Auto, Recommend, or Disabled
   selector:
     namespaces:
       allow:
@@ -134,10 +133,23 @@ spec:
     workloadSelector:
       matchLabels:
         tier: backend
-  optimization:
-    targetUtilization:
-      cpu: 0.8
-      memory: 0.85
+  metricsConfig:
+    provider: metrics-server
+    rollingWindow: 24h
+    percentile: P90
+    safetyFactor: 1.2
+  resourceBounds:
+    cpu:
+      min: "100m"
+      max: "4000m"
+    memory:
+      min: "128Mi"
+      max: "8Gi"
+  updateStrategy:
+    strategy: webhook        # or ssa
+    rolloutStrategy: onNextRestart
+    allowInPlaceResize: true
+    updateRequestsOnly: true
 ```
 
 ### 2. Enable Webhook for Pods
@@ -174,8 +186,8 @@ kubectl get mutatingwebhookconfiguration
 
 ### Components
 
-1. **Controller Manager** - Manages OptimizationPolicy CRD and SSA strategy
-2. **Webhook Server** - Mutates pods at admission time (optional)
+1. **Controller Manager** - Reconciles OptimizationPolicy CRs and applies recommendations via SSA or webhook strategy
+2. **Webhook Server** - Mutates pods at admission time (optional for GitOps-safe strategy)
 3. **cert-manager** - Manages TLS certificates for webhook (auto-installed)
 
 ### Webhook Flow

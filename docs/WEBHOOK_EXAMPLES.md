@@ -24,7 +24,7 @@ spec:
   metricsConfig:
     provider: metrics-server
     rollingWindow: 2h
-    percentile: P95
+    percentile: P90
     safetyFactor: 1.3
   resourceBounds:
     cpu:
@@ -89,7 +89,7 @@ spec:
   metricsConfig:
     provider: prometheus                 # Often used with ArgoCD setups
     rollingWindow: 4h
-    percentile: P95
+    percentile: P90
     safetyFactor: 1.2
   resourceBounds:
     cpu:
@@ -226,7 +226,7 @@ spec:
   metricsConfig:
     provider: metrics-server
     rollingWindow: 2h
-    percentile: P95
+    percentile: P90
     safetyFactor: 1.2
   resourceBounds:
     cpu:
@@ -288,7 +288,7 @@ spec:
   metricsConfig:
     provider: prometheus
     rollingWindow: 4h
-    percentile: P95
+    percentile: P90
     safetyFactor: 1.3
   resourceBounds:
     cpu:
@@ -464,7 +464,7 @@ spec:
   metricsConfig:
     provider: prometheus
     rollingWindow: 4h
-    percentile: P95
+    percentile: P90
     safetyFactor: 1.2
   resourceBounds:
     cpu:

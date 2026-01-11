@@ -881,7 +881,7 @@ kubectl get optimizationpolicy production-workloads -o yaml
 ### Testing Configurations
 
 1. Start with `mode: Recommend`
-2. Review recommendations in policy status
+2. Review recommendation annotations on workloads
 3. Adjust bounds, percentiles, and safety factors
 4. Switch to `mode: Auto` when satisfied
 

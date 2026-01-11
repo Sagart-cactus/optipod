@@ -123,10 +123,10 @@ kubectl get certificate -n optipod-system
 kubectl get pods -n cert-manager
 ```
 
-### Method 2: Using kubectl
+### Method 2: Using kubectl (Alternative)
 
 OptiPod supports two deployment strategies:
-- **Webhook Strategy** (Default): Uses mutating webhooks for ArgoCD compatibility
+- **Webhook Strategy** (GitOps-safe): Uses mutating webhooks for ArgoCD compatibility
 - **SSA Strategy**: Uses Server Side Apply for direct Kubernetes API updates
 
 #### Step 1: Choose Installation Mode
@@ -134,7 +134,7 @@ OptiPod supports two deployment strategies:
 ##### Option A: Webhook Mode (Recommended for ArgoCD/GitOps)
 
 ```bash
-# Install with webhook support (default)
+# Install with webhook support (GitOps-safe)
 kubectl apply -f https://github.com/Sagart-cactus/optipod/releases/latest/download/install-webhook.yaml
 ```
 
@@ -185,7 +185,7 @@ This creates:
 - Service for metrics
 - **Webhook Mode Only**: Mutating webhook configuration and certificates
 
-> **Strategy Selection**: The webhook strategy is now the default for better ArgoCD compatibility. Use SSA mode only if you specifically need Server Side Apply functionality and have the required permissions.
+> **Strategy Selection**: Use webhook mode for GitOps compatibility. Use SSA mode only if you specifically need Server Side Apply functionality and have the required permissions.
 
 > **Security Note**: All release images are signed with cosign and include SBOMs. You can verify signatures using:
 >

@@ -52,13 +52,15 @@
         </div>
         <article class="doc-content">
           <h1 id="argocd-integration-guide">ArgoCD Integration Guide</h1>
-          <p>This guide explains how to use OptiPod alongside ArgoCD without sync conflicts, leveraging Kubernetes Server-Side Apply
-          (SSA) for field-level ownership.</p>
+          <p>This guide explains how to use OptiPod alongside ArgoCD without sync conflicts. The recommended approach is the webhook
+          strategy (GitOps-safe by default), with Server-Side Apply (SSA) available as an optional alternative.</p>
           <h2 id="overview">Overview</h2>
-          <p>OptiPod uses Server-Side Apply (SSA) by default to manage only resource requests and limits, while ArgoCD manages other
-          fields like image, replicas, and environment variables. This field-level ownership prevents sync conflicts and allows both
-          tools to coexist peacefully.</p>
-          <h3 id="how-it-works">How It Works</h3>
+          <p>OptiPod supports two GitOps-friendly approaches:</p>
+          <ul>
+          <li><strong>Webhook strategy (recommended)</strong>: Mutates pod resources at admission time without changing GitOps-managed manifests.</li>
+          <li><strong>SSA strategy (optional)</strong>: Uses field ownership to manage only CPU/memory requests and limits in live workloads.</li>
+          </ul>
+          <h3 id="how-it-works">SSA Strategy (Optional): How It Works</h3>
           <p>With SSA, Kubernetes tracks which tool owns which fields using <code>managedFields</code> metadata:</p>
           <pre><code class="hljs language-yaml"><span class="hljs-attr">Deployment:</span> <span class="hljs-string">my-app</span>
 <span class="hljs-string">├──</span> <span class="hljs-string">spec.replicas</span>                    [<span class="hljs-attr">Owned by:</span> <span class="hljs-string">argocd</span>]
@@ -72,13 +74,11 @@
 <span class="hljs-string">│</span>       <span class="hljs-string">└──</span> <span class="hljs-string">limits.memory</span>            [<span class="hljs-attr">Owned by:</span> <span class="hljs-string">optipod</span>] <span class="hljs-string">✅</span></code></pre>
           <h2 id="prerequisites">Prerequisites</h2>
           <ul>
-          <li>Kubernetes 1.22+ (SSA is GA)</li>
-          <li>ArgoCD 2.5+ (recommended for automatic SSA support)</li>
-          <li>OptiPod installed with SSA enabled (default)</li>
+          <li>Webhook strategy: OptiPod installed with webhook components (recommended for GitOps).</li>
+          <li>SSA strategy: Kubernetes 1.22+ (SSA is GA) and ArgoCD 2.5+ (recommended for automatic SSA support).</li>
           </ul>
-          <h2 id="configuration">Configuration</h2>
-          <h3 id="optipod-configuration">OptiPod Configuration</h3>
-          <p>OptiPod uses SSA by default. You can explicitly enable it in your OptimizationPolicy:</p>
+          <h2 id="webhook-strategy-recommended">Webhook Strategy (Recommended)</h2>
+          <p>Webhook mode avoids sync conflicts by mutating pod resources at admission time, so ArgoCD continues to own manifests.</p>
           <pre><code class="hljs language-yaml"><span class="hljs-attr">apiVersion:</span> <span class="hljs-string">optipod.optipod.io/v1alpha1</span>
 <span class="hljs-attr">kind:</span> <span class="hljs-string">OptimizationPolicy</span>
 <span class="hljs-attr">metadata:</span>
@@ -105,11 +105,46 @@
       <span class="hljs-attr">max:</span> <span class="hljs-string">&quot;8Gi&quot;</span>
 
   <span class="hljs-attr">updateStrategy:</span>
+    <span class="hljs-attr">strategy:</span> <span class="hljs-string">webhook</span>
+    <span class="hljs-attr">rolloutStrategy:</span> <span class="hljs-string">onNextRestart</span>
+    <span class="hljs-attr">updateRequestsOnly:</span> <span class="hljs-literal">true</span></code></pre>
+          <p>No special ArgoCD configuration is required for webhook mode.</p>
+          <h2 id="configuration">Configuration</h2>
+          <h3 id="optipod-configuration">SSA Strategy (Optional)</h3>
+          <p>To use SSA, explicitly set <code>updateStrategy.strategy: ssa</code> in your OptimizationPolicy:</p>
+          <pre><code class="hljs language-yaml"><span class="hljs-attr">apiVersion:</span> <span class="hljs-string">optipod.optipod.io/v1alpha1</span>
+<span class="hljs-attr">kind:</span> <span class="hljs-string">OptimizationPolicy</span>
+<span class="hljs-attr">metadata:</span>
+  <span class="hljs-attr">name:</span> <span class="hljs-string">production-workloads</span>
+<span class="hljs-attr">spec:</span>
+  <span class="hljs-attr">mode:</span> <span class="hljs-string">Auto</span>
+
+  <span class="hljs-attr">selector:</span>
+    <span class="hljs-attr">workloadSelector:</span>
+      <span class="hljs-attr">matchLabels:</span>
+        <span class="hljs-attr">optimize:</span> <span class="hljs-string">&quot;true&quot;</span>
+
+  <span class="hljs-attr">metricsConfig:</span>
+    <span class="hljs-attr">provider:</span> <span class="hljs-string">prometheus</span>
+    <span class="hljs-attr">rollingWindow:</span> <span class="hljs-string">24h</span>
+    <span class="hljs-attr">percentile:</span> <span class="hljs-string">P90</span>
+
+  <span class="hljs-attr">resourceBounds:</span>
+    <span class="hljs-attr">cpu:</span>
+      <span class="hljs-attr">min:</span> <span class="hljs-string">&quot;100m&quot;</span>
+      <span class="hljs-attr">max:</span> <span class="hljs-string">&quot;4000m&quot;</span>
+    <span class="hljs-attr">memory:</span>
+      <span class="hljs-attr">min:</span> <span class="hljs-string">&quot;128Mi&quot;</span>
+      <span class="hljs-attr">max:</span> <span class="hljs-string">&quot;8Gi&quot;</span>
+
+  <span class="hljs-attr">updateStrategy:</span>
+    <span class="hljs-attr">strategy:</span> <span class="hljs-string">ssa</span>
     <span class="hljs-attr">allowInPlaceResize:</span> <span class="hljs-literal">true</span>
     <span class="hljs-attr">allowRecreate:</span> <span class="hljs-literal">false</span>
     <span class="hljs-attr">updateRequestsOnly:</span> <span class="hljs-literal">true</span>
     <span class="hljs-attr">useServerSideApply:</span> <span class="hljs-literal">true</span>  <span class="hljs-comment"># Default: true</span></code></pre>
-          <h3 id="argocd-configuration">ArgoCD Configuration</h3>
+          <h3 id="argocd-configuration">ArgoCD Configuration (SSA Strategy)</h3>
+          <p>These options apply when using SSA for field ownership.</p>
           <h4 id="option-1-argocd-25-automatic-recommended">Option 1: ArgoCD 2.5+ (Automatic - Recommended)</h4>
           <p>ArgoCD 2.5+ automatically respects SSA field ownership. No additional configuration needed!</p>
           <p>Simply deploy your application as usual:</p>
@@ -233,6 +268,7 @@
       <span class="hljs-attr">max:</span> <span class="hljs-string">&quot;8Gi&quot;</span>
 
   <span class="hljs-attr">updateStrategy:</span>
+    <span class="hljs-attr">strategy:</span> <span class="hljs-string">ssa</span>
     <span class="hljs-attr">allowInPlaceResize:</span> <span class="hljs-literal">true</span>
     <span class="hljs-attr">allowRecreate:</span> <span class="hljs-literal">false</span>
     <span class="hljs-attr">updateRequestsOnly:</span> <span class="hljs-literal">true</span>
@@ -344,11 +380,13 @@ kubectl get events -n production --field-selector reason=SSAConflict</code></pre
 <span class="hljs-attr">spec:</span>
   <span class="hljs-comment"># ... other fields ...</span>
   <span class="hljs-attr">updateStrategy:</span>
+    <span class="hljs-attr">strategy:</span> <span class="hljs-string">ssa</span>
     <span class="hljs-attr">useServerSideApply:</span> <span class="hljs-literal">false</span>  <span class="hljs-comment"># Use Strategic Merge Patch instead</span></code></pre>
-          <p><strong>Note</strong>: Disabling SSA will cause sync conflicts with ArgoCD.</p>
+          <p><strong>Note</strong>: Disabling SSA without switching to the webhook strategy can cause sync conflicts with ArgoCD.</p>
           <h2 id="best-practices">Best Practices</h2>
           <ol>
-          <li><strong>Use SSA by default</strong>: Keep <code>useServerSideApply: true</code> for ArgoCD compatibility</li>
+          <li><strong>Prefer webhook for GitOps</strong>: Use the webhook strategy to avoid sync conflicts by design</li>
+          <li><strong>If using SSA</strong>: Keep <code>useServerSideApply: true</code> for ArgoCD compatibility</li>
           <li><strong>Start with Recommend mode</strong>: Test OptiPod in Recommend mode before enabling Auto</li>
           <li><strong>Monitor field ownership</strong>: Regularly check managedFields to ensure proper ownership</li>
           <li><strong>Use ArgoCD 2.5+</strong>: Upgrade to the latest ArgoCD for best SSA support</li>
@@ -440,6 +478,7 @@ kubectl get events -n production --field-selector reason=SSAConflict</code></pre
       <span class="hljs-attr">max:</span> <span class="hljs-string">&quot;4Gi&quot;</span>
 
   <span class="hljs-attr">updateStrategy:</span>
+    <span class="hljs-attr">strategy:</span> <span class="hljs-string">ssa</span>
     <span class="hljs-attr">allowInPlaceResize:</span> <span class="hljs-literal">true</span>
     <span class="hljs-attr">allowRecreate:</span> <span class="hljs-literal">false</span>
     <span class="hljs-attr">updateRequestsOnly:</span> <span class="hljs-literal">true</span>
