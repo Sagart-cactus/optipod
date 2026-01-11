@@ -1,0 +1,800 @@
+name: Release
+
+on:
+  pull_request:
+    branches:
+      - main
+      - develop
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to validate (e.g., v1.0.0)'
+        required: true
+        type: string
+
+
+permissions:
+  contents: write
+  packages: write
+  id-token: write
+  security-events: write
+  actions: read
+
+env:
+  REGISTRY_GHCR: ghcr.io
+  REGISTRY_DOCKERHUB: docker.io
+  IMAGE_NAME: ${{ github.repository }}
+  PLATFORMS: linux/amd64,linux/arm64
+  GO_VERSION: '1.21'
+
+jobs:
+  setup:
+    name: Setup and Validate
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.get_version.outputs.version }}
+      image_name_lower: ${{ steps.lowercase_repo.outputs.image_name_lower }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Convert repository name to lowercase
+        id: lowercase_repo
+        run: |
+          echo "image_name_lower=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
+      - name: Get version from tag or input
+        id: get_version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION="${GITHUB_REF#refs/tags/}"
+          fi
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "Version: ${VERSION}"
+      - name: Validate version format
+        run: |
+          VERSION="${{ steps.get_version.outputs.version }}"
+          if ! echo "${VERSION}" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$'; then
+            echo "Error: Invalid version format '${VERSION}'. Expected format: v1.2.3 or v1.2.3-alpha.1"
+            exit 1
+          fi
+          echo "Version format is valid: ${VERSION}"
+  lint:
+    name: Run Linting
+    runs-on: ubuntu-latest
+    needs: setup
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Run linter
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.5.0
+
+  test:
+    name: Run Unit Tests
+    runs-on: ubuntu-latest
+    needs: setup
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Run unit tests
+        run: |
+          go mod tidy
+          make test
+  contract-e2e-test:
+    name: Run Contract E2E Tests
+    runs-on: ubuntu-latest
+    needs: setup
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Install Kind
+        run: |
+          # Install Kind v0.20.0 for consistency
+          curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.20.0/kind-linux-amd64
+          chmod +x ./kind
+          sudo mv ./kind /usr/local/bin/kind
+          kind version
+      - name: Install kubectl
+        run: |
+          # Install latest stable kubectl
+          curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+          chmod +x kubectl
+          sudo mv kubectl /usr/local/bin/kubectl
+          kubectl version --client
+      - name: Verify Docker is running
+        run: |
+          docker version
+          docker info
+      - name: Run contract E2E tests
+        run: |
+          echo "Running contract E2E tests for release validation..."
+          echo "Contract tests validate user-visible behavior and core functionality:"
+          echo "- Controller installation and readiness"
+          echo "- Custom resource acceptance by API server"
+          echo "- Status convergence to Ready=True condition"
+          echo "Environment: CI"
+          echo "Timeout: 10 minutes"
+          # Run contract tests with 10-minute timeout
+          make test-e2e-contract
+        env:
+          CI: true
+        timeout-minutes: 10
+
+      - name: Upload contract E2E test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: contract-e2e-test-results
+          path: |
+            test/e2e/contract/test-results.xml
+            test/e2e/contract/coverage.out
+          retention-days: 30
+
+      - name: Cleanup on failure
+        if: failure()
+        run: |
+          echo "Contract E2E tests failed. Cleaning up..."
+          make cleanup-contract-e2e || true
+  publish-helm-oci:
+    name: Publish Helm Chart to OCI Registry
+    runs-on: ubuntu-latest
+    needs: [setup, lint, test, security-scan]
+    permissions:
+      actions: read
+      packages: write
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: 'v3.14.0'
+
+      - name: Update Chart metadata
+        run: |
+          VERSION="${{ needs.setup.outputs.version }}"
+          VERSION_NO_V="${VERSION#v}"
+          # Update Chart.yaml version and appVersion
+          sed -i "s/^version:.*/version: ${VERSION_NO_V}/" charts/optipod/Chart.yaml
+          sed -i "s/^appVersion:.*/appVersion: \"${VERSION_NO_V}\"/" charts/optipod/Chart.yaml
+          # Update image tag in values.yaml
+          sed -i "s/tag: .*/tag: \"${VERSION}\"/" charts/optipod/values.yaml
+          echo "Updated Chart.yaml and values.yaml with version ${VERSION}"
+          cat charts/optipod/Chart.yaml | grep -E "^version:|^appVersion:"
+          cat charts/optipod/values.yaml | grep "tag:"
+      - name: Update Helm dependencies
+        run: |
+          cd charts/optipod
+          helm dependency update
+      - name: Lint Helm chart
+        run: |
+          helm lint charts/optipod
+      - name: Package Helm chart
+        run: |
+          mkdir -p deploy
+          helm package charts/optipod --destination deploy
+          echo "Packaged chart:"
+          ls -lh deploy/
+      - name: Upload chart artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: helm-chart
+          path: deploy/*.tgz
+          retention-days: 90
+          if-no-files-found: error
+
+      - name: Login to GitHub Container Registry
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u ${{ github.actor }} --password-stdin
+      - name: Push chart to OCI registry
+        run: |
+          CHART_FILE=$(ls deploy/*.tgz)
+          echo "Pushing chart: ${CHART_FILE}"
+          helm push "${CHART_FILE}" oci://ghcr.io/${{ github.repository_owner }}/charts
+          VERSION="${{ needs.setup.outputs.version }}"
+          echo "Chart published: oci://ghcr.io/${{ github.repository_owner }}/charts/optipod:${VERSION#v}"
+  build:
+    name: Build Multi-Architecture Images
+    runs-on: ubuntu-latest
+    needs: [setup, lint, test, contract-e2e-test]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver-opts: |
+            image=moby/buildkit:latest
+      - name: Build multi-architecture images
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          push: false
+          load: true
+          tags: |
+            ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ needs.setup.outputs.version }}
+          build-args: |
+            VERSION=${{ needs.setup.outputs.version }}
+            COMMIT=${{ github.sha }}
+            BUILD_DATE=${{ github.event.repository.updated_at }}
+          labels: |
+            org.opencontainers.image.source=${{ github.repositoryUrl }}
+            org.opencontainers.image.version=${{ needs.setup.outputs.version }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.licenses=Apache-2.0
+            org.opencontainers.image.created=${{ github.event.repository.updated_at }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Save image to tar
+        run: |
+          docker save ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ needs.setup.outputs.version }} -o /tmp/image.tar
+      - name: Upload image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: container-image
+          path: /tmp/image.tar
+          retention-days: 1
+
+  security-scan:
+    name: Security Scanning
+    runs-on: ubuntu-latest
+    needs: [setup, build]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download image artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: container-image
+          path: /tmp
+
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+
+      - name: Install Trivy
+        run: |
+          sudo apt-get update
+          sudo apt-get install wget apt-transport-https gnupg lsb-release
+          wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo gpg --dearmor -o /usr/share/keyrings/trivy.gpg
+          echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main" | sudo tee -a /etc/apt/sources.list.d/trivy.list
+          sudo apt-get update
+          sudo apt-get install trivy
+      - name: Run Trivy vulnerability scanner
+        run: |
+          trivy image \
+            --format sarif \
+            --output trivy-results.sarif \
+            --severity CRITICAL,HIGH,MEDIUM,LOW \
+            ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ needs.setup.outputs.version }}
+      - name: Generate JSON report
+        run: |
+          trivy image \
+            --format json \
+            --output trivy-results.json \
+            --severity CRITICAL,HIGH,MEDIUM,LOW \
+            ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ needs.setup.outputs.version }}
+      - name: Generate table report
+        run: |
+          trivy image \
+            --format table \
+            --severity CRITICAL,HIGH,MEDIUM,LOW \
+            ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ needs.setup.outputs.version }}
+      - name: Upload SARIF to GitHub Security
+        uses: github/codeql-action/upload-sarif@v4
+        if: always()
+        with:
+          sarif_file: trivy-results.sarif
+
+      - name: Upload scan results as artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: security-scan-results
+          path: |
+            trivy-results.sarif
+            trivy-results.json
+          retention-days: 30
+
+      - name: Check for critical/high vulnerabilities
+        run: |
+          CRITICAL=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="CRITICAL")] | length' trivy-results.json)
+          HIGH=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="HIGH")] | length' trivy-results.json)
+          echo "Critical vulnerabilities: $CRITICAL"
+          echo "High vulnerabilities: $HIGH"
+          if [ "$CRITICAL" -gt 0 ] || [ "$HIGH" -gt 0 ]; then
+            echo "Error: Found $CRITICAL critical and $HIGH high severity vulnerabilities"
+            echo "Release blocked due to security vulnerabilities"
+            exit 1
+          fi
+          echo "No critical or high severity vulnerabilities found"
+  sbom:
+    name: Generate SBOM
+    runs-on: ubuntu-latest
+    needs: [setup, build]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download image artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: container-image
+          path: /tmp
+
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+
+      - name: Install Syft
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
+      - name: Generate SBOM in SPDX JSON format
+        run: |
+          syft ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ needs.setup.outputs.version }} \
+            -o spdx-json=sbom.json
+      - name: Upload SBOM as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: sbom.json
+          retention-days: 90
+
+  sign:
+    name: Sign Images
+    runs-on: ubuntu-latest
+    needs: [setup, build, security-scan, sbom]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download image artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: container-image
+          path: /tmp
+
+      - name: Download SBOM
+        uses: actions/download-artifact@v7
+        with:
+          name: sbom
+          path: /tmp
+
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY_GHCR }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push image to GHCR (temporary for signing)
+        run: |
+          docker push ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ needs.setup.outputs.version }}
+      - name: Sign container image with keyless signing
+        env:
+          COSIGN_EXPERIMENTAL: 1
+        run: |
+          cosign sign --yes \
+            ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ needs.setup.outputs.version }}
+      - name: Generate provenance attestation
+        env:
+          COSIGN_EXPERIMENTAL: 1
+        run: |
+          echo "{
+            \"buildType\": \"https://github.com/Attestations/GitHubActionsWorkflow@v1\",
+            \"builder\": {
+              \"id\": \"https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}\"
+            },
+            \"invocation\": {
+              \"configSource\": {
+                \"uri\": \"git+https://github.com/${{ github.repository }}\",
+                \"digest\": {
+                  \"sha1\": \"${{ github.sha }}\"
+                },
+                \"entryPoint\": \".github/workflows/release.yml\"
+              }
+            },
+            \"metadata\": {
+              \"buildInvocationId\": \"${{ github.run_id }}\",
+              \"buildStartedOn\": \"${{ github.event.repository.updated_at }}\",
+              \"completeness\": {
+                \"parameters\": true,
+                \"environment\": false,
+                \"materials\": false
+              },
+              \"reproducible\": false
+            },
+            \"materials\": [
+              {
+                \"uri\": \"git+https://github.com/${{ github.repository }}\",
+                \"digest\": {
+                  \"sha1\": \"${{ github.sha }}\"
+                }
+              }
+            ]
+          }" > provenance.json
+          cosign attest --yes \
+            --predicate provenance.json \
+            --type slsaprovenance \
+            ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ needs.setup.outputs.version }}
+      - name: Attach SBOM as attestation
+        env:
+          COSIGN_EXPERIMENTAL: 1
+        run: |
+          cosign attest --yes \
+            --predicate /tmp/sbom.json \
+            --type spdx \
+            ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ needs.setup.outputs.version }}
+      - name: Verify signature
+        env:
+          COSIGN_EXPERIMENTAL: 1
+        run: |
+          cosign verify \
+            ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ needs.setup.outputs.version }} | jq .
+  publish-ghcr:
+    name: Publish to GitHub Container Registry
+    runs-on: ubuntu-latest
+    needs: [setup, build, security-scan, sign]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download image artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: container-image
+          path: /tmp
+
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY_GHCR }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract version components
+        id: version
+        run: |
+          VERSION="${{ needs.setup.outputs.version }}"
+          # Remove 'v' prefix
+          VERSION_NO_V="${VERSION#v}"
+          # Extract major.minor.patch
+          MAJOR=$(echo $VERSION_NO_V | cut -d. -f1)
+          MINOR=$(echo $VERSION_NO_V | cut -d. -f2)
+          PATCH=$(echo $VERSION_NO_V | cut -d. -f3 | cut -d- -f1)
+          echo "full=${VERSION}" >> $GITHUB_OUTPUT
+          echo "major=${MAJOR}" >> $GITHUB_OUTPUT
+          echo "minor=${MAJOR}.${MINOR}" >> $GITHUB_OUTPUT
+          echo "patch=${MAJOR}.${MINOR}.${PATCH}" >> $GITHUB_OUTPUT
+      - name: Tag and push existing image with multiple tags
+        run: |
+          # Source image (already loaded)
+          SOURCE_IMAGE="${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ steps.version.outputs.full }}"
+          # Tag with additional version tags
+          docker tag $SOURCE_IMAGE ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ steps.version.outputs.minor }}
+          docker tag $SOURCE_IMAGE ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ steps.version.outputs.major }}
+          docker tag $SOURCE_IMAGE ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:latest
+          # Push all tags
+          docker push ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ steps.version.outputs.full }}
+          docker push ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ steps.version.outputs.minor }}
+          docker push ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ steps.version.outputs.major }}
+          docker push ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:latest
+      - name: Build and push multi-platform image (for arm64 support)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: ${{ env.PLATFORMS }}
+          push: true
+          tags: |
+            ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ steps.version.outputs.full }}
+            ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ steps.version.outputs.minor }}
+            ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ steps.version.outputs.major }}
+            ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:latest
+          build-args: |
+            VERSION=${{ needs.setup.outputs.version }}
+            COMMIT=${{ github.sha }}
+            BUILD_DATE=${{ github.event.repository.updated_at }}
+          labels: |
+            org.opencontainers.image.source=${{ github.repositoryUrl }}
+            org.opencontainers.image.version=${{ needs.setup.outputs.version }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.licenses=Apache-2.0
+            org.opencontainers.image.created=${{ github.event.repository.updated_at }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Verify image is pullable
+        run: |
+          docker pull ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ steps.version.outputs.full }}
+          docker pull ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:latest
+  generate-manifests:
+    name: Generate Deployment Manifests
+    runs-on: ubuntu-latest
+    needs: [setup, publish-ghcr]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Install kustomize
+        run: |
+          curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
+          sudo mv kustomize /usr/local/bin/
+      - name: Update image reference in kustomization
+        run: |
+          cd config/manager
+          kustomize edit set image controller=${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ needs.setup.outputs.version }}
+      - name: Build consolidated manifest
+        run: |
+          cd config/default
+          kustomize build . > ../../install.yaml
+      - name: Validate manifest syntax
+        run: |
+          # Basic YAML syntax validation
+          if ! command -v yq &> /dev/null; then
+            sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+            sudo chmod +x /usr/local/bin/yq
+          fi
+          # Validate YAML syntax
+          yq eval '.' install.yaml > /dev/null
+          # Check for basic Kubernetes resource structure
+          if ! grep -q "apiVersion:" install.yaml; then
+            echo "Error: No apiVersion found in manifest"
+            exit 1
+          fi
+          if ! grep -q "kind:" install.yaml; then
+            echo "Error: No kind found in manifest"
+            exit 1
+          fi
+          echo "Manifest validation passed"
+      - name: Upload manifest as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: install-manifest
+          path: install.yaml
+          retention-days: 90
+
+  build-binaries:
+    name: Build Binaries
+    runs-on: ubuntu-latest
+    needs: [setup]
+    strategy:
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+          - goos: linux
+            goarch: arm64
+          - goos: darwin
+            goarch: amd64
+          - goos: darwin
+            goarch: arm64
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build binary
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: 0
+        run: |
+          go build -a -o optipod-${{ matrix.goos }}-${{ matrix.goarch }} \
+            -ldflags "-X main.version=${{ needs.setup.outputs.version }} -X main.commit=${{ github.sha }}" \
+            cmd/main.go
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: binary-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: optipod-${{ matrix.goos }}-${{ matrix.goarch }}
+          retention-days: 90
+
+  generate-checksums:
+    name: Generate Checksums
+    runs-on: ubuntu-latest
+    needs: [setup, build-binaries]
+    steps:
+      - name: Download all binaries
+        uses: actions/download-artifact@v7
+        with:
+          pattern: binary-*
+          path: binaries
+          merge-multiple: true
+
+      - name: Generate SHA256 checksums
+        run: |
+          cd binaries
+          sha256sum * > checksums.txt
+          cat checksums.txt
+      - name: Upload checksums
+        uses: actions/upload-artifact@v4
+        with:
+          name: checksums
+          path: binaries/checksums.txt
+          retention-days: 90
+
+  create-release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: [setup, publish-ghcr, publish-helm-oci, generate-manifests, generate-checksums, sbom, security-scan]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download install manifest
+        uses: actions/download-artifact@v7
+        with:
+          name: install-manifest
+          path: artifacts
+
+      - name: Download binaries
+        uses: actions/download-artifact@v7
+        with:
+          pattern: binary-*
+          path: artifacts/binaries
+          merge-multiple: true
+
+      - name: Download checksums
+        uses: actions/download-artifact@v7
+        with:
+          name: checksums
+          path: artifacts
+
+      - name: Download SBOM
+        uses: actions/download-artifact@v7
+        with:
+          name: sbom
+          path: artifacts
+
+      - name: Download security scan results
+        uses: actions/download-artifact@v7
+        with:
+          name: security-scan-results
+          path: artifacts
+
+      - name: Download Helm chart
+        uses: actions/download-artifact@v7
+        with:
+          name: helm-chart
+          path: artifacts
+
+      - name: Generate release notes
+        id: release_notes
+        run: |
+          VERSION="${{ needs.setup.outputs.version }}"
+          # Get previous tag
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          # Generate changelog
+          if [ -n "$PREV_TAG" ]; then
+            CHANGELOG=$(git log ${PREV_TAG}..HEAD --pretty=format:"- %s (%h)" --no-merges)
+          else
+            CHANGELOG=$(git log --pretty=format:"- %s (%h)" --no-merges)
+          fi
+          # Create release notes
+          cat > release_notes.md <<EOF
+          ## OptiPod ${VERSION}
+          ### Container Images
+          - \`ghcr.io/${{ github.repository }}:${VERSION}\`
+          - \`ghcr.io/${{ github.repository }}:latest\`
+          ### Helm Chart
+          - \`oci://ghcr.io/${{ github.repository_owner }}/charts/optipod:${VERSION#v}\`
+          ### Installation
+          **Using Helm (Recommended):**
+          \`\`\`bash
+          # Install from OCI registry
+          helm install optipod oci://ghcr.io/${{ github.repository_owner }}/charts/optipod \\
+            --version ${VERSION#v} \\
+            --namespace optipod-system \\
+            --create-namespace
+          # Or download and install from release artifact
+          helm install optipod ./optipod-${VERSION#v}.tgz \\
+            --namespace optipod-system \\
+            --create-namespace
+          \`\`\`
+          **Using kubectl:**
+          \`\`\`bash
+          kubectl apply -f https://github.com/${{ github.repository }}/releases/download/${VERSION}/install.yaml
+          \`\`\`
+          ### What's Changed
+          ${CHANGELOG}
+          ### Artifacts
+          - **optipod-${VERSION#v}.tgz**: Helm chart package
+          - **install.yaml**: Complete Kubernetes deployment manifest
+          - **Binaries**: Pre-built binaries for multiple platforms
+          - **sbom.json**: Software Bill of Materials
+          - **trivy-results.json**: Security scan results
+          - **checksums.txt**: SHA256 checksums for all binaries
+          ### Verification
+          Verify image signature:
+          \`\`\`bash
+          cosign verify ghcr.io/${{ github.repository }}:${VERSION}
+          \`\`\`
+          **Full Changelog**: https://github.com/${{ github.repository }}/compare/${PREV_TAG}...${VERSION}
+          EOF
+          cat release_notes.md
+      - name: Check if pre-release
+        id: prerelease
+        run: |
+          VERSION="${{ needs.setup.outputs.version }}"
+          if echo "$VERSION" | grep -qE '(alpha|beta|rc)'; then
+            echo "is_prerelease=true" >> $GITHUB_OUTPUT
+          else
+            echo "is_prerelease=false" >> $GITHUB_OUTPUT
+          fi
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ needs.setup.outputs.version }}
+          name: Release ${{ needs.setup.outputs.version }}
+          body_path: release_notes.md
+          draft: false
+          prerelease: ${{ steps.prerelease.outputs.is_prerelease }}
+          files: |
+            artifacts/*.tgz
+            artifacts/install.yaml
+            artifacts/binaries/*
+            artifacts/checksums.txt
+            artifacts/sbom.json
+            artifacts/trivy-results.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
