@@ -221,9 +221,11 @@ jobs:
         run: |
           CHART_FILE=$(ls deploy/*.tgz)
           echo "Pushing chart: ${CHART_FILE}"
-          helm push "${CHART_FILE}" oci://ghcr.io/${{ github.repository_owner }}/charts
+          OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          helm push "${CHART_FILE}" oci://ghcr.io/${OWNER}/charts
+
           VERSION="${{ needs.setup.outputs.version }}"
-          echo "Chart published: oci://ghcr.io/${{ github.repository_owner }}/charts/optipod:${VERSION#v}"
+          echo "Chart published: oci://ghcr.io/${OWNER}/charts/optipod:${VERSION#v}"
   build:
     name: Build Multi-Architecture Images
     runs-on: ubuntu-latest
