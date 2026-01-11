@@ -94,7 +94,7 @@ class FeaturesGrid {
         <path d="M9 12l2 2 4-4" fill="none" stroke="currentColor" stroke-width="2"/>
       </svg>`,
 
-      // GitOps-Safe Server-Side Apply
+      // GitOps-Safe Webhook Strategy
       `<svg viewBox="0 0 24 24" width="24" height="24">
         <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22" fill="none" stroke="currentColor" stroke-width="2"/>
       </svg>`,
@@ -172,21 +172,21 @@ class FeaturesGrid {
         <h6>How it works:</h6>
         <ul>
           <li>Continuously monitors CPU and memory usage patterns</li>
-          <li>Uses configurable percentile strategies (P90, P95, P99)</li>
+          <li>Uses configurable percentile strategies (P50, P90, P99)</li>
           <li>Applies safety margins and bounds checking</li>
           <li>Generates recommendations with full rationale</li>
         </ul>
         <p><strong>Result:</strong> Right-sized resources without guesswork or over-provisioning.</p>
       </div>`,
 
-      // GitOps-Safe Server-Side Apply
+      // GitOps-Safe Webhook Strategy
       `<div class="feature-detail-content">
         <h6>Technical approach:</h6>
         <ul>
-          <li>Uses Kubernetes Server-Side Apply (SSA) with field-level ownership</li>
-          <li>Only manages CPU and memory requests/limits fields</li>
-          <li>Coexists with ArgoCD, Flux, and other GitOps tools</li>
-          <li>No conflicts with human or automated changes</li>
+          <li>Uses a mutating webhook to apply recommendations at admission time</li>
+          <li>GitOps controllers stay the source of truth for manifests</li>
+          <li>Only touches CPU and memory requests/limits in live objects</li>
+          <li>Reduces reconciliation conflicts with ArgoCD and Flux</li>
         </ul>
         <p><strong>Result:</strong> Safe automation that respects your GitOps workflows.</p>
       </div>`,

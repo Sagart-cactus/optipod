@@ -28,7 +28,7 @@ The `OptimizationPolicy` CRD defines how OptiPod should optimize workload resour
 **Description**: Operational mode for the policy
 
 - **Auto**: Automatically applies resource recommendations to matching workloads
-- **Recommend**: Computes recommendations but stores them in status without applying
+- **Recommend**: Computes recommendations and stores them as workload annotations without applying
 - **Disabled**: Stops processing workloads while preserving historical status
 
 **Example**:

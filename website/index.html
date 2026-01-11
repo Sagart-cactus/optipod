@@ -13,7 +13,7 @@
     <meta name="title" content="OptiPod — Open-Source Kubernetes Resource Optimization">
     <meta
       name="description"
-      content="OptiPod is an open-source Kubernetes operator that makes explainable recommendations for CPU/memory requests and limits, and applies them only when you opt in — GitOps-safe with Server-Side Apply (SSA)."
+      content="OptiPod is an open-source Kubernetes operator that makes explainable recommendations for CPU/memory requests and limits, and applies them only when you opt in — GitOps-safe with the webhook strategy and optional Server-Side Apply (SSA)."
     >
     <meta name="keywords" content="kubernetes, resource optimization, gitops, cpu optimization, memory optimization, kubernetes operator, vpa alternative, kubernetes cost optimization, platform engineering, sre">
     <meta name="author" content="OptipOd Team">
@@ -31,7 +31,7 @@
     <meta property="og:type" content="website">
     <meta property="og:url" content="https://optipod.github.io/">
     <meta property="og:title" content="OptiPod — Open-Source Kubernetes Resource Optimization">
-    <meta property="og:description" content="OptiPod makes explainable recommendations for CPU/memory requests and limits, and applies them only when you opt in — GitOps-safe with Server-Side Apply (SSA).">
+    <meta property="og:description" content="OptiPod makes explainable recommendations for CPU/memory requests and limits, and applies them only when you opt in — GitOps-safe with the webhook strategy and optional Server-Side Apply (SSA).">
     <meta property="og:image" content="https://optipod.github.io/images/optipod-social-preview.svg">
     <meta property="og:image:width" content="1200">
     <meta property="og:image:height" content="630">
@@ -43,7 +43,7 @@
     <meta property="twitter:card" content="summary_large_image">
     <meta property="twitter:url" content="https://optipod.github.io/">
     <meta property="twitter:title" content="OptiPod — Open-Source Kubernetes Resource Optimization">
-    <meta property="twitter:description" content="OptiPod makes explainable recommendations for CPU/memory requests and limits, and applies them only when you opt in — GitOps-safe with Server-Side Apply (SSA).">
+    <meta property="twitter:description" content="OptiPod makes explainable recommendations for CPU/memory requests and limits, and applies them only when you opt in — GitOps-safe with the webhook strategy and optional Server-Side Apply (SSA).">
     <meta property="twitter:image" content="https://optipod.github.io/images/optipod-social-preview.svg">
     <meta property="twitter:image:alt" content="OptiPod - Safe, GitOps-friendly Kubernetes resource optimization">
     <meta property="twitter:creator" content="@optipod">
@@ -60,7 +60,7 @@
       "@context": "https://schema.org",
       "@type": "SoftwareApplication",
       "name": "OptiPod",
-      "description": "OptiPod makes explainable recommendations for CPU/memory requests and limits, and applies them only when you opt in — GitOps-safe with Server-Side Apply (SSA).",
+      "description": "OptiPod makes explainable recommendations for CPU/memory requests and limits, and applies them only when you opt in — GitOps-safe with the webhook strategy and optional Server-Side Apply (SSA).",
       "url": "https://optipod.github.io/",
       "downloadUrl": "https://github.com/Sagart-cactus/optipod/releases",
       "applicationCategory": "DeveloperApplication",
@@ -86,7 +86,7 @@
       "keywords": "kubernetes, resource optimization, gitops, cpu optimization, memory optimization, kubernetes operator, vpa alternative",
       "featureList": [
         "Automatic Resource Optimization",
-        "GitOps-Safe Server-Side Apply",
+        "GitOps-Safe Webhook Strategy",
         "Multiple Operational Modes",
         "Safety-First Resource Management",
         "Pluggable Metrics Backends",
@@ -124,7 +124,7 @@
       "@type": "WebSite",
       "name": "OptiPod",
       "url": "https://optipod.github.io/",
-      "description": "OptiPod makes explainable recommendations for CPU/memory requests and limits, and applies them only when you opt in — GitOps-safe with Server-Side Apply (SSA).",
+      "description": "OptiPod makes explainable recommendations for CPU/memory requests and limits, and applies them only when you opt in — GitOps-safe with the webhook strategy and optional Server-Side Apply (SSA).",
       "publisher": {
         "@type": "Organization",
         "name": "OptipOd Team"
@@ -1266,7 +1266,7 @@
               <p class="reveal delay-1">
                 OptiPod is a Kubernetes operator that makes explainable recommendations
                 for CPU/memory requests and limits. It applies changes only when you
-                opt in, and stays GitOps-safe with Server-Side Apply (SSA).
+                opt in, and stays GitOps-safe with the webhook strategy (SSA optional).
               </p>
               <div class="cta-row reveal delay-2" role="group" aria-label="Primary actions">
                 <a class="btn btn-primary" href="https://github.com/Sagart-cactus/optipod" target="_blank"
@@ -1326,7 +1326,7 @@
             <h2 id="why-heading" class="section-title">Designed for trust, not surprises</h2>
             <p class="section-subtitle">
               OptiPod takes a fundamentally different approach to resource
-              optimization: safe by default, GitOps-safe with Server-Side Apply (SSA),
+              optimization: safe by default, GitOps-safe with the webhook strategy,
               and built around explainable recommendations and policy-driven safety.
             </p>
           <div class="why-grid">
@@ -1338,7 +1338,7 @@
               </div>
               <div class="why-copy">
                 <h3 id="why-gitops-heading">GitOps-safe by design</h3>
-                <p>Uses Kubernetes Server-Side Apply (SSA) with field-level ownership and manages only CPU and memory requests/limits.</p>
+                <p>Uses the webhook strategy to apply only CPU/memory changes at admission time while GitOps controllers remain the source of truth.</p>
               </div>
             </article>
             <article class="why-card" aria-labelledby="why-explainable-heading">
@@ -1404,9 +1404,9 @@
             <ol>
               <li>Discovers workloads matching your policy selectors and workload type filters.</li>
               <li>Collects real-time and historical resource usage.</li>
-              <li>Evaluates usage using strategies like P90, P95, P99 percentiles.</li>
+              <li>Evaluates usage using strategies like P50, P90, P99 percentiles.</li>
               <li>Generates explainable recommendations with policy-driven safety applied.</li>
-              <li>Optionally applies changes using Server-Side Apply (SSA) when you opt in.</li>
+              <li>Applies changes via the webhook strategy (GitOps-safe) or Server-Side Apply when you opt in.</li>
               <li>Records actions for auditing and review.</li>
             </ol>
             <p class="section-subtitle" style="margin-top: 16px">
@@ -1450,10 +1450,9 @@
                 </svg>
               </div>
               <div>
-                <h3>GitOps-Safe Server-Side Apply</h3>
+                <h3>GitOps-Safe Webhook Strategy</h3>
                 <p>
-                  Field-level ownership avoids conflicts with ArgoCD, Flux, and
-                  other GitOps tools.
+                  Mutating admission applies OptiPod recommendations without fighting GitOps controllers.
                 </p>
               </div>
             </article>
@@ -1528,7 +1527,7 @@
               </div>
               <div>
                 <h3>Comprehensive Observability</h3>
-                <p>Prometheus metrics, Kubernetes events, and per-workload status.</p>
+                <p>Prometheus metrics, Kubernetes events, and per-workload recommendation annotations.</p>
               </div>
             </article>
             <article class="capability-card">
@@ -1610,13 +1609,13 @@
                     </svg>
                   </div>
                   <div class="feature-content">
-                    <h4>GitOps-safe (Server-Side Apply (SSA))</h4>
-                    <p>Uses Server-Side Apply (SSA) for field-level ownership, coexists with ArgoCD/Flux.</p>
+                    <h4>GitOps-safe (Webhook strategy)</h4>
+                    <p>Webhook strategy applies resources at admission time without conflicting with GitOps reconciliation.</p>
                     <details class="comparison-details">
                       <summary class="comparison-toggle">Show details</summary>
                       <div class="feature-details" id="comparison-detail-1">
                       <div class="detail-section">
-                        <strong>OptiPod:</strong> Uses Kubernetes Server-Side Apply (SSA), claims ownership only of CPU/memory request/limit fields, coexists with ArgoCD, Flux, and other GitOps tools.
+                        <strong>OptiPod:</strong> Uses a mutating webhook to apply recommendations at admission time while GitOps controllers continue to own manifests.
                       </div>
                       <div class="detail-section">
                         <strong>VPA:</strong> Uses traditional kubectl apply/patch, can override entire resource specifications, often conflicts with GitOps reconciliation.
@@ -1804,11 +1803,16 @@
                 <div class="step-number">1</div>
                 <div>
                   <h4>Install OptiPod</h4>
-                  <p class="step-subtitle">Apply the release manifest to install the controller and CRDs.</p>
+                  <p class="step-subtitle">Install with Helm to deploy the controller, CRDs, and webhook.</p>
                 </div>
               </div>
               <div class="code-block">
-                <pre><code>kubectl apply -f https://github.com/Sagart-cactus/optipod/releases/latest/download/install.yaml</code></pre>
+                <pre><code>helm repo add optipod https://optipod.github.io/charts
+helm repo update
+
+helm install optipod optipod/optipod \
+  --namespace optipod-system \
+  --create-namespace</code></pre>
               </div>
               <p class="step-note">
                 OptiPod runs entirely inside your cluster, with no external

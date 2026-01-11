@@ -8,16 +8,16 @@
       "priority": 1
     },
     {
-      "id": "gitops-safe-ssa",
-      "title": "GitOps-Safe Server-Side Apply",
-      "description": "Field-level ownership avoids conflicts with ArgoCD, Flux, and other GitOps tools.",
+      "id": "gitops-safe-webhook",
+      "title": "GitOps-Safe Webhook Strategy",
+      "description": "Mutating admission keeps GitOps controllers in charge of manifests while OptiPod applies approved resources.",
       "category": "core",
       "priority": 2
     },
     {
       "id": "operational-modes",
       "title": "Multiple Operational Modes",
-      "description": "Observe, Recommend, or Auto — adopt automation at your pace.",
+      "description": "Recommend, Auto, or Disabled — adopt automation at your pace.",
       "category": "core",
       "priority": 3
     },
@@ -52,7 +52,7 @@
     {
       "id": "observability",
       "title": "Comprehensive Observability",
-      "description": "Prometheus metrics, Kubernetes events, and per-workload status.",
+      "description": "Prometheus metrics, Kubernetes events, and per-workload recommendation annotations.",
       "category": "advanced",
       "priority": 8
     },

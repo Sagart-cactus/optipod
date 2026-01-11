@@ -31,7 +31,13 @@ spec:
       max: "4000m"
     memory:
       min: "128Mi"
-      max: "8Gi"`
+      max: "8Gi"
+  updateStrategy:
+    strategy: webhook
+    rolloutStrategy: onNextRestart
+    allowInPlaceResize: true
+    allowRecreate: false
+    updateRequestsOnly: true`
       },
       advanced: {
         title: 'Advanced Policy',
@@ -50,10 +56,14 @@ spec:
     namespaceSelector:
       matchLabels:
         environment: "production"
+    workloadTypes:
+      include:
+        - Deployment
+        - StatefulSet
   metricsConfig:
     provider: metrics-server
     rollingWindow: 72h
-    percentile: P95
+    percentile: P99
     safetyFactor: 1.5
   resourceBounds:
     cpu:
@@ -63,20 +73,19 @@ spec:
       min: "256Mi"
       max: "16Gi"
   updateStrategy:
+    strategy: webhook
+    rolloutStrategy: immediate
     allowInPlaceResize: true
-    allowRecreate: false
+    allowRecreate: true
     updateRequestsOnly: false
-  limitConfig:
-    cpuLimitMultiplier: 1.5
-    memoryLimitMultiplier: 1.2
-  workloadTypeFilter:
-    include:
-      - Deployment
-      - StatefulSet
-    exclude: []
-  changeRateLimit:
-    maxConcurrentUpdates: 5
-    updateInterval: "10m"`
+    limitConfig:
+      cpuLimitMultiplier: 1.5
+      memoryLimitMultiplier: 1.2
+    gradualDecreaseConfig:
+      enabled: true
+      memoryDecreasePercentage: 10
+      maximumTotalDecrease: 70
+`
       }
     }
     this.currentExample = 'basic'

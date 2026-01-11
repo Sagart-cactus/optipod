@@ -74,7 +74,7 @@
 
           <p>OptiPod supports two deployment strategies:</p>
           <ul>
-          <li><strong>Webhook Strategy</strong> (Default): Uses mutating webhooks for ArgoCD compatibility</li>
+          <li><strong>Webhook Strategy</strong> (GitOps-safe): Uses mutating webhooks for ArgoCD compatibility</li>
           <li><strong>SSA Strategy</strong>: Uses Server Side Apply for direct Kubernetes API updates</li>
           </ul>
 
@@ -154,12 +154,12 @@ kubectl get certificate -n optipod-system
 <span class="hljs-comment"># Check cert-manager installation</span>
 kubectl get pods -n cert-manager</code></pre>
 
-          <h3 id="method-2-using-kubectl">Method 2: Using kubectl</h3>
+          <h3 id="method-2-using-kubectl">Method 2: Using kubectl (Alternative)</h3>
 
           <h4 id="step-1-choose-installation-mode">Step 1: Choose Installation Mode</h4>
 
           <h5 id="option-a-webhook-mode">Option A: Webhook Mode (Recommended for ArgoCD/GitOps)</h5>
-          <pre><code class="hljs language-bash"><span class="hljs-comment"># Install with webhook support (default)</span>
+          <pre><code class="hljs language-bash"><span class="hljs-comment"># Install with webhook support (GitOps-safe)</span>
 kubectl apply -f https://github.com/Sagart-cactus/optipod/releases/latest/download/install-webhook.yaml</code></pre>
           <p>Or install a specific version:</p>
           <pre><code class="hljs language-bash">kubectl apply -f https://github.com/Sagart-cactus/optipod/releases/download/v1.0.0/install-webhook.yaml</code></pre>
@@ -195,7 +195,7 @@ kubectl apply -k https://raw.githubusercontent.com/Sagart-cactus/optipod/main/co
           <li><strong>Webhook Mode Only</strong>: Mutating webhook configuration and certificates</li>
           </ul>
           <blockquote>
-          <p><strong>Strategy Selection</strong>: The webhook strategy is now the default for better ArgoCD compatibility. Use SSA mode only if you specifically need Server Side Apply functionality and have the required permissions.</p>
+          <p><strong>Strategy Selection</strong>: Use webhook mode for GitOps compatibility. Use SSA mode only if you specifically need Server Side Apply functionality and have the required permissions.</p>
           </blockquote>
           <blockquote>
           <p><strong>Security Note</strong>: All release images are signed with cosign and include SBOMs. You can verify signatures using:</p>

@@ -1,15 +1,16 @@
 # ArgoCD Integration Guide
 
-This guide explains how to use OptiPod alongside ArgoCD without sync conflicts, leveraging Kubernetes Server-Side Apply
-(SSA) for field-level ownership.
+This guide explains how to use OptiPod alongside ArgoCD without sync conflicts. The recommended approach is the webhook
+strategy (GitOps-safe by default), with Server-Side Apply (SSA) available as an optional alternative.
 
 ## Overview
 
-OptiPod uses Server-Side Apply (SSA) by default to manage only resource requests and limits, while ArgoCD manages other
-fields like image, replicas, and environment variables. This field-level ownership prevents sync conflicts and allows both
-tools to coexist peacefully.
+OptiPod supports two GitOps-friendly approaches:
 
-### How It Works
+- **Webhook strategy (recommended)**: Mutates pod resources at admission time without changing GitOps-managed manifests.
+- **SSA strategy (optional)**: Uses field ownership to manage only CPU/memory requests and limits in live workloads.
+
+### SSA Strategy (Optional): How It Works
 
 With SSA, Kubernetes tracks which tool owns which fields using `managedFields` metadata:
 
@@ -28,15 +29,52 @@ Deployment: my-app
 
 ## Prerequisites
 
-- Kubernetes 1.22+ (SSA is GA)
-- ArgoCD 2.5+ (recommended for automatic SSA support)
-- OptiPod installed with SSA enabled (default)
+- Webhook strategy: OptiPod installed with webhook components (recommended for GitOps).
+- SSA strategy: Kubernetes 1.22+ (SSA is GA) and ArgoCD 2.5+ (recommended for automatic SSA support).
+
+## Webhook Strategy (Recommended)
+
+Webhook mode avoids sync conflicts by mutating pod resources at admission time, so ArgoCD continues to own manifests.
+
+```yaml
+apiVersion: optipod.optipod.io/v1alpha1
+kind: OptimizationPolicy
+metadata:
+  name: production-workloads
+spec:
+  mode: Auto
+
+  selector:
+    workloadSelector:
+      matchLabels:
+        optimize: "true"
+
+  metricsConfig:
+    provider: prometheus
+    rollingWindow: 24h
+    percentile: P90
+
+  resourceBounds:
+    cpu:
+      min: "100m"
+      max: "4000m"
+    memory:
+      min: "128Mi"
+      max: "8Gi"
+
+  updateStrategy:
+    strategy: webhook
+    rolloutStrategy: onNextRestart
+    updateRequestsOnly: true
+```
+
+No special ArgoCD configuration is required for webhook mode.
 
 ## Configuration
 
-### OptiPod Configuration
+### SSA Strategy (Optional)
 
-OptiPod uses SSA by default. You can explicitly enable it in your OptimizationPolicy:
+To use SSA, explicitly set `updateStrategy.strategy: ssa` in your OptimizationPolicy:
 
 ```yaml
 apiVersion: optipod.optipod.io/v1alpha1
@@ -65,13 +103,16 @@ spec:
       max: "8Gi"
   
   updateStrategy:
+    strategy: ssa
     allowInPlaceResize: true
     allowRecreate: false
     updateRequestsOnly: true
     useServerSideApply: true  # Default: true
 ```
 
-### ArgoCD Configuration
+### ArgoCD Configuration (SSA Strategy)
+
+These options apply when using SSA for field ownership.
 
 #### Option 1: ArgoCD 2.5+ (Automatic - Recommended)
 
@@ -224,6 +265,7 @@ spec:
       max: "8Gi"
   
   updateStrategy:
+    strategy: ssa
     allowInPlaceResize: true
     allowRecreate: false
     updateRequestsOnly: true
@@ -387,20 +429,22 @@ metadata:
 spec:
   # ... other fields ...
   updateStrategy:
+    strategy: ssa
     useServerSideApply: false  # Use Strategic Merge Patch instead
 ```
 
-**Note**: Disabling SSA will cause sync conflicts with ArgoCD.
+**Note**: Disabling SSA without switching to the webhook strategy can cause sync conflicts with ArgoCD.
 
 ## Best Practices
 
-1. **Use SSA by default**: Keep `useServerSideApply: true` for ArgoCD compatibility
-2. **Start with Recommend mode**: Test OptiPod in Recommend mode before enabling Auto
-3. **Monitor field ownership**: Regularly check managedFields to ensure proper ownership
-4. **Use ArgoCD 2.5+**: Upgrade to the latest ArgoCD for best SSA support
-5. **Label workloads explicitly**: Use specific labels to control which workloads OptiPod optimizes
-6. **Set appropriate bounds**: Configure min/max bounds to prevent unexpected resource changes
-7. **Monitor both tools**: Watch logs and events from both ArgoCD and OptiPod
+1. **Prefer webhook for GitOps**: Use the webhook strategy to avoid sync conflicts by design
+2. **If using SSA**: Keep `useServerSideApply: true` for ArgoCD compatibility
+3. **Start with Recommend mode**: Test OptiPod in Recommend mode before enabling Auto
+4. **Monitor field ownership**: Regularly check managedFields to ensure proper ownership
+5. **Use ArgoCD 2.5+**: Upgrade to the latest ArgoCD for best SSA support
+6. **Label workloads explicitly**: Use specific labels to control which workloads OptiPod optimizes
+7. **Set appropriate bounds**: Configure min/max bounds to prevent unexpected resource changes
+8. **Monitor both tools**: Watch logs and events from both ArgoCD and OptiPod
 
 ## Example: Complete Setup
 
@@ -498,6 +542,7 @@ spec:
       max: "4Gi"
   
   updateStrategy:
+    strategy: ssa
     allowInPlaceResize: true
     allowRecreate: false
     updateRequestsOnly: true

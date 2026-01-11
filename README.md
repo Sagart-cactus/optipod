@@ -134,10 +134,13 @@ Each workload (Deployment, StatefulSet, DaemonSet) gets recommendation annotatio
 ```yaml
 metadata:
   annotations:
+    optipod.io/managed: "true"
+    optipod.io/policy: "safe-recommendations"
+    optipod.io/last-recommendation: "2025-01-04T10:30:00Z"
     optipod.io/recommendation.app-container.cpu-request: "250m"
     optipod.io/recommendation.app-container.memory-request: "512Mi"
-    optipod.io/recommendation.explanation: "P90 over 24h with 1.2x safety factor"
-    optipod.io/last-updated: "2025-01-04T10:30:00Z"
+    optipod.io/recommendation.app-container.cpu-limit: "500m"     # Present when updateRequestsOnly=false
+    optipod.io/recommendation.app-container.memory-limit: "1Gi"   # Present when updateRequestsOnly=false
 ```
 
 ### Policy Status (Aggregate Only)
