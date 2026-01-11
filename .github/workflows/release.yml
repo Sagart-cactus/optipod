@@ -209,16 +209,16 @@ jobs:
 
       - name: Package Helm chart
         run: |
-          mkdir -p .deploy
-          helm package charts/optipod --destination .deploy
+          mkdir -p deploy
+          helm package charts/optipod --destination deploy
           echo "Packaged chart:"
-          ls -lh .deploy/
+          ls -lh deploy/
 
       - name: Upload chart artifact
         uses: actions/upload-artifact@v4
         with:
           name: helm-chart
-          path: ${{ github.workspace }}/.deploy/*.tgz
+          path: deploy/*.tgz
           retention-days: 90
           if-no-files-found: error
 
@@ -228,7 +228,7 @@ jobs:
 
       - name: Push chart to OCI registry
         run: |
-          CHART_FILE=$(ls .deploy/*.tgz)
+          CHART_FILE=$(ls deploy/*.tgz)
           echo "Pushing chart: ${CHART_FILE}"
           helm push "${CHART_FILE}" oci://ghcr.io/${{ github.repository_owner }}/charts
 
