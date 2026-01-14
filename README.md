@@ -45,12 +45,9 @@ In **Recommend mode**:
 
 **Recommended: Helm Installation**
 ```bash
-# Add the Helm repository (when published)
-helm repo add optipod https://optipod.github.io/charts
-helm repo update
-
-# Install OptipPod (auto-detects and installs cert-manager if needed)
-helm install optipod optipod/optipod \
+# Install from the OCI registry (recommended)
+helm install optipod oci://ghcr.io/sagart-cactus/charts/optipod \
+  --version 1.4.1 \
   --namespace optipod-system \
   --create-namespace
 ```
