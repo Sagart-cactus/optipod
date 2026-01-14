@@ -173,14 +173,7 @@ Determine if we should install cert-manager
 */}}
 {{- define "optipod.certManager.shouldInstall" -}}
 {{- $installValue := .Values.certManager.install | toString }}
-{{- if eq $installValue "auto" }}
-{{- $isInstalled := include "optipod.certManager.isInstalled" . }}
-{{- if eq $isInstalled "true" }}
-{{- print "false" }}
-{{- else }}
-{{- print "true" }}
-{{- end }}
-{{- else if or (eq $installValue "true") (eq $installValue "1") }}
+{{- if or (eq $installValue "true") (eq $installValue "1") }}
 {{- print "true" }}
 {{- else }}
 {{- print "false" }}

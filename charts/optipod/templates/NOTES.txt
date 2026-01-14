@@ -24,16 +24,14 @@ The mutating webhook will automatically optimize pod resources based on your Opt
    kubectl logs -n {{ include "optipod.namespace" . }} -l {{ include "optipod.webhook.selectorLabels" . | replace "\n" "," }}
 
 {{- $certManagerInstalled := include "optipod.certManager.isInstalled" . }}
-{{- if eq $certManagerInstalled "true" }}
-✅ cert-manager detected in cluster - using existing installation
-{{- else }}
 {{- $shouldInstall := include "optipod.certManager.shouldInstall" . }}
 {{- if eq $shouldInstall "true" }}
 📦 cert-manager installed as part of this release
+{{- else if eq $certManagerInstalled "true" }}
+✅ cert-manager detected in cluster - using existing installation
 {{- else }}
 ⚠️  cert-manager not found! The webhook requires cert-manager for certificate management.
    Install cert-manager: https://cert-manager.io/docs/installation/
-{{- end }}
 {{- end }}
 
 📝 To enable webhook optimization for a pod, add this annotation:

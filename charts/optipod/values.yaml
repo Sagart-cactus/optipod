@@ -11,9 +11,9 @@ namespaceOverride: ""
 
 # Image configuration
 image:
-  repository: optipod/optipod
+  repository: ghcr.io/sagart-cactus/optipod
   pullPolicy: IfNotPresent
-  # Overrides the image tag whose default is the chart appVersion
+  # Overrides the image tag; defaults to Chart.appVersion when empty
   tag: ""
 
 imagePullSecrets: []
@@ -182,11 +182,9 @@ webhook:
 
 # Certificate Manager configuration
 certManager:
-  # Auto-detect cert-manager installation
-  # If set to "auto", Helm will check if cert-manager CRDs exist
-  # If set to "true", force installation of cert-manager
-  # If set to "false", skip cert-manager installation (assumes already installed)
-  install: auto
+  # If true, install cert-manager as a subchart in the same namespace and use it.
+  # If false, use an existing cert-manager installation in the cluster.
+  install: false
 
   # Install cert-manager CRDs
   # Only used if cert-manager is being installed by this chart

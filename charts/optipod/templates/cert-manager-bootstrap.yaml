@@ -1,0 +1,142 @@
+{{- if and .Values.webhook.enabled .Values.certManager.install }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "optipod.fullname" . }}-cert-manager-bootstrap
+  namespace: {{ include "optipod.namespace" . }}
+  labels:
+    {{- include "optipod.labels" . | nindent 4 }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "optipod.fullname" . }}-cert-manager-bootstrap
+  labels:
+    {{- include "optipod.labels" . | nindent 4 }}
+rules:
+- apiGroups: ["cert-manager.io"]
+  resources: ["issuers", "clusterissuers", "certificates"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+- apiGroups: ["apps"]
+  resources: ["deployments"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: [""]
+  resources: ["pods", "endpoints"]
+  verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "optipod.fullname" . }}-cert-manager-bootstrap
+  labels:
+    {{- include "optipod.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "optipod.fullname" . }}-cert-manager-bootstrap
+subjects:
+- kind: ServiceAccount
+  name: {{ include "optipod.fullname" . }}-cert-manager-bootstrap
+  namespace: {{ include "optipod.namespace" . }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "optipod.fullname" . }}-cert-manager-bootstrap
+  namespace: {{ include "optipod.namespace" . }}
+  labels:
+    {{- include "optipod.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        {{- include "optipod.labels" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "optipod.fullname" . }}-cert-manager-bootstrap
+      restartPolicy: OnFailure
+      containers:
+      - name: kubectl
+        image: curlimages/curl:8.10.1
+        command:
+        - /bin/sh
+        - -c
+        - |
+          set -e
+          NAMESPACE={{ include "optipod.namespace" . }}
+          WEBHOOK_DEPLOY={{ .Release.Name }}-cert-manager-webhook
+          WEBHOOK_SVC={{ .Release.Name }}-cert-manager-webhook
+          KUBECTL_VERSION=v1.34.1
+          curl -sSfL -o /tmp/kubectl "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl"
+          chmod +x /tmp/kubectl
+
+          for i in $(seq 1 60); do
+            if /tmp/kubectl -n "$NAMESPACE" get deployment "$WEBHOOK_DEPLOY" >/dev/null 2>&1; then
+              break
+            fi
+            sleep 5
+          done
+
+          /tmp/kubectl -n "$NAMESPACE" rollout status deployment "$WEBHOOK_DEPLOY" --timeout=300s
+
+          cat <<'EOF' >/tmp/issuer-cert.yaml
+          {{ if eq .Values.certManager.issuer.kind "ClusterIssuer" }}
+          apiVersion: cert-manager.io/v1
+          kind: ClusterIssuer
+          metadata:
+            name: {{ include "optipod.webhook.issuerName" . }}
+          spec:
+            {{ if .Values.certManager.issuer.selfSigned }}
+            selfSigned: {}
+            {{ end }}
+          ---
+          {{ else }}
+          apiVersion: cert-manager.io/v1
+          kind: Issuer
+          metadata:
+            name: {{ include "optipod.webhook.issuerName" . }}
+            namespace: {{ include "optipod.namespace" . }}
+          spec:
+            {{ if .Values.certManager.issuer.selfSigned }}
+            selfSigned: {}
+            {{ end }}
+          ---
+          {{ end }}
+          apiVersion: cert-manager.io/v1
+          kind: Certificate
+          metadata:
+            name: {{ include "optipod.webhook.issuerName" . }}
+            namespace: {{ include "optipod.namespace" . }}
+          spec:
+            secretName: {{ include "optipod.webhook.certificateSecretName" . }}
+            duration: {{ .Values.certManager.certificate.duration }}
+            renewBefore: {{ .Values.certManager.certificate.renewBefore }}
+            subject:
+              organizations:
+              - {{ .Values.certManager.certificate.organization }}
+            privateKey:
+              algorithm: {{ .Values.certManager.certificate.privateKey.algorithm }}
+              size: {{ .Values.certManager.certificate.privateKey.size }}
+            usages:
+            - digital signature
+            - key encipherment
+            - server auth
+            dnsNames:
+              {{ include "optipod.webhook.certificateDnsNames" . | nindent 14 }}
+            issuerRef:
+              name: {{ include "optipod.webhook.issuerName" . }}
+              kind: {{ .Values.certManager.issuer.kind }}
+          EOF
+
+          for i in $(seq 1 60); do
+            if /tmp/kubectl -n "$NAMESPACE" apply -f /tmp/issuer-cert.yaml >/tmp/apply.log 2>&1; then
+              exit 0
+            fi
+            cat /tmp/apply.log >&2
+            sleep 5
+          done
+          exit 1
+{{- end }}

@@ -1,0 +1,39 @@
+{{- if and .Values.webhook.enabled .Values.certManager.install }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "optipod.fullname" . }}-cert-manager-cleanup
+  namespace: {{ include "optipod.namespace" . }}
+  labels:
+    {{- include "optipod.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": pre-delete
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 1
+  template:
+    metadata:
+      labels:
+        {{- include "optipod.labels" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "optipod.fullname" . }}-cert-manager-bootstrap
+      restartPolicy: OnFailure
+      containers:
+      - name: kubectl
+        image: curlimages/curl:8.10.1
+        command:
+        - /bin/sh
+        - -c
+        - |
+          set -e
+          NAMESPACE={{ include "optipod.namespace" . }}
+          KUBECTL_VERSION=v1.34.1
+          curl -sSfL -o /tmp/kubectl "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl"
+          chmod +x /tmp/kubectl
+          /tmp/kubectl -n "$NAMESPACE" delete certificate {{ include "optipod.webhook.issuerName" . }} --ignore-not-found
+          {{- if eq .Values.certManager.issuer.kind "ClusterIssuer" }}
+          /tmp/kubectl delete clusterissuer {{ include "optipod.webhook.issuerName" . }} --ignore-not-found
+          {{- else }}
+          /tmp/kubectl -n "$NAMESPACE" delete issuer {{ include "optipod.webhook.issuerName" . }} --ignore-not-found
+          {{- end }}
+{{- end }}
