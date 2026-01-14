@@ -3,7 +3,7 @@ name: optipod
 description: A Kubernetes operator for intelligent pod resource optimization with optional mutating webhook
 type: application
 version: 0.1.0
-appVersion: "0.1.0"
+appVersion: "1.4.0"
 icon: https://optipod.io/logo.png
 home: https://github.com/optipod/optipod
 sources:

@@ -164,6 +164,9 @@ jobs:
 
           # Update image tag in values.yaml
           sed -i "s/tag: .*/tag: \"${VERSION}\"/" charts/optipod/values.yaml
+          # Ensure image repository is GHCR (lowercase)
+          REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          sed -i "s|repository: .*|repository: ghcr.io/${REPO_LOWER}|" charts/optipod/values.yaml
 
           echo "Updated Chart.yaml and values.yaml with version ${VERSION}"
           cat charts/optipod/Chart.yaml | grep -E "^version:|^appVersion:"
