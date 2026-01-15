@@ -46,6 +46,7 @@ In **Recommend mode**:
 **Recommended: Helm Installation**
 ```bash
 # Install from the OCI registry (recommended)
+# Omit --version to install the latest chart.
 VERSION=<latest> # see https://github.com/Sagart-cactus/optipod/releases/latest
 helm install optipod oci://ghcr.io/sagart-cactus/charts/optipod \
   --version "${VERSION}" \

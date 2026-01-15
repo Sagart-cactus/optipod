@@ -1807,7 +1807,8 @@
                 </div>
               </div>
               <div class="code-block">
-                <pre><code>VERSION=&lt;latest&gt; # see https://github.com/Sagart-cactus/optipod/releases/latest
+                <pre><code># Omit --version to install the latest chart.
+VERSION=&lt;latest&gt; # see https://github.com/Sagart-cactus/optipod/releases/latest
 helm install optipod oci://ghcr.io/sagart-cactus/charts/optipod \
   --version "${VERSION}" \
   --namespace optipod-system \
