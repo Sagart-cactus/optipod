@@ -46,8 +46,9 @@ In **Recommend mode**:
 **Recommended: Helm Installation**
 ```bash
 # Install from the OCI registry (recommended)
+VERSION=<latest> # see https://github.com/Sagart-cactus/optipod/releases/latest
 helm install optipod oci://ghcr.io/sagart-cactus/charts/optipod \
-  --version 1.4.1 \
+  --version "${VERSION}" \
   --namespace optipod-system \
   --create-namespace
 ```

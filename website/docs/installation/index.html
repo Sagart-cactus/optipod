@@ -85,8 +85,9 @@
           <h4 id="helm-quick-start">Quick Start with Auto cert-manager Detection</h4>
           <p>The chart automatically detects if cert-manager is installed. If not found, it will install cert-manager for you:</p>
           <pre><code class="hljs language-bash"><span class="hljs-comment"># Install from the OCI registry (recommended)</span>
+VERSION=&lt;latest&gt; <span class="hljs-comment"># see https://github.com/Sagart-cactus/optipod/releases/latest</span>
 helm install optipod oci://ghcr.io/sagart-cactus/charts/optipod \
-  --version 1.4.1 \
+  --version "${VERSION}" \
   --namespace optipod-system \
   --create-namespace</code></pre>
 
@@ -127,7 +128,7 @@ helm install optipod charts/optipod \
     <span class="hljs-attr">enabled:</span> <span class="hljs-literal">true</span>  <span class="hljs-comment"># For Prometheus Operator</span></code></pre>
           <p>Install with custom values:</p>
           <pre><code class="hljs language-bash">helm install optipod oci://ghcr.io/sagart-cactus/charts/optipod \
-  --version 1.4.1 \
+  --version "${VERSION}" \
   --namespace optipod-system \
   --create-namespace \
   --values production-values.yaml</code></pre>
@@ -135,7 +136,7 @@ helm install optipod charts/optipod \
           <h4 id="helm-ssa-mode">Install SSA Mode Only (No Webhook)</h4>
           <p>For SSA-only deployments without webhook support:</p>
           <pre><code class="hljs language-bash">helm install optipod oci://ghcr.io/sagart-cactus/charts/optipod \
-  --version 1.4.1 \
+  --version "${VERSION}" \
   --namespace optipod-system \
   --create-namespace \
   --set webhook.enabled=<span class="hljs-literal">false</span></code></pre>

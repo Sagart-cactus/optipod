@@ -1807,8 +1807,9 @@
                 </div>
               </div>
               <div class="code-block">
-                <pre><code>helm install optipod oci://ghcr.io/sagart-cactus/charts/optipod \
-  --version 1.4.1 \
+                <pre><code>VERSION=&lt;latest&gt; # see https://github.com/Sagart-cactus/optipod/releases/latest
+helm install optipod oci://ghcr.io/sagart-cactus/charts/optipod \
+  --version "${VERSION}" \
   --namespace optipod-system \
   --create-namespace</code></pre>
               </div>
