@@ -1807,10 +1807,10 @@
                 </div>
               </div>
               <div class="code-block">
-                <pre><code>helm repo add optipod https://optipod.github.io/charts
-helm repo update
-
-helm install optipod optipod/optipod \
+                <pre><code># Omit --version to install the latest chart.
+VERSION=&lt;latest&gt; # see https://github.com/Sagart-cactus/optipod/releases/latest
+helm install optipod oci://ghcr.io/sagart-cactus/charts/optipod \
+  --version "${VERSION}" \
   --namespace optipod-system \
   --create-namespace</code></pre>
               </div>

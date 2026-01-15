@@ -30,12 +30,11 @@ Helm provides the easiest installation with automatic cert-manager detection and
 The chart automatically detects if cert-manager is installed. If not found, it will install cert-manager for you:
 
 ```bash
-# Add the Helm repository (when published)
-helm repo add optipod https://optipod.github.io/charts
-helm repo update
-
-# Install OptipPod with webhook support
-helm install optipod optipod/optipod \
+# Install from the OCI registry (recommended)
+# Omit --version to install the latest chart.
+VERSION=<latest> # see https://github.com/Sagart-cactus/optipod/releases/latest
+helm install optipod oci://ghcr.io/sagart-cactus/charts/optipod \
+  --version "${VERSION}" \
   --namespace optipod-system \
   --create-namespace
 ```
@@ -90,7 +89,8 @@ logging:
 Install with custom values:
 
 ```bash
-helm install optipod charts/optipod \
+helm install optipod oci://ghcr.io/sagart-cactus/charts/optipod \
+  --version "${VERSION}" \
   --namespace optipod-system \
   --create-namespace \
   --values production-values.yaml
@@ -101,7 +101,8 @@ helm install optipod charts/optipod \
 For SSA-only deployments without webhook support:
 
 ```bash
-helm install optipod charts/optipod \
+helm install optipod oci://ghcr.io/sagart-cactus/charts/optipod \
+  --version "${VERSION}" \
   --namespace optipod-system \
   --create-namespace \
   --set webhook.enabled=false
