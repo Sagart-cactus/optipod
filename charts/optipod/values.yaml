@@ -85,7 +85,9 @@ controller:
 # Webhook configuration
 webhook:
   # Enable or disable the mutating webhook
-  enabled: true
+  # Note: Webhook requires cert-manager. Either install cert-manager separately
+  # or set certManager.install=true
+  enabled: false
 
   # Webhook port
   port: 9443
