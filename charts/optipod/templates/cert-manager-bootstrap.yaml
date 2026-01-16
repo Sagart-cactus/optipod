@@ -74,25 +74,38 @@ spec:
           # Also check for standalone cert-manager installation
           STANDALONE_WEBHOOK_DEPLOY=cert-manager-webhook
           STANDALONE_WEBHOOK_SVC=cert-manager-webhook
-          KUBECTL_VERSION=v1.34.1
-          curl -sSfL -o /tmp/kubectl "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl"
+          KUBECTL_VERSION=v1.31.0
+
+          echo "Downloading kubectl ${KUBECTL_VERSION}..."
+          if ! curl -sSfL -o /tmp/kubectl "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl"; then
+            echo "ERROR: Failed to download kubectl"
+            exit 1
+          fi
           chmod +x /tmp/kubectl
+
+          echo "Testing kubectl..."
+          if ! /tmp/kubectl version --client; then
+            echo "ERROR: kubectl not working"
+            exit 1
+          fi
 
           echo "Waiting for cert-manager CRDs to be available..."
           for i in $(seq 1 60); do
-            if /tmp/kubectl get crd issuers.cert-manager.io >/dev/null 2>&1 && \
-               /tmp/kubectl get crd certificates.cert-manager.io >/dev/null 2>&1; then
-              echo "cert-manager CRDs are available"
-              break
+            echo "Checking for CRDs (attempt $i/60)..."
+            if /tmp/kubectl get crd issuers.cert-manager.io 2>&1; then
+              if /tmp/kubectl get crd certificates.cert-manager.io 2>&1; then
+                echo "✓ cert-manager CRDs are available"
+                break
+              fi
             fi
-            echo "Waiting for cert-manager CRDs... (attempt $i/60)"
+            if [ $i -eq 60 ]; then
+              echo "ERROR: cert-manager CRDs not found after 5 minutes"
+              echo "Available CRDs:"
+              /tmp/kubectl get crd | grep -i cert || echo "No cert-manager CRDs found"
+              exit 1
+            fi
             sleep 5
           done
-
-          if ! /tmp/kubectl get crd issuers.cert-manager.io >/dev/null 2>&1; then
-            echo "ERROR: cert-manager CRDs not found after 5 minutes"
-            exit 1
-          fi
 
           # Detect which cert-manager webhook deployment exists
           ACTUAL_WEBHOOK_DEPLOY=""
