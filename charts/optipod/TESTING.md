@@ -6,17 +6,33 @@
 - Helm 3.x installed
 - kubectl configured
 
-## Test Scenarios
+## Default Installation (No Webhook)
 
-### Scenario 1: Install with Bundled cert-manager
-
-This installs cert-manager as a subchart alongside OptipPod.
+By default, OptipPod installs without the webhook enabled:
 
 ```bash
-# Install with cert-manager
+helm install optipod ./charts/optipod \
+  --namespace optipod-system \
+  --create-namespace
+
+# Verify installation
+kubectl get pods -n optipod-system
+```
+
+This is the safest option and doesn't require cert-manager.
+
+## Test Scenarios
+
+### Scenario 1: Install with Webhook and Bundled cert-manager
+
+This installs both the webhook and cert-manager as a subchart.
+
+```bash
+# Install with webhook and cert-manager
 helm install optipod ./charts/optipod \
   --namespace optipod-system \
   --create-namespace \
+  --set webhook.enabled=true \
   --set certManager.install=true \
   --wait --timeout=10m
 
@@ -30,7 +46,7 @@ kubectl get issuer -n optipod-system
 kubectl logs -n optipod-system job/optipod-cert-manager-bootstrap
 ```
 
-### Scenario 2: Use Existing cert-manager
+### Scenario 2: Install with Webhook and Existing cert-manager
 
 This assumes cert-manager is already installed cluster-wide.
 
@@ -42,10 +58,11 @@ kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/
 kubectl wait --for=condition=available --timeout=300s \
   deployment/cert-manager -n cert-manager
 
-# Install OptipPod (uses existing cert-manager)
+# Install OptipPod with webhook (uses existing cert-manager)
 helm install optipod ./charts/optipod \
   --namespace optipod-system \
   --create-namespace \
+  --set webhook.enabled=true \
   --wait --timeout=5m
 
 # Verify installation
@@ -54,23 +71,26 @@ kubectl get certificate -n optipod-system
 kubectl get issuer -n optipod-system
 ```
 
-### Scenario 3: Upgrade from Bundled to External
+### Scenario 3: Upgrade to Enable Webhook
 
 ```bash
-# Start with bundled cert-manager
+# Start with default installation (no webhook)
 helm install optipod ./charts/optipod \
   --namespace optipod-system \
   --create-namespace \
-  --set certManager.install=true \
   --wait
 
-# Install cluster-wide cert-manager
+# Install cert-manager
 kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.2/cert-manager.yaml
 
-# Upgrade to use external cert-manager
+# Wait for cert-manager
+kubectl wait --for=condition=available --timeout=300s \
+  deployment/cert-manager -n cert-manager
+
+# Upgrade to enable webhook
 helm upgrade optipod ./charts/optipod \
   --namespace optipod-system \
-  --set certManager.install=false \
+  --set webhook.enabled=true \
   --reuse-values \
   --wait
 ```
