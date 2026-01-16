@@ -184,7 +184,8 @@ webhook:
 certManager:
   # If true, install cert-manager as a subchart in the same namespace and use it.
   # If false, use an existing cert-manager installation in the cluster.
-  install: false
+  # If "auto", automatically detect if cert-manager is installed and install if needed.
+  install: auto
 
   # Install cert-manager CRDs
   # Only used if cert-manager is being installed by this chart

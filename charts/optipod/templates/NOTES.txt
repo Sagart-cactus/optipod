@@ -26,12 +26,13 @@ The mutating webhook will automatically optimize pod resources based on your Opt
 {{- $certManagerInstalled := include "optipod.certManager.isInstalled" . }}
 {{- $shouldInstall := include "optipod.certManager.shouldInstall" . }}
 {{- if eq $shouldInstall "true" }}
-📦 cert-manager installed as part of this release
+📦 cert-manager will be installed as part of this release (auto-detected as missing)
 {{- else if eq $certManagerInstalled "true" }}
-✅ cert-manager detected in cluster - using existing installation
+✅ Using existing cert-manager installation detected in cluster
 {{- else }}
 ⚠️  cert-manager not found! The webhook requires cert-manager for certificate management.
    Install cert-manager: https://cert-manager.io/docs/installation/
+   Or set certManager.install=true to install it automatically
 {{- end }}
 
 📝 To enable webhook optimization for a pod, add this annotation:

@@ -20,20 +20,33 @@ A Kubernetes operator for intelligent pod resource optimization with optional mu
 
 ### Quick Start (Default Configuration)
 
-Install OptipPod with webhook enabled and bundled cert-manager:
+Install OptipPod with webhook enabled and auto-detected cert-manager:
 
 ```bash
 helm repo add optipod https://optipod.github.io/charts
 helm repo update
 helm install optipod optipod/optipod \
   --namespace optipod-system \
-  --create-namespace \
-  --set certManager.install=true
+  --create-namespace
 ```
+
+The chart will automatically detect if cert-manager is installed and install it if needed.
 
 ### Installation Options
 
-#### 1. Install cert-manager with the chart (Recommended)
+#### 1. Auto-detect cert-manager (Recommended - Default)
+
+The chart automatically detects if cert-manager is installed:
+
+```bash
+helm install optipod optipod/optipod \
+  --namespace optipod-system \
+  --create-namespace
+```
+
+#### 2. Force install cert-manager
+
+Always install cert-manager, even if one exists:
 
 ```bash
 helm install optipod optipod/optipod \
@@ -42,7 +55,7 @@ helm install optipod optipod/optipod \
   --set certManager.install=true
 ```
 
-#### 2. Use Existing cert-manager
+#### 3. Use existing cert-manager only
 
 Skip cert-manager installation (requires cert-manager already installed):
 
@@ -53,7 +66,7 @@ helm install optipod optipod/optipod \
   --set certManager.install=false
 ```
 
-#### 3. Webhook Disabled (SSA Mode Only)
+#### 4. Webhook disabled (SSA mode only)
 
 Install without webhook (only Server-Side Apply strategy):
 
@@ -64,7 +77,7 @@ helm install optipod optipod/optipod \
   --set webhook.enabled=false
 ```
 
-#### 5. Development/Testing Setup
+#### 5. Development/testing setup
 
 Install with relaxed security for kind/minikube:
 
@@ -72,8 +85,7 @@ Install with relaxed security for kind/minikube:
 helm install optipod optipod/optipod \
   --namespace optipod-system \
   --create-namespace \
-  --set webhook.failurePolicy=Ignore \
-  --set certManager.install=true
+  --set webhook.failurePolicy=Ignore
 ```
 
 ## Configuration
@@ -84,7 +96,7 @@ helm install optipod optipod/optipod \
 |-----------|-------------|---------|
 | `webhook.enabled` | Enable mutating webhook | `true` |
 | `webhook.failurePolicy` | Webhook failure policy (Ignore/Fail) | `Ignore` |
-| `certManager.install` | Install cert-manager subchart | `false` |
+| `certManager.install` | Install cert-manager subchart (true/false/auto) | `auto` |
 | `certManager.installCRDs` | Install cert-manager CRDs | `true` |
 | `image.repository` | Optipod image repository | `ghcr.io/sagart-cactus/optipod` |
 | `image.tag` | Optipod image tag (defaults to Chart.appVersion) | `""` |
@@ -94,9 +106,15 @@ helm install optipod optipod/optipod \
 
 ### cert-manager Behavior
 
-- **`certManager.install: true`** - Installs cert-manager as a subchart in the optipod namespace and uses it.
-- **`certManager.install: false`** - Uses an existing cert-manager installation in the cluster.
-  - If you set `certManager.install: true`, the chart will install its own cert-manager even if another is already present.
+The chart supports three modes for cert-manager installation:
+
+- **`certManager.install: auto`** (Default) - Automatically detects if cert-manager is installed in the cluster:
+  - If cert-manager CRDs are found, uses the existing installation
+  - If not found, installs cert-manager as a subchart
+- **`certManager.install: true`** - Always installs cert-manager as a subchart, even if one already exists
+- **`certManager.install: false`** - Never installs cert-manager, assumes it's already present in the cluster
+
+The auto-detection uses Helm's `lookup` function to check for the `certificates.cert-manager.io` CRD.
 
 ### Full Configuration Values
 

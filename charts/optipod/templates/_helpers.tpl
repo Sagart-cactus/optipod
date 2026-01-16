@@ -170,10 +170,21 @@ Uses lookup to check for cert-manager CRDs
 
 {{/*
 Determine if we should install cert-manager
+Supports: true, false, or "auto" (default)
+- true: Always install cert-manager
+- false: Never install cert-manager (assumes it's already installed)
+- auto: Automatically detect and install only if not present
 */}}
 {{- define "optipod.certManager.shouldInstall" -}}
 {{- $installValue := .Values.certManager.install | toString }}
-{{- if or (eq $installValue "true") (eq $installValue "1") }}
+{{- if eq $installValue "auto" }}
+{{- $isInstalled := include "optipod.certManager.isInstalled" . }}
+{{- if eq $isInstalled "true" }}
+{{- print "false" }}
+{{- else }}
+{{- print "true" }}
+{{- end }}
+{{- else if or (eq $installValue "true") (eq $installValue "1") }}
 {{- print "true" }}
 {{- else }}
 {{- print "false" }}

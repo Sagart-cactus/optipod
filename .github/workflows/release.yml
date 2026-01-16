@@ -158,19 +158,25 @@ jobs:
           VERSION="${{ needs.setup.outputs.version }}"
           VERSION_NO_V="${VERSION#v}"
 
-          # Update Chart.yaml version and appVersion
+          # Update Chart.yaml version (without v) and appVersion (with v to match image tags)
           sed -i "s/^version:.*/version: ${VERSION_NO_V}/" charts/optipod/Chart.yaml
-          sed -i "s/^appVersion:.*/appVersion: \"${VERSION_NO_V}\"/" charts/optipod/Chart.yaml
+          sed -i "s/^appVersion:.*/appVersion: \"${VERSION}\"/" charts/optipod/Chart.yaml
 
-          # Update image tag in values.yaml
-          sed -i "s/tag: .*/tag: \"${VERSION}\"/" charts/optipod/values.yaml
+          # Update image tag in values.yaml (keep empty to use Chart.appVersion by default)
+          # Only update if there's an explicit tag set, otherwise leave empty
+          if grep -q 'tag: ""' charts/optipod/values.yaml || grep -q "tag: ''" charts/optipod/values.yaml; then
+            echo "Keeping tag empty to use Chart.appVersion"
+          else
+            sed -i "s/tag: .*/tag: \"\"/" charts/optipod/values.yaml
+          fi
+
           # Ensure image repository is GHCR (lowercase)
           REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
           sed -i "s|repository: .*|repository: ghcr.io/${REPO_LOWER}|" charts/optipod/values.yaml
 
           echo "Updated Chart.yaml and values.yaml with version ${VERSION}"
           cat charts/optipod/Chart.yaml | grep -E "^version:|^appVersion:"
-          cat charts/optipod/values.yaml | grep "tag:"
+          cat charts/optipod/values.yaml | grep -A1 "repository:"
 
       - name: Update Helm dependencies
         run: |

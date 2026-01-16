@@ -1,4 +1,6 @@
-{{- if and .Values.webhook.enabled (not .Values.certManager.install) }}
+{{- if .Values.webhook.enabled }}
+{{- $shouldInstall := include "optipod.certManager.shouldInstall" . }}
+{{- if eq $shouldInstall "false" }}
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
@@ -25,4 +27,5 @@ spec:
   issuerRef:
     name: {{ include "optipod.webhook.issuerName" . }}
     kind: {{ .Values.certManager.issuer.kind }}
+{{- end }}
 {{- end }}

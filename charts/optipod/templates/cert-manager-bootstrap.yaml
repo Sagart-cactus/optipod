@@ -1,4 +1,6 @@
 {{- if and .Values.webhook.enabled .Values.certManager.install }}
+{{- $shouldInstall := include "optipod.certManager.shouldInstall" . }}
+{{- if eq $shouldInstall "true" }}
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -139,4 +141,5 @@ spec:
             sleep 5
           done
           exit 1
+{{- end }}
 {{- end }}
