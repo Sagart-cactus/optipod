@@ -50,6 +50,7 @@ metadata:
     {{- include "optipod.labels" . | nindent 4 }}
   annotations:
     "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "5"
     "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
 spec:
   backoffLimit: 3
@@ -69,20 +70,88 @@ spec:
         - |
           set -e
           NAMESPACE={{ include "optipod.namespace" . }}
+          # cert-manager webhook deployment name when installed as subchart
           WEBHOOK_DEPLOY={{ .Release.Name }}-cert-manager-webhook
           WEBHOOK_SVC={{ .Release.Name }}-cert-manager-webhook
+          # Also check for standalone cert-manager installation
+          STANDALONE_WEBHOOK_DEPLOY=cert-manager-webhook
+          STANDALONE_WEBHOOK_SVC=cert-manager-webhook
           KUBECTL_VERSION=v1.34.1
           curl -sSfL -o /tmp/kubectl "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl"
           chmod +x /tmp/kubectl
 
+          echo "Waiting for cert-manager CRDs to be available..."
           for i in $(seq 1 60); do
-            if /tmp/kubectl -n "$NAMESPACE" get deployment "$WEBHOOK_DEPLOY" >/dev/null 2>&1; then
+            if /tmp/kubectl get crd issuers.cert-manager.io >/dev/null 2>&1 && \
+               /tmp/kubectl get crd certificates.cert-manager.io >/dev/null 2>&1; then
+              echo "cert-manager CRDs are available"
               break
             fi
+            echo "Waiting for cert-manager CRDs... (attempt $i/60)"
             sleep 5
           done
 
-          /tmp/kubectl -n "$NAMESPACE" rollout status deployment "$WEBHOOK_DEPLOY" --timeout=300s
+          if ! /tmp/kubectl get crd issuers.cert-manager.io >/dev/null 2>&1; then
+            echo "ERROR: cert-manager CRDs not found after 5 minutes"
+            exit 1
+          fi
+
+          # Detect which cert-manager webhook deployment exists
+          ACTUAL_WEBHOOK_DEPLOY=""
+          ACTUAL_WEBHOOK_SVC=""
+          echo "Detecting cert-manager webhook deployment..."
+
+          # Check in the same namespace first (subchart)
+          if /tmp/kubectl -n "$NAMESPACE" get deployment "$WEBHOOK_DEPLOY" >/dev/null 2>&1; then
+            ACTUAL_WEBHOOK_DEPLOY="$WEBHOOK_DEPLOY"
+            ACTUAL_WEBHOOK_SVC="$WEBHOOK_SVC"
+            echo "Found cert-manager webhook in namespace $NAMESPACE"
+          # Check in cert-manager namespace (standalone)
+          elif /tmp/kubectl -n cert-manager get deployment "$STANDALONE_WEBHOOK_DEPLOY" >/dev/null 2>&1; then
+            ACTUAL_WEBHOOK_DEPLOY="$STANDALONE_WEBHOOK_DEPLOY"
+            ACTUAL_WEBHOOK_SVC="$STANDALONE_WEBHOOK_SVC"
+            NAMESPACE=cert-manager
+            echo "Found cert-manager webhook in cert-manager namespace"
+          else
+            echo "Waiting for cert-manager webhook deployment..."
+            for i in $(seq 1 60); do
+              if /tmp/kubectl -n "$NAMESPACE" get deployment "$WEBHOOK_DEPLOY" >/dev/null 2>&1; then
+                ACTUAL_WEBHOOK_DEPLOY="$WEBHOOK_DEPLOY"
+                ACTUAL_WEBHOOK_SVC="$WEBHOOK_SVC"
+                echo "cert-manager webhook deployment found in $NAMESPACE"
+                break
+              elif /tmp/kubectl -n cert-manager get deployment "$STANDALONE_WEBHOOK_DEPLOY" >/dev/null 2>&1; then
+                ACTUAL_WEBHOOK_DEPLOY="$STANDALONE_WEBHOOK_DEPLOY"
+                ACTUAL_WEBHOOK_SVC="$STANDALONE_WEBHOOK_SVC"
+                NAMESPACE=cert-manager
+                echo "cert-manager webhook deployment found in cert-manager namespace"
+                break
+              fi
+              echo "Waiting for webhook deployment... (attempt $i/60)"
+              sleep 5
+            done
+          fi
+
+          if [ -z "$ACTUAL_WEBHOOK_DEPLOY" ]; then
+            echo "ERROR: cert-manager webhook deployment not found"
+            exit 1
+          fi
+
+          echo "Waiting for cert-manager webhook to be ready..."
+          /tmp/kubectl -n "$NAMESPACE" rollout status deployment "$ACTUAL_WEBHOOK_DEPLOY" --timeout=300s
+
+          echo "Verifying cert-manager webhook is responding..."
+          for i in $(seq 1 30); do
+            if /tmp/kubectl -n "$NAMESPACE" get endpoints "$ACTUAL_WEBHOOK_SVC" -o jsonpath='{.subsets[*].addresses[*].ip}' | grep -q .; then
+              echo "cert-manager webhook endpoints are ready"
+              break
+            fi
+            echo "Waiting for webhook endpoints... (attempt $i/30)"
+            sleep 2
+          done
+
+          # Reset namespace to optipod namespace for resource creation
+          NAMESPACE={{ include "optipod.namespace" . }}
 
           cat <<'EOF' >/tmp/issuer-cert.yaml
           {{ if eq .Values.certManager.issuer.kind "ClusterIssuer" }}
@@ -133,13 +202,18 @@ spec:
               kind: {{ .Values.certManager.issuer.kind }}
           EOF
 
+          echo "Creating cert-manager Issuer and Certificate..."
           for i in $(seq 1 60); do
             if /tmp/kubectl -n "$NAMESPACE" apply -f /tmp/issuer-cert.yaml >/tmp/apply.log 2>&1; then
+              echo "Successfully created cert-manager resources"
+              cat /tmp/apply.log
               exit 0
             fi
+            echo "Failed to apply cert-manager resources (attempt $i/60):"
             cat /tmp/apply.log >&2
             sleep 5
           done
+          echo "ERROR: Failed to create cert-manager resources after 60 attempts"
           exit 1
 {{- end }}
 {{- end }}
