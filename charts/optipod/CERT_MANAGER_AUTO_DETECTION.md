@@ -1,8 +1,16 @@
-# cert-manager Auto-Detection Feature
+# cert-manager Integration
 
 ## Overview
 
-The OptipPod Helm chart can optionally install cert-manager as a dependency when webhook support is enabled.
+OptipPod webhook requires cert-manager for TLS certificate management. By default, OptipPod installs cert-manager as a subchart, but you can also use an existing cert-manager installation.
+
+## Default Behavior
+
+By default, OptipPod installs with:
+- ✅ Webhook enabled
+- ✅ cert-manager bundled as a subchart
+
+This provides a complete, ready-to-use installation with no additional setup required.
 
 ## Configuration Options
 
@@ -10,12 +18,21 @@ The OptipPod Helm chart can optionally install cert-manager as a dependency when
 
 | Value | Behavior |
 |-------|----------|
-| `false` (default) | Uses existing cert-manager in the cluster |
-| `true` | Installs cert-manager as a subchart |
+| `true` (default) | Installs cert-manager as a subchart |
+| `false` | Uses existing cert-manager in the cluster |
+
+### `webhook.enabled` Values
+
+| Value | Behavior |
+|-------|----------|
+| `true` (default) | Enables the mutating webhook |
+| `false` | Disables webhook (SSA mode only) |
 
 ## Usage Examples
 
-### Use Existing cert-manager (Default)
+### Default Installation (Recommended)
+
+Installs OptipPod with webhook and bundled cert-manager:
 
 ```bash
 helm install optipod oci://ghcr.io/sagart-cactus/charts/optipod \
@@ -24,19 +41,35 @@ helm install optipod oci://ghcr.io/sagart-cactus/charts/optipod \
   --create-namespace
 ```
 
-This assumes cert-manager is already installed in your cluster.
+This is the simplest option - everything works out of the box.
 
-### Install cert-manager with OptipPod
+### Use Existing cert-manager
+
+If you already have cert-manager installed cluster-wide:
 
 ```bash
 helm install optipod oci://ghcr.io/sagart-cactus/charts/optipod \
   --version 1.4.1 \
   --namespace optipod-system \
   --create-namespace \
-  --set certManager.install=true
+  --set certManager.install=false
 ```
 
-This will install cert-manager as a subchart in the same namespace.
+This avoids installing a duplicate cert-manager instance.
+
+### Install Without Webhook
+
+For environments where you only want SSA mode:
+
+```bash
+helm install optipod oci://ghcr.io/sagart-cactus/charts/optipod \
+  --version 1.4.1 \
+  --namespace optipod-system \
+  --create-namespace \
+  --set webhook.enabled=false
+```
+
+This doesn't require cert-manager at all.
 
 ## Implementation Details
 
@@ -62,10 +95,11 @@ The bootstrap job includes:
 
 ## Benefits
 
-1. **Flexible Deployment** - Choose between bundled or external cert-manager
-2. **No Conflicts** - Clear separation between installation modes
-3. **Robust Bootstrap** - Comprehensive checks ensure cert-manager is ready
-4. **User-Friendly** - Clear feedback in NOTES.txt about configuration
+1. **Zero Configuration** - Works out of the box with webhook and cert-manager
+2. **Flexible Deployment** - Choose between bundled or external cert-manager
+3. **No Conflicts** - Can use existing cert-manager to avoid duplication
+4. **Robust Bootstrap** - Comprehensive checks ensure cert-manager is ready
+5. **User-Friendly** - Clear feedback about configuration and status
 
 ## Troubleshooting
 
@@ -143,6 +177,7 @@ If you initially installed with `certManager.install=true` and want to switch:
 
 ## Recommendations
 
-- **Production**: Install cert-manager cluster-wide and set `certManager.install=false`
-- **Development/Testing**: Use `certManager.install=true` for quick setup
-- **Multi-tenant**: Use cluster-wide cert-manager shared across namespaces
+- **Quick Start/Development**: Use default settings (bundled cert-manager)
+- **Production with existing cert-manager**: Set `certManager.install=false`
+- **Production without cert-manager**: Use default settings or install cert-manager separately first
+- **Multi-tenant clusters**: Install cert-manager cluster-wide once, then set `certManager.install=false` for all OptipPod installations

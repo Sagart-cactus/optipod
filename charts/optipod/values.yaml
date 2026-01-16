@@ -85,9 +85,8 @@ controller:
 # Webhook configuration
 webhook:
   # Enable or disable the mutating webhook
-  # Note: Webhook requires cert-manager. Either install cert-manager separately
-  # or set certManager.install=true
-  enabled: false
+  # When enabled, cert-manager is required for certificate management
+  enabled: true
 
   # Webhook port
   port: 9443
@@ -184,9 +183,10 @@ webhook:
 
 # Certificate Manager configuration
 certManager:
-  # If true, install cert-manager as a subchart in the same namespace and use it.
-  # If false, use an existing cert-manager installation in the cluster.
-  install: false
+  # Control cert-manager installation
+  # true: Install cert-manager as a subchart (default)
+  # false: Use existing cert-manager in the cluster
+  install: true
 
   # Install cert-manager CRDs
   # Only used if cert-manager is being installed by this chart

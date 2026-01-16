@@ -25,20 +25,27 @@ The mutating webhook will automatically optimize pod resources based on your Opt
 
 {{- if .Values.certManager.install }}
 📦 cert-manager is being installed as part of this release
+
+   The bootstrap job will automatically create the required certificates.
+   Check bootstrap job status:
+   kubectl logs -n {{ include "optipod.namespace" . }} job/{{ include "optipod.fullname" . }}-cert-manager-bootstrap
 {{- else }}
 {{- $certManagerCRD := (lookup "apiextensions.k8s.io/v1" "CustomResourceDefinition" "" "certificates.cert-manager.io") }}
 {{- if $certManagerCRD }}
 ✅ Using existing cert-manager installation detected in cluster
-{{- else }}
-⚠️  WARNING: cert-manager not found! The webhook requires cert-manager for certificate management.
 
-   Option 1 - Install cert-manager separately:
+   Certificates will be created automatically using your existing cert-manager.
+{{- else }}
+⚠️  WARNING: cert-manager not found!
+
+   You set certManager.install=false but cert-manager is not installed in the cluster.
+   The webhook requires cert-manager for certificate management.
+
+   Option 1 - Install cert-manager:
    kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.2/cert-manager.yaml
 
-   Option 2 - Install with OptipPod:
+   Option 2 - Use bundled cert-manager:
    helm upgrade {{ .Release.Name }} {{ .Chart.Name }} --set certManager.install=true --reuse-values -n {{ include "optipod.namespace" . }}
-
-   Without cert-manager, the webhook will not function properly!
 {{- end }}
 {{- end }}
 
