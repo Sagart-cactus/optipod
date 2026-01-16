@@ -1,6 +1,4 @@
 {{- if and .Values.webhook.enabled .Values.certManager.install }}
-{{- $shouldInstall := include "optipod.certManager.shouldInstall" . }}
-{{- if eq $shouldInstall "true" }}
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -215,5 +213,4 @@ spec:
           done
           echo "ERROR: Failed to create cert-manager resources after 60 attempts"
           exit 1
-{{- end }}
 {{- end }}
