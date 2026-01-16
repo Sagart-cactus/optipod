@@ -222,9 +222,6 @@ certManager:
 # These values are passed to the cert-manager subchart when certManager.install is true
 cert-manager:
   installCRDs: true
-  global:
-    leaderElection:
-      namespace: "{{ .Release.Namespace }}"
 
 # Metrics configuration
 metrics:
