@@ -218,30 +218,33 @@ jobs:
 
   build:
     name: Build Multi-Architecture Images
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runner }}
     needs: [setup, lint, test, clusterless-e2e-test]
+    strategy:
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+            arch: amd64
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+            arch: arm64
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-        with:
-          driver-opts: |
-            image=moby/buildkit:latest
 
-      - name: Build multi-architecture images
+      - name: Build image for ${{ matrix.platform }}
         uses: docker/build-push-action@v6
         with:
           context: .
-          platforms: linux/amd64
+          platforms: ${{ matrix.platform }}
           push: false
           load: true
           tags: |
-            ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ needs.setup.outputs.version }}
+            ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ needs.setup.outputs.version }}-${{ matrix.arch }}
           build-args: |
             VERSION=${{ needs.setup.outputs.version }}
             COMMIT=${{ github.sha }}
@@ -252,36 +255,39 @@ jobs:
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.licenses=Apache-2.0
             org.opencontainers.image.created=${{ github.event.repository.updated_at }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.arch }}
 
       - name: Save image to tar
         run: |
-          docker save ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ needs.setup.outputs.version }} -o /tmp/image.tar
+          docker save ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ needs.setup.outputs.version }}-${{ matrix.arch }} -o /tmp/image-${{ matrix.arch }}.tar
 
       - name: Upload image artifact
         uses: actions/upload-artifact@v4
         with:
-          name: container-image
-          path: /tmp/image.tar
+          name: container-image-${{ matrix.arch }}
+          path: /tmp/image-${{ matrix.arch }}.tar
           retention-days: 1
 
   security-scan:
     name: Security Scanning
     runs-on: ubuntu-latest
     needs: [setup, build]
+    strategy:
+      matrix:
+        arch: [amd64, arm64]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Download image artifact
+      - name: Download ${{ matrix.arch }} image artifact
         uses: actions/download-artifact@v7
         with:
-          name: container-image
+          name: container-image-${{ matrix.arch }}
           path: /tmp
 
       - name: Load Docker image
-        run: docker load --input /tmp/image.tar
+        run: docker load --input /tmp/image-${{ matrix.arch }}.tar
 
       - name: Install Trivy
         run: |
@@ -296,73 +302,77 @@ jobs:
         run: |
           trivy image \
             --format sarif \
-            --output trivy-results.sarif \
+            --output trivy-results-${{ matrix.arch }}.sarif \
             --severity CRITICAL,HIGH,MEDIUM,LOW \
-            ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ needs.setup.outputs.version }}
+            ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ needs.setup.outputs.version }}-${{ matrix.arch }}
 
       - name: Generate JSON report
         run: |
           trivy image \
             --format json \
-            --output trivy-results.json \
+            --output trivy-results-${{ matrix.arch }}.json \
             --severity CRITICAL,HIGH,MEDIUM,LOW \
-            ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ needs.setup.outputs.version }}
+            ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ needs.setup.outputs.version }}-${{ matrix.arch }}
 
       - name: Generate table report
         run: |
           trivy image \
             --format table \
             --severity CRITICAL,HIGH,MEDIUM,LOW \
-            ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ needs.setup.outputs.version }}
+            ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ needs.setup.outputs.version }}-${{ matrix.arch }}
 
       - name: Upload SARIF to GitHub Security
         uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
-          sarif_file: trivy-results.sarif
+          sarif_file: trivy-results-${{ matrix.arch }}.sarif
+          category: security-scan-${{ matrix.arch }}
 
       - name: Upload scan results as artifacts
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: security-scan-results
+          name: security-scan-results-${{ matrix.arch }}
           path: |
-            trivy-results.sarif
-            trivy-results.json
+            trivy-results-${{ matrix.arch }}.sarif
+            trivy-results-${{ matrix.arch }}.json
           retention-days: 30
 
       - name: Check for critical/high vulnerabilities
         run: |
-          CRITICAL=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="CRITICAL")] | length' trivy-results.json)
-          HIGH=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="HIGH")] | length' trivy-results.json)
+          CRITICAL=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="CRITICAL")] | length' trivy-results-${{ matrix.arch }}.json)
+          HIGH=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="HIGH")] | length' trivy-results-${{ matrix.arch }}.json)
 
-          echo "Critical vulnerabilities: $CRITICAL"
-          echo "High vulnerabilities: $HIGH"
+          echo "[${{ matrix.arch }}] Critical vulnerabilities: $CRITICAL"
+          echo "[${{ matrix.arch }}] High vulnerabilities: $HIGH"
 
           if [ "$CRITICAL" -gt 0 ] || [ "$HIGH" -gt 0 ]; then
-            echo "Error: Found $CRITICAL critical and $HIGH high severity vulnerabilities"
+            echo "Error: Found $CRITICAL critical and $HIGH high severity vulnerabilities in ${{ matrix.arch }} image"
             echo "Release blocked due to security vulnerabilities"
             exit 1
           fi
 
-          echo "No critical or high severity vulnerabilities found"
+          echo "No critical or high severity vulnerabilities found in ${{ matrix.arch }} image"
 
   sbom:
     name: Generate SBOM
     runs-on: ubuntu-latest
     needs: [setup, build]
+    strategy:
+      matrix:
+        arch: [amd64, arm64]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Download image artifact
+      - name: Download ${{ matrix.arch }} image artifact
         uses: actions/download-artifact@v7
         with:
-          name: container-image
+          name: container-image-${{ matrix.arch }}
           path: /tmp
 
       - name: Load Docker image
-        run: docker load --input /tmp/image.tar
+        run: docker load --input /tmp/image-${{ matrix.arch }}.tar
 
       - name: Install Syft
         run: |
@@ -370,38 +380,41 @@ jobs:
 
       - name: Generate SBOM in SPDX JSON format
         run: |
-          syft ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ needs.setup.outputs.version }} \
-            -o spdx-json=sbom.json
+          syft ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ needs.setup.outputs.version }}-${{ matrix.arch }} \
+            -o spdx-json=sbom-${{ matrix.arch }}.json
 
       - name: Upload SBOM as artifact
         uses: actions/upload-artifact@v4
         with:
-          name: sbom
-          path: sbom.json
+          name: sbom-${{ matrix.arch }}
+          path: sbom-${{ matrix.arch }}.json
           retention-days: 90
 
   sign:
     name: Sign Images
     runs-on: ubuntu-latest
     needs: [setup, build, security-scan, sbom]
+    strategy:
+      matrix:
+        arch: [amd64, arm64]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Download image artifact
+      - name: Download ${{ matrix.arch }} image artifact
         uses: actions/download-artifact@v7
         with:
-          name: container-image
+          name: container-image-${{ matrix.arch }}
           path: /tmp
 
-      - name: Download SBOM
+      - name: Download ${{ matrix.arch }} SBOM
         uses: actions/download-artifact@v7
         with:
-          name: sbom
+          name: sbom-${{ matrix.arch }}
           path: /tmp
 
       - name: Load Docker image
-        run: docker load --input /tmp/image.tar
+        run: docker load --input /tmp/image-${{ matrix.arch }}.tar
 
       - name: Install cosign
         uses: sigstore/cosign-installer@v3
@@ -413,16 +426,16 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Push image to GHCR (temporary for signing)
+      - name: Push ${{ matrix.arch }} image to GHCR (for signing)
         run: |
-          docker push ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ needs.setup.outputs.version }}
+          docker push ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ needs.setup.outputs.version }}-${{ matrix.arch }}
 
       - name: Sign container image with keyless signing
         env:
           COSIGN_EXPERIMENTAL: 1
         run: |
           cosign sign --yes \
-            ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ needs.setup.outputs.version }}
+            ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ needs.setup.outputs.version }}-${{ matrix.arch }}
 
       - name: Generate provenance attestation
         env:
@@ -450,7 +463,8 @@ jobs:
                 \"environment\": false,
                 \"materials\": false
               },
-              \"reproducible\": false
+              \"reproducible\": false,
+              \"architecture\": \"${{ matrix.arch }}\"
             },
             \"materials\": [
               {
@@ -460,28 +474,28 @@ jobs:
                 }
               }
             ]
-          }" > provenance.json
+          }" > provenance-${{ matrix.arch }}.json
 
           cosign attest --yes \
-            --predicate provenance.json \
+            --predicate provenance-${{ matrix.arch }}.json \
             --type slsaprovenance \
-            ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ needs.setup.outputs.version }}
+            ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ needs.setup.outputs.version }}-${{ matrix.arch }}
 
       - name: Attach SBOM as attestation
         env:
           COSIGN_EXPERIMENTAL: 1
         run: |
           cosign attest --yes \
-            --predicate /tmp/sbom.json \
+            --predicate /tmp/sbom-${{ matrix.arch }}.json \
             --type spdx \
-            ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ needs.setup.outputs.version }}
+            ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ needs.setup.outputs.version }}-${{ matrix.arch }}
 
       - name: Verify signature
         env:
           COSIGN_EXPERIMENTAL: 1
         run: |
           cosign verify \
-            ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ needs.setup.outputs.version }} | jq .
+            ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ needs.setup.outputs.version }}-${{ matrix.arch }} | jq .
 
   publish-ghcr:
     name: Publish to GitHub Container Registry
@@ -490,18 +504,6 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
-      - name: Download image artifact
-        uses: actions/download-artifact@v7
-        with:
-          name: container-image
-          path: /tmp
-
-      - name: Load Docker image
-        run: docker load --input /tmp/image.tar
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -530,45 +532,35 @@ jobs:
           echo "minor=${MAJOR}.${MINOR}" >> $GITHUB_OUTPUT
           echo "patch=${MAJOR}.${MINOR}.${PATCH}" >> $GITHUB_OUTPUT
 
-      - name: Tag and push existing image with multiple tags
+      - name: Create and push multi-arch manifest
         run: |
-          # Source image (already loaded)
-          SOURCE_IMAGE="${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ steps.version.outputs.full }}"
+          # Create manifest for full version
+          docker buildx imagetools create -t ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ steps.version.outputs.full }} \
+            ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ steps.version.outputs.full }}-amd64 \
+            ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ steps.version.outputs.full }}-arm64
 
-          # Tag with additional version tags
-          docker tag $SOURCE_IMAGE ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ steps.version.outputs.minor }}
-          docker tag $SOURCE_IMAGE ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ steps.version.outputs.major }}
-          docker tag $SOURCE_IMAGE ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:latest
+          # Create manifest for minor version
+          docker buildx imagetools create -t ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ steps.version.outputs.minor }} \
+            ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ steps.version.outputs.full }}-amd64 \
+            ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ steps.version.outputs.full }}-arm64
 
-          # Push all tags
-          docker push ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ steps.version.outputs.full }}
-          docker push ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ steps.version.outputs.minor }}
-          docker push ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ steps.version.outputs.major }}
-          docker push ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:latest
+          # Create manifest for major version
+          docker buildx imagetools create -t ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ steps.version.outputs.major }} \
+            ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ steps.version.outputs.full }}-amd64 \
+            ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ steps.version.outputs.full }}-arm64
 
-      - name: Build and push multi-platform image (for arm64 support)
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          platforms: ${{ env.PLATFORMS }}
-          push: true
-          tags: |
-            ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ steps.version.outputs.full }}
-            ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ steps.version.outputs.minor }}
-            ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ steps.version.outputs.major }}
-            ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:latest
-          build-args: |
-            VERSION=${{ needs.setup.outputs.version }}
-            COMMIT=${{ github.sha }}
-            BUILD_DATE=${{ github.event.repository.updated_at }}
-          labels: |
-            org.opencontainers.image.source=${{ github.repositoryUrl }}
-            org.opencontainers.image.version=${{ needs.setup.outputs.version }}
-            org.opencontainers.image.revision=${{ github.sha }}
-            org.opencontainers.image.licenses=Apache-2.0
-            org.opencontainers.image.created=${{ github.event.repository.updated_at }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # Create manifest for latest
+          docker buildx imagetools create -t ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:latest \
+            ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ steps.version.outputs.full }}-amd64 \
+            ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ steps.version.outputs.full }}-arm64
+
+      - name: Verify multi-arch manifest
+        run: |
+          echo "Verifying multi-arch manifest for ${{ steps.version.outputs.full }}"
+          docker buildx imagetools inspect ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ steps.version.outputs.full }}
+
+          echo "Verifying latest tag"
+          docker buildx imagetools inspect ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:latest
 
       - name: Verify image is pullable
         run: |
@@ -727,17 +719,19 @@ jobs:
           name: checksums
           path: artifacts
 
-      - name: Download SBOM
+      - name: Download SBOMs
         uses: actions/download-artifact@v7
         with:
-          name: sbom
-          path: artifacts
+          pattern: sbom-*
+          path: artifacts/sbom
+          merge-multiple: true
 
       - name: Download security scan results
         uses: actions/download-artifact@v7
         with:
-          name: security-scan-results
-          path: artifacts
+          pattern: security-scan-results-*
+          path: artifacts/security-scan
+          merge-multiple: true
 
       - name: Download Helm chart
         uses: actions/download-artifact@v7
@@ -803,9 +797,16 @@ jobs:
           - **optipod-${VERSION#v}.tgz**: Helm chart package
           - **install.yaml**: Complete Kubernetes deployment manifest
           - **Binaries**: Pre-built binaries for multiple platforms
-          - **sbom.json**: Software Bill of Materials
-          - **trivy-results.json**: Security scan results
+          - **sbom-amd64.json**: Software Bill of Materials (amd64)
+          - **sbom-arm64.json**: Software Bill of Materials (arm64)
+          - **trivy-results-amd64.json**: Security scan results (amd64)
+          - **trivy-results-arm64.json**: Security scan results (arm64)
           - **checksums.txt**: SHA256 checksums for all binaries
+
+          ### Multi-Architecture Support
+
+          Images are available for both amd64 and arm64 architectures.
+          Docker will automatically pull the correct architecture for your platform.
 
           ### Verification
 
@@ -842,7 +843,7 @@ jobs:
             artifacts/install.yaml
             artifacts/binaries/*
             artifacts/checksums.txt
-            artifacts/sbom.json
-            artifacts/trivy-results.json
+            artifacts/sbom/*.json
+            artifacts/security-scan/*.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
