@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"strings"
 
-	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -399,29 +398,10 @@ func (am *AnnotationManager) updateWorkloadAnnotations(ctx context.Context, work
 	// Set the annotations on the workload
 	workload.SetAnnotations(annotations)
 
-	// For workloads with pod templates, we also need to update the pod template annotations
-	switch obj := workload.(type) {
-	case *appsv1.Deployment:
-		if obj.Spec.Template.Annotations == nil {
-			obj.Spec.Template.Annotations = make(map[string]string)
-		}
-		// Copy recommendation annotations to pod template
-		am.copyRecommendationAnnotations(annotations, obj.Spec.Template.Annotations)
-
-	case *appsv1.StatefulSet:
-		if obj.Spec.Template.Annotations == nil {
-			obj.Spec.Template.Annotations = make(map[string]string)
-		}
-		// Copy recommendation annotations to pod template
-		am.copyRecommendationAnnotations(annotations, obj.Spec.Template.Annotations)
-
-	case *appsv1.DaemonSet:
-		if obj.Spec.Template.Annotations == nil {
-			obj.Spec.Template.Annotations = make(map[string]string)
-		}
-		// Copy recommendation annotations to pod template
-		am.copyRecommendationAnnotations(annotations, obj.Spec.Template.Annotations)
-	}
+	// For ArgoCD compatibility, we do NOT copy annotations to pod template
+	// ArgoCD's self-heal will revert pod template annotations if they're not in Git
+	// Instead, the webhook will read annotations directly from the deployment metadata
+	// This allows ArgoCD to manage the deployment while OptipPod manages resources via webhook
 
 	// Update the workload
 	if err := am.client.Update(ctx, workload); err != nil {
@@ -429,28 +409,6 @@ func (am *AnnotationManager) updateWorkloadAnnotations(ctx context.Context, work
 	}
 
 	return nil
-}
-
-// copyRecommendationAnnotations copies recommendation annotations from source to destination
-func (am *AnnotationManager) copyRecommendationAnnotations(source, destination map[string]string) {
-	// Copy webhook-specific annotations
-	webhookKeys := []string{
-		optipodv1alpha1.AnnotationWebhookEnabled,
-		optipodv1alpha1.AnnotationStrategy,
-	}
-
-	for _, key := range webhookKeys {
-		if value, exists := source[key]; exists {
-			destination[key] = value
-		}
-	}
-
-	// Copy recommendation annotations
-	for key, value := range source {
-		if am.isRecommendationAnnotation(key) {
-			destination[key] = value
-		}
-	}
 }
 
 // GetPodLevelRecommendations extracts pod-level resource recommendations (if any)
