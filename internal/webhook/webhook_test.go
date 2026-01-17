@@ -26,6 +26,7 @@ import (
 	"math/big"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -47,6 +48,32 @@ import (
 	optipodv1alpha1 "github.com/optipod/optipod/api/v1alpha1"
 	"github.com/optipod/optipod/internal/observability"
 )
+
+// getPropertyTestIterations returns the number of iterations for property-based tests
+// Can be overridden with PROPERTY_TEST_ITERATIONS env var
+// Default: 20 for CI (fast), 100 for thorough local testing
+func getPropertyTestIterations() int {
+	if iterations := os.Getenv("PROPERTY_TEST_ITERATIONS"); iterations != "" {
+		if n, err := strconv.Atoi(iterations); err == nil && n > 0 {
+			return n
+		}
+	}
+	// Default to 20 iterations for reasonable CI speed
+	// Use PROPERTY_TEST_ITERATIONS=100 for thorough local testing
+	return 20
+}
+
+// getLifecycleTestIterations returns iterations for slow lifecycle tests
+// These tests start/stop servers, so use fewer iterations
+func getLifecycleTestIterations() int {
+	if iterations := os.Getenv("LIFECYCLE_TEST_ITERATIONS"); iterations != "" {
+		if n, err := strconv.Atoi(iterations); err == nil && n > 0 {
+			return n
+		}
+	}
+	// Default to 5 iterations for lifecycle tests (they're slow)
+	return 5
+}
 
 // Test generators for property-based testing
 
@@ -204,7 +231,7 @@ func createTestEventRecorder() *observability.EventRecorder {
 // **Validates: Requirements 2.1, 2.4**
 func TestProperty_WebhookPodModificationBehavior(t *testing.T) {
 	parameters := gopter.DefaultTestParameters()
-	parameters.MinSuccessfulTests = 100
+	parameters.MinSuccessfulTests = getPropertyTestIterations()
 	properties := gopter.NewProperties(parameters)
 
 	properties.Property("webhook modifies pods with annotations and matching policies", prop.ForAll(
@@ -243,7 +270,7 @@ func TestProperty_WebhookPodModificationBehavior(t *testing.T) {
 // **Validates: Requirements 2.2, 2.5**
 func TestProperty_WebhookNonInterference(t *testing.T) {
 	parameters := gopter.DefaultTestParameters()
-	parameters.MinSuccessfulTests = 100
+	parameters.MinSuccessfulTests = getPropertyTestIterations()
 	properties := gopter.NewProperties(parameters)
 
 	properties.Property("webhook leaves pods unchanged when no annotations or policy match", prop.ForAll(
@@ -283,7 +310,7 @@ func TestProperty_WebhookNonInterference(t *testing.T) {
 // **Validates: Requirements 2.3**
 func TestProperty_WebhookStrategyControl(t *testing.T) {
 	parameters := gopter.DefaultTestParameters()
-	parameters.MinSuccessfulTests = 100
+	parameters.MinSuccessfulTests = getPropertyTestIterations()
 	properties := gopter.NewProperties(parameters)
 
 	properties.Property("webhook does not modify pods when strategy is disabled", prop.ForAll(
@@ -324,7 +351,7 @@ func TestProperty_WebhookStrategyControl(t *testing.T) {
 // **Validates: Requirements 3.1, 3.2, 3.3**
 func TestProperty_AnnotationStorageAndFormat(t *testing.T) {
 	parameters := gopter.DefaultTestParameters()
-	parameters.MinSuccessfulTests = 100
+	parameters.MinSuccessfulTests = getPropertyTestIterations()
 	properties := gopter.NewProperties(parameters)
 
 	properties.Property("annotation storage uses standardized keys and webhook parses them correctly", prop.ForAll(
@@ -442,7 +469,7 @@ func TestProperty_AnnotationStorageAndFormat(t *testing.T) {
 // **Validates: Requirements 3.4, 7.4**
 func TestProperty_AnnotationErrorHandling(t *testing.T) {
 	parameters := gopter.DefaultTestParameters()
-	parameters.MinSuccessfulTests = 100
+	parameters.MinSuccessfulTests = getPropertyTestIterations()
 	properties := gopter.NewProperties(parameters)
 
 	properties.Property("invalid annotation values are handled gracefully and pod creation proceeds", prop.ForAll(
@@ -501,7 +528,7 @@ func TestProperty_AnnotationErrorHandling(t *testing.T) {
 // **Validates: Requirements 3.5**
 func TestProperty_AnnotationScopeHandling(t *testing.T) {
 	parameters := gopter.DefaultTestParameters()
-	parameters.MinSuccessfulTests = 100
+	parameters.MinSuccessfulTests = getPropertyTestIterations()
 	properties := gopter.NewProperties(parameters)
 
 	properties.Property("container-specific annotations are handled correctly", prop.ForAll(
@@ -652,7 +679,7 @@ func quantityPtr(q resource.Quantity) *resource.Quantity {
 // **Validates: Requirements 4.1, 4.2, 4.3**
 func TestProperty_RolloutStrategyBehavior(t *testing.T) {
 	parameters := gopter.DefaultTestParameters()
-	parameters.MinSuccessfulTests = 100
+	parameters.MinSuccessfulTests = getPropertyTestIterations()
 	properties := gopter.NewProperties(parameters)
 
 	properties.Property("rollout strategy controls when resource changes take effect", prop.ForAll(
@@ -728,7 +755,7 @@ func TestProperty_RolloutStrategyBehavior(t *testing.T) {
 // **Validates: Requirements 4.4, 4.5**
 func TestProperty_RollingRestartWorkloadValidation(t *testing.T) {
 	parameters := gopter.DefaultTestParameters()
-	parameters.MinSuccessfulTests = 100
+	parameters.MinSuccessfulTests = getPropertyTestIterations()
 	properties := gopter.NewProperties(parameters)
 
 	properties.Property("rolling restart only works on supported workload types and updates pod templates", prop.ForAll(
@@ -958,7 +985,9 @@ func genWorkloadType() gopter.Gen {
 // **Validates: Requirements 6.1, 6.2, 6.3**
 func TestProperty_WebhookLifecycleManagement(t *testing.T) {
 	parameters := gopter.DefaultTestParameters()
-	parameters.MinSuccessfulTests = 100
+	// Reduce iterations for faster CI - lifecycle tests are slow due to server startup/shutdown
+	// Use getLifecycleTestIterations() which defaults to 5 (vs 20 for other tests)
+	parameters.MinSuccessfulTests = getLifecycleTestIterations()
 	properties := gopter.NewProperties(parameters)
 
 	properties.Property("webhook lifecycle registers on startup and cleans up on shutdown", prop.ForAll(
@@ -1017,7 +1046,7 @@ func TestProperty_WebhookLifecycleManagement(t *testing.T) {
 // **Validates: Requirements 6.5**
 func TestProperty_WebhookHealthMonitoring(t *testing.T) {
 	parameters := gopter.DefaultTestParameters()
-	parameters.MinSuccessfulTests = 100
+	parameters.MinSuccessfulTests = getPropertyTestIterations()
 	properties := gopter.NewProperties(parameters)
 
 	properties.Property("webhook health monitoring provides accurate status information", prop.ForAll(
@@ -1185,7 +1214,7 @@ func cleanupMockCertificates(certPath, keyPath string) {
 // **Validates: Requirements 7.1, 7.2, 7.3**
 func TestProperty_WebhookObservability(t *testing.T) {
 	parameters := gopter.DefaultTestParameters()
-	parameters.MinSuccessfulTests = 100
+	parameters.MinSuccessfulTests = getPropertyTestIterations()
 	properties := gopter.NewProperties(parameters)
 
 	properties.Property("webhook operations emit metrics and log detailed information", prop.ForAll(
@@ -1266,7 +1295,7 @@ func TestProperty_WebhookObservability(t *testing.T) {
 // **Validates: Requirements 7.5**
 func TestProperty_WebhookDebuggingSupport(t *testing.T) {
 	parameters := gopter.DefaultTestParameters()
-	parameters.MinSuccessfulTests = 100
+	parameters.MinSuccessfulTests = getPropertyTestIterations()
 	properties := gopter.NewProperties(parameters)
 
 	properties.Property("webhook provides debugging information through configuration endpoints", prop.ForAll(

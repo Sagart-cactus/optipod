@@ -289,7 +289,14 @@ func (lm *LifecycleManager) validateCertificates() error {
 func (lm *LifecycleManager) waitForServerReady(ctx context.Context) error {
 	lifecycleLog.Info("Waiting for webhook server to become ready")
 
-	return wait.PollUntilContextTimeout(ctx, 1*time.Second, 30*time.Second, true, func(ctx context.Context) (bool, error) {
+	// Use shorter timeout in test environments (5 seconds instead of 30)
+	timeout := 30 * time.Second
+	if os.Getenv("KUBEBUILDER_ASSETS") != "" {
+		// Running in test environment
+		timeout = 5 * time.Second
+	}
+
+	return wait.PollUntilContextTimeout(ctx, 100*time.Millisecond, timeout, true, func(ctx context.Context) (bool, error) {
 		// Check if server is ready by making a health check request
 		// This is a simple check - in a real implementation, you might want to
 		// make an actual HTTP request to the health endpoint
