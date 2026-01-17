@@ -2,8 +2,8 @@ apiVersion: v2
 name: optipod
 description: A Kubernetes operator for intelligent pod resource optimization with optional mutating webhook
 type: application
-version: 0.1.0
-appVersion: "1.4.0"
+version: 1.4.1
+appVersion: "v1.4.1"
 icon: https://optipod.io/logo.png
 home: https://github.com/optipod/optipod
 sources:
@@ -22,7 +22,8 @@ keywords:
 # Dependencies
 dependencies:
   # cert-manager as optional dependency
-  # Will be installed only if not already present in cluster
+  # Will be installed automatically if not already present in cluster (when install: auto)
+  # Set install: false to use existing cert-manager, or install: true to always install
   - name: cert-manager
     version: "v1.14.2"
     repository: https://charts.jetstack.io
