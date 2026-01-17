@@ -22,6 +22,7 @@ import (
 	"strings"
 	"time"
 
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -34,6 +35,12 @@ import (
 )
 
 var mutatorLog = logf.Log.WithName("webhook-mutator")
+
+const (
+	// Constants for string literals
+	trueValue      = "true"
+	appsV1APIGroup = "apps/v1"
+)
 
 // Mutator handles pod mutation logic
 type Mutator struct {
@@ -163,22 +170,148 @@ func (m *Mutator) MutatePod(req *AdmissionRequest) *AdmissionResponse {
 }
 
 // isWebhookEnabled checks if webhook strategy is enabled for the pod
+// For ArgoCD compatibility, it checks both pod annotations and parent deployment annotations
 func (m *Mutator) isWebhookEnabled(pod *corev1.Pod) bool {
-	if pod.Annotations == nil {
-		return false
+	ctx := context.Background()
+
+	// First check pod annotations
+	if pod.Annotations != nil {
+		// Check webhook enabled annotation
+		if enabled, exists := pod.Annotations[optipodv1alpha1.AnnotationWebhookEnabled]; exists {
+			return enabled == trueValue
+		}
+
+		// Check strategy annotation
+		if strategy, exists := pod.Annotations[optipodv1alpha1.AnnotationStrategy]; exists {
+			return strategy == string(optipodv1alpha1.StrategyWebhook)
+		}
 	}
 
-	// Check webhook enabled annotation
-	if enabled, exists := pod.Annotations[optipodv1alpha1.AnnotationWebhookEnabled]; exists {
-		return enabled == "true"
-	}
+	// Fall back to checking parent deployment annotations (ArgoCD-compatible)
+	parentAnnotations := m.getParentDeploymentAnnotations(ctx, pod)
+	if len(parentAnnotations) > 0 {
+		// Check webhook enabled annotation
+		if enabled, exists := parentAnnotations[optipodv1alpha1.AnnotationWebhookEnabled]; exists {
+			return enabled == trueValue
+		}
 
-	// Check strategy annotation
-	if strategy, exists := pod.Annotations[optipodv1alpha1.AnnotationStrategy]; exists {
-		return strategy == string(optipodv1alpha1.StrategyWebhook)
+		// Check strategy annotation
+		if strategy, exists := parentAnnotations[optipodv1alpha1.AnnotationStrategy]; exists {
+			return strategy == string(optipodv1alpha1.StrategyWebhook)
+		}
 	}
 
 	return false
+}
+
+// getParentDeploymentAnnotations retrieves annotations from the parent workload (Deployment, StatefulSet, or DaemonSet)
+// This is needed for ArgoCD compatibility since ArgoCD's self-heal reverts pod template annotations
+// but allows extra annotations on workload metadata
+func (m *Mutator) getParentDeploymentAnnotations(ctx context.Context, pod *corev1.Pod) map[string]string {
+	log := mutatorLog.WithValues("pod", fmt.Sprintf("%s/%s", pod.Namespace, pod.Name))
+
+	// Check if pod has owner references
+	if len(pod.OwnerReferences) == 0 {
+		log.V(2).Info("Pod has no owner references, cannot lookup parent workload")
+		return nil
+	}
+
+	// Check for direct StatefulSet or DaemonSet ownership
+	for _, owner := range pod.OwnerReferences {
+		if owner.APIVersion == appsV1APIGroup {
+			switch owner.Kind {
+			case "StatefulSet":
+				return m.getStatefulSetAnnotations(ctx, pod.Namespace, owner.Name)
+			case "DaemonSet":
+				return m.getDaemonSetAnnotations(ctx, pod.Namespace, owner.Name)
+			}
+		}
+	}
+
+	// Check for Deployment ownership (via ReplicaSet)
+	var replicaSetName string
+	for _, owner := range pod.OwnerReferences {
+		if owner.Kind == "ReplicaSet" && owner.APIVersion == appsV1APIGroup {
+			replicaSetName = owner.Name
+			break
+		}
+	}
+
+	if replicaSetName == "" {
+		log.V(2).Info("Pod is not owned by a ReplicaSet, StatefulSet, or DaemonSet")
+		return nil
+	}
+
+	// Get the ReplicaSet
+	replicaSet := &appsv1.ReplicaSet{}
+	if err := m.client.Get(ctx, client.ObjectKey{
+		Namespace: pod.Namespace,
+		Name:      replicaSetName,
+	}, replicaSet); err != nil {
+		log.V(1).Info("Failed to get ReplicaSet", "replicaset", replicaSetName, "error", err)
+		return nil
+	}
+
+	// Find Deployment owner of ReplicaSet
+	var deploymentName string
+	for _, owner := range replicaSet.OwnerReferences {
+		if owner.Kind == "Deployment" && owner.APIVersion == appsV1APIGroup {
+			deploymentName = owner.Name
+			break
+		}
+	}
+
+	if deploymentName == "" {
+		log.V(2).Info("ReplicaSet is not owned by a Deployment", "replicaset", replicaSetName)
+		return nil
+	}
+
+	// Get the Deployment
+	deployment := &appsv1.Deployment{}
+	if err := m.client.Get(ctx, client.ObjectKey{
+		Namespace: pod.Namespace,
+		Name:      deploymentName,
+	}, deployment); err != nil {
+		log.V(1).Info("Failed to get Deployment", "deployment", deploymentName, "error", err)
+		return nil
+	}
+
+	log.V(1).Info("Found parent deployment", "deployment", deploymentName, "annotations", len(deployment.Annotations))
+	return deployment.Annotations
+}
+
+// getStatefulSetAnnotations retrieves annotations from a StatefulSet
+func (m *Mutator) getStatefulSetAnnotations(ctx context.Context, namespace, name string) map[string]string {
+	log := mutatorLog.WithValues("statefulset", fmt.Sprintf("%s/%s", namespace, name))
+
+	statefulSet := &appsv1.StatefulSet{}
+	if err := m.client.Get(ctx, client.ObjectKey{
+		Namespace: namespace,
+		Name:      name,
+	}, statefulSet); err != nil {
+		log.V(1).Info("Failed to get StatefulSet", "error", err)
+		return nil
+	}
+
+	log.V(1).Info("Found parent StatefulSet", "annotations", len(statefulSet.Annotations))
+	return statefulSet.Annotations
+}
+
+// getDaemonSetAnnotations retrieves annotations from a DaemonSet
+func (m *Mutator) getDaemonSetAnnotations(ctx context.Context, namespace, name string) map[string]string {
+	log := mutatorLog.WithValues("daemonset", fmt.Sprintf("%s/%s", namespace, name))
+
+	daemonSet := &appsv1.DaemonSet{}
+	if err := m.client.Get(ctx, client.ObjectKey{
+		Namespace: namespace,
+		Name:      name,
+	}, daemonSet); err != nil {
+		log.V(1).Info("Failed to get DaemonSet", "error", err)
+		return nil
+	}
+
+	log.V(1).Info("Found parent DaemonSet", "annotations", len(daemonSet.Annotations))
+	return daemonSet.Annotations
 }
 
 // findMatchingPolicies finds optimization policies that match the pod
@@ -278,16 +411,32 @@ func (m *Mutator) policyMatchesPod(ctx context.Context, policy *optipodv1alpha1.
 }
 
 // getRecommendationsFromAnnotations extracts resource recommendations from pod annotations
+// For ArgoCD compatibility, it first tries to read from the parent deployment's metadata annotations
+// since ArgoCD's self-heal will revert pod template annotations but allows extra deployment metadata annotations
 func (m *Mutator) getRecommendationsFromAnnotations(pod *corev1.Pod) []ResourceRecommendation {
-	if pod.Annotations == nil {
-		return nil
+	ctx := context.Background()
+	log := mutatorLog.WithValues("pod", fmt.Sprintf("%s/%s", pod.Namespace, pod.Name))
+
+	// Try to get annotations from parent deployment first (ArgoCD-compatible approach)
+	parentAnnotations := m.getParentDeploymentAnnotations(ctx, pod)
+
+	// Fall back to pod annotations if no parent annotations found
+	annotationsToUse := parentAnnotations
+	if len(annotationsToUse) == 0 {
+		if pod.Annotations == nil {
+			return nil
+		}
+		annotationsToUse = pod.Annotations
+		log.V(1).Info("Using pod annotations (no parent deployment annotations found)")
+	} else {
+		log.V(1).Info("Using parent deployment annotations for ArgoCD compatibility")
 	}
 
 	containerMap := make(map[string]*ResourceRecommendation)
 	recommendations := make([]ResourceRecommendation, 0)
 
 	// Parse annotations for each container
-	for key, value := range pod.Annotations {
+	for key, value := range annotationsToUse {
 		var containerName string
 		var resourceType string
 

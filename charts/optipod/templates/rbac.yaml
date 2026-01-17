@@ -120,6 +120,20 @@ rules:
   - get
   - list
   - watch
+# Read deployments, statefulsets, daemonsets, and replicasets to lookup parent workload annotations
+# This is needed for ArgoCD compatibility - webhook reads annotations from
+# workload metadata instead of pod template (which ArgoCD reverts)
+- apiGroups:
+  - apps
+  resources:
+  - deployments
+  - statefulsets
+  - daemonsets
+  - replicasets
+  verbs:
+  - get
+  - list
+  - watch
 # Create events for webhook operations
 - apiGroups:
   - ""
