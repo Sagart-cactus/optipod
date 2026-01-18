@@ -75,6 +75,31 @@ Keep official documentation separate:
 - Release notes: RELEASE_NOTES_*.md (project root)
 - Official docs: docs/ folder
 
+## Documentation Updates
+
+**ALWAYS update BOTH locations when changing documentation:**
+
+1. **`docs/` folder** - Markdown files for developers
+2. **`website/` folder** - HTML files for end users
+
+### Documentation Mapping
+
+| Topic | docs/ | website/ |
+|-------|-------|----------|
+| Installation | `docs/installation.md` | `website/docs/installation/` |
+| Configuration | `docs/configuration.md` | `website/docs/configuration/` |
+| Prometheus Auth | `docs/prometheus-auth.md` | `website/docs/prometheus-authentication/` |
+| Getting Started | `docs/getting-started.md` | `website/docs/getting-started/` |
+
+### Update Workflow
+1. Update the Markdown file in `docs/`
+2. Update the corresponding HTML file in `website/`
+3. Keep content synchronized (same info, different formats)
+4. Ensure code examples match exactly
+5. Commit both changes together
+
+**Exception:** Only update one location if user explicitly specifies "only update docs/" or "only update website/"
+
 ## Code Quality Standards
 
 ### Go Code
