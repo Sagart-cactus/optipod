@@ -251,3 +251,125 @@ kubectl logs -n optipod-system deployment/optipod-cert-manager
 - [cert-manager Integration](./CERT_MANAGER_AUTO_DETECTION.md)
 - [Testing Guide](./TESTING.md)
 - [Version Handling](./VERSION_HANDLING.md)
+
+## Metrics Provider Configuration
+
+OptiPod supports two metrics providers:
+- **metrics-server** (default): Uses Kubernetes metrics-server
+- **prometheus**: Uses Prometheus for historical metrics
+
+### Using Prometheus with Authentication
+
+OptiPod supports secure connections to Prometheus with multiple authentication methods.
+
+#### Basic Authentication
+
+```yaml
+metricsProvider:
+  type: prometheus
+  prometheus:
+    url: "https://prometheus.example.com"
+    auth:
+      type: basic
+      basic:
+        existingSecret:
+          name: prometheus-credentials
+          usernameKey: username
+          passwordKey: password
+```
+
+Create the secret:
+```bash
+kubectl create secret generic prometheus-credentials \
+  --from-literal=username=optipod \
+  --from-literal=password='your-password' \  # pragma: allowlist secret
+  -n optipod-system
+```
+
+#### Bearer Token Authentication
+
+```yaml
+metricsProvider:
+  type: prometheus
+  prometheus:
+    url: "https://prometheus.example.com"
+    auth:
+      type: bearer
+      bearer:
+        existingSecret:
+          name: prometheus-token
+          key: token
+```
+
+Create the secret:
+```bash
+kubectl create secret generic prometheus-token \
+  --from-literal=token='your-bearer-token' \
+  -n optipod-system
+```
+
+#### Mutual TLS (mTLS)
+
+```yaml
+metricsProvider:
+  type: prometheus
+  prometheus:
+    url: "https://prometheus.example.com"
+    tls:
+      enabled: true
+      existingSecret:
+        name: prometheus-tls
+        caKey: ca.crt
+        certKey: tls.crt
+        keyKey: tls.key
+```
+
+Create the secret:
+```bash
+kubectl create secret generic prometheus-tls \
+  --from-file=ca.crt=ca.pem \
+  --from-file=tls.crt=client.pem \
+  --from-file=tls.key=client-key.pem \
+  -n optipod-system
+```
+
+#### Helper Script
+
+Use the provided script to create secrets easily:
+
+```bash
+# Basic auth
+./scripts/create-prometheus-secrets.sh \
+  --type basic \
+  --username optipod \
+  --password 'your-password'
+
+# Bearer token
+./scripts/create-prometheus-secrets.sh \
+  --type bearer \
+  --token 'your-token'
+
+# TLS
+./scripts/create-prometheus-secrets.sh \
+  --type tls \
+  --ca-file ca.pem \
+  --cert-file client.pem \
+  --key-file client-key.pem
+```
+
+For detailed information, see [Prometheus Authentication Guide](../../docs/PROMETHEUS_AUTHENTICATION.md).
+
+### Metrics Provider Values Reference
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `metricsProvider.type` | Metrics provider type (`metrics-server` or `prometheus`) | `metrics-server` |
+| `metricsProvider.prometheus.url` | Prometheus server URL | `http://prometheus:9090` |
+| `metricsProvider.prometheus.auth.type` | Authentication type (`none`, `basic`, `bearer`) | `none` |
+| `metricsProvider.prometheus.auth.basic.existingSecret.name` | Secret name for basic auth | `""` |
+| `metricsProvider.prometheus.auth.bearer.existingSecret.name` | Secret name for bearer token | `""` |
+| `metricsProvider.prometheus.tls.enabled` | Enable TLS | `false` |
+| `metricsProvider.prometheus.tls.insecureSkipVerify` | Skip TLS verification (not recommended) | `false` |
+| `metricsProvider.prometheus.tls.existingSecret.name` | Secret name for TLS certificates | `""` |
+| `metricsProvider.prometheus.timeout` | HTTP client timeout | `30s` |
+

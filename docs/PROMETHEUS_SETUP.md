@@ -93,7 +93,67 @@ data:
     reconciliationInterval: 5m
 ```
 
-### 2. Update Controller Arguments
+### 2. Configure Prometheus Authentication (Production)
+
+For production environments with secured Prometheus, OptiPod supports multiple authentication methods:
+
+**Basic Authentication:**
+```bash
+# Create secret
+kubectl create secret generic prometheus-credentials \
+  --from-literal=username=optipod \
+  --from-literal=password='your-password' \  # pragma: allowlist secret
+  -n optipod-system
+
+# Install with Helm
+helm install optipod ./charts/optipod \
+  --set metricsProvider.type=prometheus \
+  --set metricsProvider.prometheus.url=https://prometheus.example.com \
+  --set metricsProvider.prometheus.auth.type=basic \
+  --set metricsProvider.prometheus.auth.basic.existingSecret.name=prometheus-credentials \
+  -n optipod-system
+```
+
+**Bearer Token (OAuth2/OIDC):**
+```bash
+# Create secret
+kubectl create secret generic prometheus-token \
+  --from-literal=token='your-bearer-token' \
+  -n optipod-system
+
+# Install with Helm
+helm install optipod ./charts/optipod \
+  --set metricsProvider.type=prometheus \
+  --set metricsProvider.prometheus.url=https://prometheus.example.com \
+  --set metricsProvider.prometheus.auth.type=bearer \
+  --set metricsProvider.prometheus.auth.bearer.existingSecret.name=prometheus-token \
+  -n optipod-system
+```
+
+**Mutual TLS (mTLS):**
+```bash
+# Create TLS secret
+kubectl create secret generic prometheus-tls \
+  --from-file=ca.crt=ca.pem \
+  --from-file=tls.crt=client.pem \
+  --from-file=tls.key=client-key.pem \
+  -n optipod-system
+
+# Install with Helm
+helm install optipod ./charts/optipod \
+  --set metricsProvider.type=prometheus \
+  --set metricsProvider.prometheus.url=https://prometheus.example.com \
+  --set metricsProvider.prometheus.tls.enabled=true \
+  --set metricsProvider.prometheus.tls.existingSecret.name=prometheus-tls \
+  -n optipod-system
+```
+
+📚 **For detailed authentication setup, see:**
+- [Prometheus Authentication Guide](PROMETHEUS_AUTHENTICATION.md) - Complete reference
+- [Quick Start Guide](PROMETHEUS_QUICK_START.md) - Get started in 5 minutes
+- [Migration Guide](PROMETHEUS_MIGRATION_GUIDE.md) - Migrate from unsecured Prometheus
+
+### 3. Update Controller Arguments
 
 If using command-line arguments:
 
@@ -114,7 +174,7 @@ spec:
         - --reconciliation-interval=5m
 ```
 
-### 3. Create Optimization Policy
+### 4. Create Optimization Policy
 
 Create an optimization policy that uses Prometheus:
 
