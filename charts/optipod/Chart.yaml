@@ -2,8 +2,8 @@ apiVersion: v2
 name: optipod
 description: A Kubernetes operator for intelligent pod resource optimization with optional mutating webhook
 type: application
-version: 1.5.0
-appVersion: "v1.5.0"
+version: 1.5.2
+appVersion: "v1.5.2"
 icon: https://optipod.io/logo.png
 home: https://github.com/optipod/optipod
 sources:
