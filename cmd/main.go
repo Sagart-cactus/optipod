@@ -245,9 +245,29 @@ func main() {
 
 	switch providerType {
 	case metrics.ProviderTypePrometheus:
+		// Build Prometheus configuration with authentication
+		promConfig := metrics.PrometheusConfig{
+			URL: operatorConfig.GetPrometheusURL(),
+			Auth: metrics.PrometheusAuth{
+				Type:        operatorConfig.GetPrometheusAuthType(),
+				Username:    operatorConfig.GetPrometheusUsername(),
+				Password:    operatorConfig.GetPrometheusPassword(),
+				BearerToken: operatorConfig.GetPrometheusBearerToken(),
+			},
+			TLS: metrics.PrometheusTLS{
+				Enabled: operatorConfig.GetPrometheusTLSCAFile() != "" ||
+					operatorConfig.GetPrometheusTLSCertFile() != "",
+				InsecureSkipVerify: operatorConfig.GetPrometheusTLSInsecure(),
+				CAFile:             operatorConfig.GetPrometheusTLSCAFile(),
+				CertFile:           operatorConfig.GetPrometheusTLSCertFile(),
+				KeyFile:            operatorConfig.GetPrometheusTLSKeyFile(),
+			},
+			Timeout: operatorConfig.GetPrometheusTimeout(),
+		}
+
 		metricsProvider, err = metrics.NewProvider(metrics.ProviderConfig{
-			Type:          metrics.ProviderTypePrometheus,
-			PrometheusURL: operatorConfig.GetPrometheusURL(),
+			Type:       metrics.ProviderTypePrometheus,
+			Prometheus: promConfig,
 		})
 	case metrics.ProviderTypeMetricsServer:
 		metricsProvider, err = metrics.NewProvider(metrics.ProviderConfig{

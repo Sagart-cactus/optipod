@@ -26,8 +26,6 @@
 
     <div class="docs-container docs-layout">
       <nav class="docs-nav" aria-label="Docs navigation">
-
-<nav class="docs-nav" aria-label="Docs navigation">
 <a class="docs-pill" href="../">Docs Home</a>
 <h2>Getting Started</h2>
 <a href="../installation/">Installation Guide</a>
@@ -37,13 +35,13 @@
 <a href="../crd-reference/">CRD Reference</a>
 <a href="../webhook-configuration/">Webhook Configuration</a>
 <a href="../prometheus-setup/" aria-current="page">Prometheus Setup</a>
+<a href="../prometheus-authentication/">Prometheus Authentication</a>
 <a href="../metrics-server-sampling/">Metrics Server Sampling</a>
 <h2>Integration</h2>
 <a href="../argocd-integration/">ArgoCD Integration</a>
 <h2>Development</h2>
 <a href="../contributing/">Contributing</a>
 <a href="../pre-commit-setup/">Pre-commit Setup</a>
-</nav>
 </nav>
       <main class="docs-main" id="main">
         <div class="docs-meta">
@@ -64,7 +62,12 @@
           <li>✅ <strong>Historical data</strong>: Analyze trends over extended time periods</li>
           <li>✅ <strong>Custom metrics</strong>: Support for additional container metrics</li>
           <li>✅ <strong>High availability</strong>: Works with clustered Prometheus setups</li>
+          <li>✅ <strong>Secure authentication</strong>: Support for basic auth, bearer tokens, and mTLS</li>
           </ul>
+
+          <div class="callout callout-info">
+            <strong>🔒 Secure Prometheus Connections:</strong> For production environments with secured Prometheus, see the <a href="../prometheus-authentication/">Prometheus Authentication Guide</a> for configuring basic auth, bearer tokens, or mTLS.
+          </div>
           <h2 id="prerequisites">Prerequisites</h2>
           <ul>
           <li>Kubernetes cluster (1.29+)</li>

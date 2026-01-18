@@ -43,6 +43,9 @@ type ProviderConfig struct {
 	// PrometheusURL is the URL for Prometheus (required if Type is prometheus)
 	PrometheusURL string
 
+	// Prometheus contains Prometheus-specific configuration (optional)
+	Prometheus PrometheusConfig
+
 	// Clientset is the Kubernetes clientset (required if Type is metrics-server)
 	Clientset kubernetes.Interface
 
@@ -103,10 +106,17 @@ func NewProvider(config ProviderConfig) (MetricsProvider, error) {
 		), nil
 
 	case ProviderTypePrometheus:
-		if config.PrometheusURL == "" {
+		if config.PrometheusURL == "" && config.Prometheus.URL == "" {
 			return nil, fmt.Errorf("prometheus URL is required for prometheus provider")
 		}
-		provider, err := NewPrometheusProvider(config.PrometheusURL)
+
+		// Use Prometheus config if provided, otherwise create from URL
+		promConfig := config.Prometheus
+		if promConfig.URL == "" {
+			promConfig.URL = config.PrometheusURL
+		}
+
+		provider, err := NewPrometheusProvider(promConfig)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create prometheus provider: %w", err)
 		}

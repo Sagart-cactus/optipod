@@ -18,6 +18,7 @@ package config
 
 import (
 	"flag"
+	"os"
 	"time"
 )
 
@@ -31,6 +32,17 @@ type OperatorConfig struct {
 
 	// PrometheusURL is the URL for the Prometheus server (if using Prometheus provider)
 	PrometheusURL string
+
+	// Prometheus authentication configuration
+	PrometheusAuthType    string
+	PrometheusUsername    string
+	PrometheusPassword    string
+	PrometheusBearerToken string
+	PrometheusTLSCAFile   string
+	PrometheusTLSCertFile string
+	PrometheusTLSKeyFile  string
+	PrometheusTLSInsecure bool
+	PrometheusTimeout     time.Duration
 
 	// LeaderElection enables leader election for high availability
 	LeaderElection bool
@@ -69,6 +81,15 @@ func NewOperatorConfig() *OperatorConfig {
 		DryRun:                           false,
 		DefaultMetricsProvider:           "metrics-server",
 		PrometheusURL:                    "http://prometheus:9090",
+		PrometheusAuthType:               "none",
+		PrometheusUsername:               "",
+		PrometheusPassword:               "",
+		PrometheusBearerToken:            "",
+		PrometheusTLSCAFile:              "",
+		PrometheusTLSCertFile:            "",
+		PrometheusTLSKeyFile:             "",
+		PrometheusTLSInsecure:            false,
+		PrometheusTimeout:                30 * time.Second,
 		LeaderElection:                   false,
 		MetricsAddr:                      ":8080",
 		ProbeAddr:                        ":8081",
@@ -90,6 +111,24 @@ func (c *OperatorConfig) BindFlags() {
 		"Default metrics provider to use (metrics-server, prometheus, or custom)")
 	flag.StringVar(&c.PrometheusURL, "prometheus-url", c.PrometheusURL,
 		"URL for Prometheus server (used when metrics-provider is prometheus)")
+	flag.StringVar(&c.PrometheusAuthType, "prometheus-auth-type", c.PrometheusAuthType,
+		"Prometheus authentication type: none, basic, bearer")
+	flag.StringVar(&c.PrometheusUsername, "prometheus-username", c.PrometheusUsername,
+		"Prometheus basic auth username (or use PROMETHEUS_USERNAME env)")
+	flag.StringVar(&c.PrometheusPassword, "prometheus-password", c.PrometheusPassword,
+		"Prometheus basic auth password (or use PROMETHEUS_PASSWORD env)")
+	flag.StringVar(&c.PrometheusBearerToken, "prometheus-bearer-token", c.PrometheusBearerToken,
+		"Prometheus bearer token (or use PROMETHEUS_BEARER_TOKEN env)")
+	flag.StringVar(&c.PrometheusTLSCAFile, "prometheus-tls-ca-file", c.PrometheusTLSCAFile,
+		"Prometheus TLS CA certificate file")
+	flag.StringVar(&c.PrometheusTLSCertFile, "prometheus-tls-cert-file", c.PrometheusTLSCertFile,
+		"Prometheus TLS client certificate file")
+	flag.StringVar(&c.PrometheusTLSKeyFile, "prometheus-tls-key-file", c.PrometheusTLSKeyFile,
+		"Prometheus TLS client key file")
+	flag.BoolVar(&c.PrometheusTLSInsecure, "prometheus-tls-insecure-skip-verify", c.PrometheusTLSInsecure,
+		"Skip Prometheus TLS certificate verification (not recommended for production)")
+	flag.DurationVar(&c.PrometheusTimeout, "prometheus-timeout", c.PrometheusTimeout,
+		"Prometheus HTTP client timeout")
 	flag.BoolVar(&c.LeaderElection, "leader-elect", c.LeaderElection,
 		"Enable leader election for controller manager")
 	flag.DurationVar(&c.ReconciliationInterval, "reconciliation-interval", c.ReconciliationInterval,
@@ -161,4 +200,58 @@ func (c *OperatorConfig) GetMetricsServerMinSamplesRequired() int {
 // GetMetricsServerTargetTTL returns the target eviction TTL.
 func (c *OperatorConfig) GetMetricsServerTargetTTL() time.Duration {
 	return c.MetricsServerTargetTTL
+}
+
+// GetPrometheusAuthType returns the Prometheus authentication type.
+func (c *OperatorConfig) GetPrometheusAuthType() string {
+	return c.PrometheusAuthType
+}
+
+// GetPrometheusUsername returns the Prometheus username (from flag or env).
+func (c *OperatorConfig) GetPrometheusUsername() string {
+	if c.PrometheusUsername != "" {
+		return c.PrometheusUsername
+	}
+	return os.Getenv("PROMETHEUS_USERNAME")
+}
+
+// GetPrometheusPassword returns the Prometheus password (from flag or env).
+func (c *OperatorConfig) GetPrometheusPassword() string {
+	if c.PrometheusPassword != "" {
+		return c.PrometheusPassword
+	}
+	return os.Getenv("PROMETHEUS_PASSWORD")
+}
+
+// GetPrometheusBearerToken returns the Prometheus bearer token (from flag or env).
+func (c *OperatorConfig) GetPrometheusBearerToken() string {
+	if c.PrometheusBearerToken != "" {
+		return c.PrometheusBearerToken
+	}
+	return os.Getenv("PROMETHEUS_BEARER_TOKEN")
+}
+
+// GetPrometheusTLSCAFile returns the Prometheus TLS CA file path.
+func (c *OperatorConfig) GetPrometheusTLSCAFile() string {
+	return c.PrometheusTLSCAFile
+}
+
+// GetPrometheusTLSCertFile returns the Prometheus TLS cert file path.
+func (c *OperatorConfig) GetPrometheusTLSCertFile() string {
+	return c.PrometheusTLSCertFile
+}
+
+// GetPrometheusTLSKeyFile returns the Prometheus TLS key file path.
+func (c *OperatorConfig) GetPrometheusTLSKeyFile() string {
+	return c.PrometheusTLSKeyFile
+}
+
+// GetPrometheusTLSInsecure returns whether to skip TLS verification.
+func (c *OperatorConfig) GetPrometheusTLSInsecure() bool {
+	return c.PrometheusTLSInsecure
+}
+
+// GetPrometheusTimeout returns the Prometheus HTTP client timeout.
+func (c *OperatorConfig) GetPrometheusTimeout() time.Duration {
+	return c.PrometheusTimeout
 }

@@ -1,0 +1,89 @@
+# Example Helm values for OptiPod with Prometheus authentication
+# This file demonstrates various authentication configurations
+
+# Example 1: Basic Authentication with existing secret
+---
+metricsProvider:
+  type: prometheus
+  prometheus:
+    url: "https://prometheus.example.com"
+    auth:
+      type: basic
+      basic:
+        existingSecret:
+          name: prometheus-credentials
+          usernameKey: username
+          passwordKey: password  # pragma: allowlist secret
+    timeout: "30s"
+
+---
+# Example 2: Bearer Token Authentication
+metricsProvider:
+  type: prometheus
+  prometheus:
+    url: "https://prometheus.example.com"
+    auth:
+      type: bearer
+      bearer:
+        existingSecret:
+          name: prometheus-token
+          key: token
+
+---
+# Example 3: mTLS with client certificates
+metricsProvider:
+  type: prometheus
+  prometheus:
+    url: "https://prometheus.example.com"
+    tls:
+      enabled: true
+      existingSecret:
+        name: prometheus-tls
+        caKey: ca.crt
+        certKey: tls.crt
+        keyKey: tls.key
+
+---
+# Example 4: Basic Auth + TLS
+metricsProvider:
+  type: prometheus
+  prometheus:
+    url: "https://prometheus.example.com"
+    auth:
+      type: basic
+      basic:
+        existingSecret:
+          name: prometheus-credentials
+    tls:
+      enabled: true
+      existingSecret:
+        name: prometheus-tls
+
+---
+# Example 5: AWS Managed Prometheus (AMP)
+metricsProvider:
+  type: prometheus
+  prometheus:
+    url: "https://aps-workspaces.us-east-1.amazonaws.com/workspaces/ws-xxx"
+    auth:
+      type: bearer
+      bearer:
+        existingSecret:
+          name: amp-token
+          key: token
+    timeout: "60s"
+
+---
+# Example 6: Self-signed certificate with skip verify (NOT RECOMMENDED FOR PRODUCTION)
+metricsProvider:
+  type: prometheus
+  prometheus:
+    url: "https://prometheus.example.com"
+    auth:
+      type: basic
+      basic:
+        existingSecret:
+          name: prometheus-credentials
+    tls:
+      enabled: true
+      insecureSkipVerify: true  # Only for testing!

@@ -7,89 +7,89 @@ Installed in namespace: {{ include "optipod.namespace" . }}
 
 🎉 OptipPod webhook is ENABLED
 
-The mutating webhook will automatically optimize pod resources based on your OptimizationPolicies.
-
-📋 Quick Start:
-
-1. Check the webhook deployment status:
-   kubectl get deployment {{ include "optipod.webhook.deploymentName" . }} -n {{ include "optipod.namespace" . }}
-
-2. Verify the webhook configuration:
-   kubectl get mutatingwebhookconfiguration {{ include "optipod.webhook.configName" . }}
-
-3. Check cert-manager certificate status:
-   kubectl get certificate -n {{ include "optipod.namespace" . }}
-
-4. View webhook logs:
-   kubectl logs -n {{ include "optipod.namespace" . }} -l {{ include "optipod.webhook.selectorLabels" . | replace "\n" "," }}
-
 {{- if .Values.certManager.install }}
 📦 cert-manager is being installed as part of this release
-
-   The bootstrap job will automatically create the required certificates.
    Check bootstrap job status:
    kubectl logs -n {{ include "optipod.namespace" . }} job/{{ include "optipod.fullname" . }}-cert-manager-bootstrap
 {{- else }}
 {{- $certManagerCRD := (lookup "apiextensions.k8s.io/v1" "CustomResourceDefinition" "" "certificates.cert-manager.io") }}
 {{- if $certManagerCRD }}
-✅ Using existing cert-manager installation detected in cluster
-
-   Certificates will be created automatically using your existing cert-manager.
+✅ Using existing cert-manager installation
 {{- else }}
 ⚠️  WARNING: cert-manager not found!
-
-   You set certManager.install=false but cert-manager is not installed in the cluster.
-   The webhook requires cert-manager for certificate management.
-
-   Option 1 - Install cert-manager:
+   Install cert-manager:
    kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.2/cert-manager.yaml
 
-   Option 2 - Use bundled cert-manager:
+   Or use bundled cert-manager:
    helm upgrade {{ .Release.Name }} {{ .Chart.Name }} --set certManager.install=true --reuse-values -n {{ include "optipod.namespace" . }}
 {{- end }}
 {{- end }}
-
-📝 To enable webhook optimization for a pod, add this annotation:
-   annotations:
-     optipod.io/webhook-enabled: "true"
-
-Example:
-   apiVersion: v1
-   kind: Pod
-   metadata:
-     name: my-app
-     annotations:
-       optipod.io/webhook-enabled: "true"
-   spec:
-     containers:
-     - name: app
-       image: nginx
 
 {{- else }}
 
 ℹ️  OptipPod webhook is DISABLED
 
-The webhook is not installed. Only Server-Side Apply (SSA) mode is available.
-
-To enable the webhook, upgrade the release:
-   helm upgrade {{ .Release.Name }} {{ .Chart.Name }} --set webhook.enabled=true
+To enable the webhook:
+   helm upgrade {{ .Release.Name }} {{ .Chart.Name }} --set webhook.enabled=true -n {{ include "optipod.namespace" . }}
 
 {{- end }}
 
-🔍 Next Steps:
+📋 Quick Start:
 
-1. Create an OptimizationPolicy:
-   kubectl apply -f https://raw.githubusercontent.com/optipod/optipod/main/config/samples/basic-policy.yaml
+1. Create an OptimizationPolicy that applies to all workloads:
 
-2. Monitor optimization activity:
-   kubectl get optimizationpolicy -A
+cat <<EOF | kubectl apply -f -
+apiVersion: optipod.optipod.io/v1alpha1
+kind: OptimizationPolicy
+metadata:
+  name: all-workloads
+  namespace: {{ include "optipod.namespace" . }}
+spec:
+  mode: Auto
+  selector:
+    namespaceSelector:
+      matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: NotIn
+          values:
+            - kube-system
+            - kube-public
+            - kube-node-lease
+  metricsConfig:
+    provider: prometheus
+    rollingWindow: 24h
+    percentile: P90
+    safetyFactor: 1.2
+  resourceBounds:
+    cpu:
+      min: "100m"
+      max: "4000m"
+    memory:
+      min: "128Mi"
+      max: "8Gi"
+  updateStrategy:
+    allowInPlaceResize: true
+    allowRecreate: false
+    updateRequestsOnly: true
+    useServerSideApply: true
+  reconciliationInterval: 5m
+EOF
 
-3. View metrics (if enabled):
-   kubectl port-forward -n {{ include "optipod.namespace" . }} svc/{{ include "optipod.fullname" . }}-metrics 8080:8080
-   # Visit http://localhost:8080/metrics
+2. Generate HTML recommendation report:
+
+   curl -sL https://raw.githubusercontent.com/optipod/optipod/main/scripts/optipod-recommendation-report.sh | bash -s -- --output html --file report.html
+   open report.html
 
 📚 Documentation: https://optipod.io/docs
-🐛 Issues: https://github.com/optipod/optipod/issues
-💬 Community: https://optipod.io/community
+
+🔍 Troubleshooting:
+
+   View controller logs:
+   kubectl logs -n {{ include "optipod.namespace" . }} -l app.kubernetes.io/component=controller
+
+{{- if .Values.webhook.enabled }}
+   View webhook logs:
+   kubectl logs -n {{ include "optipod.namespace" . }} -l app.kubernetes.io/component=webhook
+{{- end }}
 
 For more information, visit: {{ .Chart.Home }}

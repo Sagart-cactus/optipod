@@ -1,0 +1,400 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Prometheus Authentication | OptiPod Docs</title>
+    <meta name="robots" content="index, follow">
+    <meta name="description" content="Configure OptiPod to connect to secured Prometheus instances with basic auth, bearer tokens, or mTLS">
+    <link rel="canonical" href="https://sagart-cactus.github.io/optipod/docs/prometheus-authentication/">
+    <link rel="icon" type="image/svg+xml" href="../../images/favicon.svg">
+    <link rel="stylesheet" href="../../css/docs.css">
+    <link rel="stylesheet" href="../../css/hljs.css">
+  </head>
+  <body class="docs">
+    <header class="docs-header">
+      <div class="docs-container docs-header-inner">
+        <a class="docs-brand" href="../../" aria-label="OptiPod home">
+          <img src="../../images/optipod-logo-themed.svg" alt="OptiPod" width="34" height="34">
+          <span>OptiPod Docs</span>
+        </a>
+        <nav class="docs-toplinks" aria-label="Top links">
+          <a class="docs-pill" href="../">Docs</a>
+          <a class="docs-pill" href="https://github.com/Sagart-cactus/optipod" target="_blank" rel="noreferrer">GitHub</a>
+        </nav>
+      </div>
+    </header>
+
+    <div class="docs-container docs-layout">
+      <nav class="docs-nav" aria-label="Docs navigation">
+        <a class="docs-pill" href="../">Docs Home</a>
+        <h2>Getting Started</h2>
+        <a href="../installation/">Installation Guide</a>
+        <a href="../examples/">Examples</a>
+        <a href="../impact-report/">Impact Report</a>
+        <h2>Configuration</h2>
+        <a href="../crd-reference/">CRD Reference</a>
+        <a href="../webhook-configuration/">Webhook Configuration</a>
+        <a href="../prometheus-setup/">Prometheus Setup</a>
+        <a href="../prometheus-authentication/" aria-current="page">Prometheus Authentication</a>
+        <a href="../metrics-server-sampling/">Metrics Server Sampling</a>
+        <h2>Integration</h2>
+        <a href="../argocd-integration/">ArgoCD Integration</a>
+        <h2>Development</h2>
+        <a href="../contributing/">Contributing</a>
+        <a href="../pre-commit-setup/">Pre-commit Setup</a>
+      </nav>
+
+      <main class="docs-main" id="main">
+        <div class="docs-meta">
+          <div class="breadcrumbs">Docs / Prometheus Authentication</div>
+          <div class="actions"><a href="https://github.com/Sagart-cactus/optipod/blob/main/docs/PROMETHEUS_AUTHENTICATION.md" target="_blank" rel="noreferrer">View source (Markdown)</a></div>
+        </div>
+
+        <article class="doc-content">
+          <h1 id="prometheus-authentication">Prometheus Authentication</h1>
+
+          <p>This guide explains how to configure OptiPod to connect to secured Prometheus instances using various authentication methods.</p>
+
+          <div class="callout callout-info">
+            <strong>🔒 Production Ready:</strong> OptiPod supports multiple authentication methods for secure Prometheus connections including basic auth, bearer tokens, and mTLS.
+          </div>
+
+          <h2 id="quick-start">Quick Start</h2>
+
+          <h3 id="basic-authentication">Basic Authentication</h3>
+
+          <pre><code class="hljs language-bash"><span class="hljs-comment"># Create secret</span>
+kubectl create secret generic prometheus-credentials \
+  --from-literal=username=optipod \
+  --from-literal=password=<span class="hljs-string">'your-password'</span> \
+  -n optipod-system
+
+<span class="hljs-comment"># Install with Helm</span>
+helm install optipod ./charts/optipod \
+  --<span class="hljs-built_in">set</span> metricsProvider.type=prometheus \
+  --<span class="hljs-built_in">set</span> metricsProvider.prometheus.url=https://prometheus.example.com \
+  --<span class="hljs-built_in">set</span> metricsProvider.prometheus.auth.type=basic \
+  --<span class="hljs-built_in">set</span> metricsProvider.prometheus.auth.basic.existingSecret.name=prometheus-credentials \
+  -n optipod-system</code></pre>
+
+          <h3 id="bearer-token">Bearer Token</h3>
+
+          <pre><code class="hljs language-bash"><span class="hljs-comment"># Create secret</span>
+kubectl create secret generic prometheus-token \
+  --from-literal=token=<span class="hljs-string">'your-bearer-token'</span> \
+  -n optipod-system
+
+<span class="hljs-comment"># Install with Helm</span>
+helm install optipod ./charts/optipod \
+  --<span class="hljs-built_in">set</span> metricsProvider.type=prometheus \
+  --<span class="hljs-built_in">set</span> metricsProvider.prometheus.url=https://prometheus.example.com \
+  --<span class="hljs-built_in">set</span> metricsProvider.prometheus.auth.type=bearer \
+  --<span class="hljs-built_in">set</span> metricsProvider.prometheus.auth.bearer.existingSecret.name=prometheus-token \
+  -n optipod-system</code></pre>
+
+          <h3 id="mutual-tls">Mutual TLS (mTLS)</h3>
+
+          <pre><code class="hljs language-bash"><span class="hljs-comment"># Create TLS secret</span>
+kubectl create secret generic prometheus-tls \
+  --from-file=ca.crt=ca.pem \
+  --from-file=tls.crt=client.pem \
+  --from-file=tls.key=client-key.pem \
+  -n optipod-system
+
+<span class="hljs-comment"># Install with Helm</span>
+helm install optipod ./charts/optipod \
+  --<span class="hljs-built_in">set</span> metricsProvider.type=prometheus \
+  --<span class="hljs-built_in">set</span> metricsProvider.prometheus.url=https://prometheus.example.com \
+  --<span class="hljs-built_in">set</span> metricsProvider.prometheus.tls.enabled=<span class="hljs-literal">true</span> \
+  --<span class="hljs-built_in">set</span> metricsProvider.prometheus.tls.existingSecret.name=prometheus-tls \
+  -n optipod-system</code></pre>
+
+          <h2 id="authentication-methods">Authentication Methods</h2>
+
+          <table>
+            <thead>
+              <tr>
+                <th>Method</th>
+                <th>Use Case</th>
+                <th>Security Level</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>None</strong></td>
+                <td>Development, unsecured Prometheus</td>
+                <td>⚠️ Low</td>
+              </tr>
+              <tr>
+                <td><strong>Basic Auth</strong></td>
+                <td>Simple username/password</td>
+                <td>⭐⭐ Medium</td>
+              </tr>
+              <tr>
+                <td><strong>Bearer Token</strong></td>
+                <td>OAuth2/OIDC, cloud providers</td>
+                <td>⭐⭐⭐ High</td>
+              </tr>
+              <tr>
+                <td><strong>mTLS</strong></td>
+                <td>Enterprise, high security</td>
+                <td>⭐⭐⭐⭐ Very High</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <h2 id="helm-values-configuration">Helm Values Configuration</h2>
+
+          <p>Create a <code>values.yaml</code> file with your authentication configuration:</p>
+
+          <pre><code class="hljs language-yaml"><span class="hljs-attr">metricsProvider:</span>
+  <span class="hljs-attr">type:</span> <span class="hljs-string">prometheus</span>
+  <span class="hljs-attr">prometheus:</span>
+    <span class="hljs-attr">url:</span> <span class="hljs-string">"https://prometheus.example.com"</span>
+    <span class="hljs-attr">auth:</span>
+      <span class="hljs-attr">type:</span> <span class="hljs-string">basic</span>  <span class="hljs-comment"># or "bearer"</span>
+      <span class="hljs-attr">basic:</span>
+        <span class="hljs-attr">existingSecret:</span>
+          <span class="hljs-attr">name:</span> <span class="hljs-string">prometheus-credentials</span>
+    <span class="hljs-attr">tls:</span>
+      <span class="hljs-attr">enabled:</span> <span class="hljs-literal">true</span>
+      <span class="hljs-attr">existingSecret:</span>
+        <span class="hljs-attr">name:</span> <span class="hljs-string">prometheus-tls</span>
+    <span class="hljs-attr">timeout:</span> <span class="hljs-string">"30s"</span></code></pre>
+
+          <p>Install with your values file:</p>
+
+          <pre><code class="hljs language-bash">helm install optipod ./charts/optipod -f values.yaml -n optipod-system</code></pre>
+
+          <h2 id="cloud-providers">Cloud Provider Examples</h2>
+
+          <h3 id="aws-managed-prometheus">AWS Managed Prometheus (AMP)</h3>
+
+          <pre><code class="hljs language-bash"><span class="hljs-comment"># Get AWS token</span>
+TOKEN=$(aws sts get-session-token --query <span class="hljs-string">'Credentials.SessionToken'</span> --output text)
+
+<span class="hljs-comment"># Create secret</span>
+kubectl create secret generic amp-token \
+  --from-literal=token=<span class="hljs-string">"<span class="hljs-variable">$TOKEN</span>"</span> \
+  -n optipod-system
+
+<span class="hljs-comment"># Install</span>
+helm install optipod ./charts/optipod \
+  --<span class="hljs-built_in">set</span> metricsProvider.type=prometheus \
+  --<span class="hljs-built_in">set</span> metricsProvider.prometheus.url=https://aps-workspaces.us-east-1.amazonaws.com/workspaces/ws-xxx \
+  --<span class="hljs-built_in">set</span> metricsProvider.prometheus.auth.type=bearer \
+  --<span class="hljs-built_in">set</span> metricsProvider.prometheus.auth.bearer.existingSecret.name=amp-token \
+  -n optipod-system</code></pre>
+
+          <h3 id="gcp-managed-prometheus">GCP Managed Prometheus</h3>
+
+          <pre><code class="hljs language-bash"><span class="hljs-comment"># Get GCP token</span>
+TOKEN=$(gcloud auth print-access-token)
+
+<span class="hljs-comment"># Create secret</span>
+kubectl create secret generic gcp-prometheus-token \
+  --from-literal=token=<span class="hljs-string">"<span class="hljs-variable">$TOKEN</span>"</span> \
+  -n optipod-system
+
+<span class="hljs-comment"># Install</span>
+helm install optipod ./charts/optipod \
+  --<span class="hljs-built_in">set</span> metricsProvider.type=prometheus \
+  --<span class="hljs-built_in">set</span> metricsProvider.prometheus.url=https://monitoring.googleapis.com/v1/projects/PROJECT_ID/location/global/prometheus \
+  --<span class="hljs-built_in">set</span> metricsProvider.prometheus.auth.type=bearer \
+  --<span class="hljs-built_in">set</span> metricsProvider.prometheus.auth.bearer.existingSecret.name=gcp-prometheus-token \
+  -n optipod-system</code></pre>
+
+          <h2 id="helper-script">Helper Script</h2>
+
+          <p>Use the provided script for easy secret creation:</p>
+
+          <pre><code class="hljs language-bash"><span class="hljs-comment"># Basic auth</span>
+./scripts/create-prometheus-secrets.sh \
+  --<span class="hljs-built_in">type</span> basic \
+  --username optipod \
+  --password <span class="hljs-string">'your-password'</span>
+
+<span class="hljs-comment"># Bearer token</span>
+./scripts/create-prometheus-secrets.sh \
+  --<span class="hljs-built_in">type</span> bearer \
+  --token <span class="hljs-string">'your-token'</span>
+
+<span class="hljs-comment"># TLS</span>
+./scripts/create-prometheus-secrets.sh \
+  --<span class="hljs-built_in">type</span> tls \
+  --ca-file ca.pem \
+  --cert-file client.pem \
+  --key-file client-key.pem</code></pre>
+
+          <h2 id="verification">Verification</h2>
+
+          <h3 id="check-controller-logs">Check Controller Logs</h3>
+
+          <pre><code class="hljs language-bash">kubectl logs -n optipod-system deployment/optipod-controller -f</code></pre>
+
+          <p>Look for:</p>
+          <ul>
+            <li>✅ <code>"Prometheus health check passed"</code></li>
+            <li>✅ No authentication errors (401, 403)</li>
+            <li>✅ Metrics queries succeeding</li>
+          </ul>
+
+          <h3 id="verify-secrets">Verify Secrets</h3>
+
+          <pre><code class="hljs language-bash"><span class="hljs-comment"># Check environment variables</span>
+kubectl <span class="hljs-built_in">exec</span> -n optipod-system deployment/optipod-controller -- <span class="hljs-built_in">env</span> | grep PROMETHEUS
+
+<span class="hljs-comment"># Check mounted files (for TLS)</span>
+kubectl <span class="hljs-built_in">exec</span> -n optipod-system deployment/optipod-controller -- ls -la /etc/prometheus/tls/</code></pre>
+
+          <h3 id="test-connectivity">Test Connectivity</h3>
+
+          <pre><code class="hljs language-bash"><span class="hljs-comment"># From within cluster</span>
+kubectl run -it --rm debug --image=curlimages/curl --restart=Never -- \
+  curl -v -u username:password https://prometheus:9090/api/v1/query?query=up</code></pre>
+
+          <h2 id="security-best-practices">Security Best Practices</h2>
+
+          <div class="callout callout-success">
+            <h4>✅ DO</h4>
+            <ul>
+              <li>Use Kubernetes Secrets for credentials</li>
+              <li>Enable TLS for production</li>
+              <li>Rotate credentials regularly</li>
+              <li>Use least-privilege access</li>
+              <li>Monitor authentication failures</li>
+            </ul>
+          </div>
+
+          <div class="callout callout-danger">
+            <h4>❌ DON'T</h4>
+            <ul>
+              <li>Put credentials in values.yaml</li>
+              <li>Use command-line flags for passwords</li>
+              <li>Disable TLS verification in production</li>
+              <li>Use default/weak passwords</li>
+              <li>Share credentials across environments</li>
+            </ul>
+          </div>
+
+          <h2 id="troubleshooting">Troubleshooting</h2>
+
+          <h3 id="common-issues">Common Issues</h3>
+
+          <table>
+            <thead>
+              <tr>
+                <th>Error</th>
+                <th>Cause</th>
+                <th>Solution</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>401 Unauthorized</td>
+                <td>Invalid credentials</td>
+                <td>Verify secret contents, recreate if needed</td>
+              </tr>
+              <tr>
+                <td>403 Forbidden</td>
+                <td>Insufficient permissions</td>
+                <td>Check Prometheus user permissions</td>
+              </tr>
+              <tr>
+                <td>Certificate error</td>
+                <td>Invalid CA or cert</td>
+                <td>Verify certificate files and expiration</td>
+              </tr>
+              <tr>
+                <td>Connection refused</td>
+                <td>Wrong URL or network issue</td>
+                <td>Test connectivity from within cluster</td>
+              </tr>
+              <tr>
+                <td>Timeout</td>
+                <td>Slow Prometheus or network</td>
+                <td>Increase timeout value</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <h2 id="additional-resources">Additional Resources</h2>
+
+          <ul>
+            <li><a href="https://github.com/Sagart-cactus/optipod/blob/main/docs/PROMETHEUS_QUICK_START.md" target="_blank" rel="noreferrer">Quick Start Guide</a> - Get started in 5 minutes</li>
+            <li><a href="https://github.com/Sagart-cactus/optipod/blob/main/docs/PROMETHEUS_MIGRATION_GUIDE.md" target="_blank" rel="noreferrer">Migration Guide</a> - Migrate from unsecured Prometheus</li>
+            <li><a href="https://github.com/Sagart-cactus/optipod/blob/main/docs/PROMETHEUS_AUTH_CHECKLIST.md" target="_blank" rel="noreferrer">Setup Checklist</a> - Verification checklist</li>
+            <li><a href="https://github.com/Sagart-cactus/optipod/blob/main/charts/optipod/examples/prometheus-auth-values.yaml" target="_blank" rel="noreferrer">Example Values</a> - Ready-to-use configurations</li>
+          </ul>
+
+          <h2 id="configuration-reference">Configuration Reference</h2>
+
+          <table>
+            <thead>
+              <tr>
+                <th>Parameter</th>
+                <th>Description</th>
+                <th>Default</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>metricsProvider.type</code></td>
+                <td>Metrics provider type</td>
+                <td><code>metrics-server</code></td>
+              </tr>
+              <tr>
+                <td><code>metricsProvider.prometheus.url</code></td>
+                <td>Prometheus server URL</td>
+                <td><code>http://prometheus:9090</code></td>
+              </tr>
+              <tr>
+                <td><code>metricsProvider.prometheus.auth.type</code></td>
+                <td>Authentication type</td>
+                <td><code>none</code></td>
+              </tr>
+              <tr>
+                <td><code>metricsProvider.prometheus.auth.basic.existingSecret.name</code></td>
+                <td>Secret name for basic auth</td>
+                <td><code>""</code></td>
+              </tr>
+              <tr>
+                <td><code>metricsProvider.prometheus.auth.bearer.existingSecret.name</code></td>
+                <td>Secret name for bearer token</td>
+                <td><code>""</code></td>
+              </tr>
+              <tr>
+                <td><code>metricsProvider.prometheus.tls.enabled</code></td>
+                <td>Enable TLS</td>
+                <td><code>false</code></td>
+              </tr>
+              <tr>
+                <td><code>metricsProvider.prometheus.tls.insecureSkipVerify</code></td>
+                <td>Skip TLS verification</td>
+                <td><code>false</code></td>
+              </tr>
+              <tr>
+                <td><code>metricsProvider.prometheus.tls.existingSecret.name</code></td>
+                <td>Secret name for TLS certificates</td>
+                <td><code>""</code></td>
+              </tr>
+              <tr>
+                <td><code>metricsProvider.prometheus.timeout</code></td>
+                <td>HTTP client timeout</td>
+                <td><code>30s</code></td>
+              </tr>
+            </tbody>
+          </table>
+
+        </article>
+      </main>
+    </div>
+
+    <footer class="docs-footer">
+      <div class="docs-container">
+        <div>Found an issue? Open a ticket on <a href="https://github.com/Sagart-cactus/optipod/issues" target="_blank" rel="noreferrer">GitHub Issues</a>.</div>
+      </div>
+    </footer>
+  </body>
+</html>
