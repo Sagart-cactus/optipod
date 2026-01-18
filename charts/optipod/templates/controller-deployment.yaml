@@ -8,6 +8,10 @@ metadata:
     app.kubernetes.io/component: controller
 spec:
   replicas: {{ .Values.controller.replicaCount }}
+  {{- with .Values.controller.strategy }}
+  strategy:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
   selector:
     matchLabels:
       {{- include "optipod.selectorLabels" . | nindent 6 }}
@@ -21,7 +25,15 @@ spec:
       labels:
         {{- include "optipod.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: controller
+        app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
     spec:
+      {{- if .Values.controller.priorityClassName }}
+      priorityClassName: {{ .Values.controller.priorityClassName }}
+      {{- end }}
+      {{- if .Values.controller.dnsPolicy }}
+      dnsPolicy: {{ .Values.controller.dnsPolicy }}
+      {{- end }}
+      terminationGracePeriodSeconds: {{ .Values.controller.terminationGracePeriodSeconds | default 30 }}
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
@@ -29,6 +41,10 @@ spec:
       serviceAccountName: {{ include "optipod.serviceAccountName" . }}
       securityContext:
         {{- toYaml .Values.controller.podSecurityContext | nindent 8 }}
+      {{- with .Values.controller.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
       - name: manager
         image: {{ include "optipod.image" . }}
@@ -36,14 +52,61 @@ spec:
         command:
         - /manager
         args:
-        {{- if .Values.webhook.enabled }}
         - --enable-webhook=false
-        {{- else }}
-        - --enable-webhook=false
+        - --health-probe-bind-address=:{{ .Values.controller.ports.health }}
+        - --metrics-bind-address=:{{ .Values.controller.ports.metrics }}
+        - --leader-elect={{ .Values.controller.leaderElect }}
+        {{- if .Values.controller.dryRun }}
+        - --dry-run=true
         {{- end }}
-        - --health-probe-bind-address=:8081
-        - --metrics-bind-address=:8080
-        - --leader-elect=true
+        {{- if .Values.controller.reconciliationInterval }}
+        - --reconciliation-interval={{ .Values.controller.reconciliationInterval }}
+        {{- end }}
+        {{- if .Values.controller.enableHTTP2 }}
+        - --enable-http2=true
+        {{- end }}
+        {{- if .Values.metrics.secure }}
+        - --metrics-secure=true
+        {{- end }}
+        {{- if .Values.metrics.tls.certPath }}
+        - --metrics-cert-path={{ .Values.metrics.tls.certPath }}
+        {{- end }}
+        {{- if .Values.metricsProvider }}
+        - --metrics-provider={{ .Values.metricsProvider.type }}
+        {{- if eq .Values.metricsProvider.type "prometheus" }}
+        - --prometheus-url={{ .Values.metricsProvider.prometheus.url }}
+        {{- if .Values.metricsProvider.prometheus.auth.type }}
+        - --prometheus-auth-type={{ .Values.metricsProvider.prometheus.auth.type }}
+        {{- end }}
+        {{- if .Values.metricsProvider.prometheus.timeout }}
+        - --prometheus-timeout={{ .Values.metricsProvider.prometheus.timeout }}
+        {{- end }}
+        {{- if .Values.metricsProvider.prometheus.tls.insecureSkipVerify }}
+        - --prometheus-tls-insecure-skip-verify=true
+        {{- end }}
+        {{- if .Values.metricsProvider.prometheus.tls.existingSecret.name }}
+        - --prometheus-tls-ca-file=/etc/prometheus/tls/{{ .Values.metricsProvider.prometheus.tls.existingSecret.caKey }}
+        {{- if .Values.metricsProvider.prometheus.tls.existingSecret.certKey }}
+        - --prometheus-tls-cert-file=/etc/prometheus/tls/{{ .Values.metricsProvider.prometheus.tls.existingSecret.certKey }}
+        - --prometheus-tls-key-file=/etc/prometheus/tls/{{ .Values.metricsProvider.prometheus.tls.existingSecret.keyKey }}
+        {{- end }}
+        {{- end }}
+        {{- end }}
+        {{- if eq .Values.metricsProvider.type "metrics-server" }}
+        {{- if .Values.metricsProvider.metricsServer.samplingInterval }}
+        - --metrics-server-sampling-interval={{ .Values.metricsProvider.metricsServer.samplingInterval }}
+        {{- end }}
+        {{- if .Values.metricsProvider.metricsServer.maxSamplesPerTarget }}
+        - --metrics-server-max-samples-per-target={{ .Values.metricsProvider.metricsServer.maxSamplesPerTarget }}
+        {{- end }}
+        {{- if .Values.metricsProvider.metricsServer.minSamplesRequired }}
+        - --metrics-server-min-samples-required={{ .Values.metricsProvider.metricsServer.minSamplesRequired }}
+        {{- end }}
+        {{- if .Values.metricsProvider.metricsServer.targetTTL }}
+        - --metrics-server-target-ttl={{ .Values.metricsProvider.metricsServer.targetTTL }}
+        {{- end }}
+        {{- end }}
+        {{- end }}
         {{- if .Values.logging.level }}
         - --zap-log-level={{ .Values.logging.level }}
         {{- end }}
@@ -52,10 +115,10 @@ spec:
         {{- end }}
         ports:
         - name: metrics
-          containerPort: 8080
+          containerPort: {{ .Values.controller.ports.metrics }}
           protocol: TCP
         - name: health
-          containerPort: 8081
+          containerPort: {{ .Values.controller.ports.health }}
           protocol: TCP
         livenessProbe:
           {{- toYaml .Values.controller.livenessProbe | nindent 10 }}
@@ -65,8 +128,15 @@ spec:
           {{- toYaml .Values.controller.securityContext | nindent 10 }}
         resources:
           {{- toYaml .Values.controller.resources | nindent 10 }}
-        {{- with .Values.extraVolumeMounts }}
         volumeMounts:
+        {{- if and .Values.metricsProvider (eq .Values.metricsProvider.type "prometheus") }}
+        {{- if .Values.metricsProvider.prometheus.tls.existingSecret.name }}
+        - name: prometheus-tls
+          mountPath: /etc/prometheus/tls
+          readOnly: true
+        {{- end }}
+        {{- end }}
+        {{- with .Values.extraVolumeMounts }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
         env:
@@ -74,11 +144,54 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: metadata.namespace
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        {{- if and .Values.metricsProvider (eq .Values.metricsProvider.type "prometheus") }}
+        {{- if eq .Values.metricsProvider.prometheus.auth.type "basic" }}
+        {{- if .Values.metricsProvider.prometheus.auth.basic.existingSecret.name }}
+        - name: PROMETHEUS_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.metricsProvider.prometheus.auth.basic.existingSecret.name }}
+              key: {{ .Values.metricsProvider.prometheus.auth.basic.existingSecret.usernameKey }}
+        - name: PROMETHEUS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.metricsProvider.prometheus.auth.basic.existingSecret.name }}
+              key: {{ .Values.metricsProvider.prometheus.auth.basic.existingSecret.passwordKey }}
+        {{- else if .Values.metricsProvider.prometheus.auth.basic.username }}
+        - name: PROMETHEUS_USERNAME
+          value: {{ .Values.metricsProvider.prometheus.auth.basic.username | quote }}
+        - name: PROMETHEUS_PASSWORD
+          value: {{ .Values.metricsProvider.prometheus.auth.basic.password | quote }}
+        {{- end }}
+        {{- else if eq .Values.metricsProvider.prometheus.auth.type "bearer" }}
+        {{- if .Values.metricsProvider.prometheus.auth.bearer.existingSecret.name }}
+        - name: PROMETHEUS_BEARER_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.metricsProvider.prometheus.auth.bearer.existingSecret.name }}
+              key: {{ .Values.metricsProvider.prometheus.auth.bearer.existingSecret.key }}
+        {{- else if .Values.metricsProvider.prometheus.auth.bearer.token }}
+        - name: PROMETHEUS_BEARER_TOKEN
+          value: {{ .Values.metricsProvider.prometheus.auth.bearer.token | quote }}
+        {{- end }}
+        {{- end }}
+        {{- end }}
         {{- with .Values.extraEnv }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
-      {{- with .Values.extraVolumes }}
       volumes:
+      {{- if and .Values.metricsProvider (eq .Values.metricsProvider.type "prometheus") }}
+      {{- if .Values.metricsProvider.prometheus.tls.existingSecret.name }}
+      - name: prometheus-tls
+        secret:
+          secretName: {{ .Values.metricsProvider.prometheus.tls.existingSecret.name }}
+      {{- end }}
+      {{- end }}
+      {{- with .Values.extraVolumes }}
       {{- toYaml . | nindent 6 }}
       {{- end }}
       {{- with .Values.controller.nodeSelector }}

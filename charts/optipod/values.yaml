@@ -37,6 +37,32 @@ rbac:
 controller:
   replicaCount: 1
 
+  # Deployment strategy
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+
+  # Port configuration
+  ports:
+    health: 8081
+    metrics: 8080
+
+  # Operator configuration
+  dryRun: false
+  leaderElect: true
+  reconciliationInterval: "5m"
+  enableHTTP2: false
+
+  # Pod configuration
+  priorityClassName: ""
+  terminationGracePeriodSeconds: 30
+  dnsPolicy: ""
+
+  # Topology spread constraints
+  topologySpreadConstraints: []
+
   resources:
     limits:
       cpu: 500m
@@ -91,6 +117,11 @@ webhook:
   # Webhook port
   port: 9443
 
+  # Port configuration for metrics and health
+  ports:
+    health: 8081
+    metrics: 8080
+
   # Certificate directory
   certDir: /tmp/k8s-webhook-server/serving-certs
 
@@ -129,6 +160,30 @@ webhook:
   deployment:
     replicaCount: 2
 
+    # Deployment strategy
+    strategy:
+      type: RollingUpdate
+      rollingUpdate:
+        maxUnavailable: 0
+        maxSurge: 1
+
+    # Port configuration
+    ports:
+      health: 8081
+      metrics: 8080
+
+    # Operator configuration
+    leaderElect: false
+    enableHTTP2: false
+
+    # Pod configuration
+    priorityClassName: ""
+    terminationGracePeriodSeconds: 30
+    dnsPolicy: ""
+
+    # Topology spread constraints
+    topologySpreadConstraints: []
+
     resources:
       limits:
         cpu: 200m
@@ -165,6 +220,22 @@ webhook:
         drop:
           - ALL
       readOnlyRootFilesystem: true
+
+    # Liveness probe
+    livenessProbe:
+      httpGet:
+        path: /healthz
+        port: 8081
+      initialDelaySeconds: 15
+      periodSeconds: 20
+
+    # Readiness probe
+    readinessProbe:
+      httpGet:
+        path: /readyz
+        port: 8081
+      initialDelaySeconds: 5
+      periodSeconds: 10
 
   # Pod Disruption Budget
   pdb:
@@ -227,10 +298,76 @@ cert-manager:
 # Metrics configuration
 metrics:
   enabled: true
+  secure: true
+
+  # TLS configuration for metrics endpoint
+  tls:
+    certPath: ""
+    certName: "tls.crt"
+    keyName: "tls.key"
+
   serviceMonitor:
     enabled: false
     interval: 30s
     scrapeTimeout: 10s
+
+# Metrics provider configuration
+metricsProvider:
+  # Type of metrics provider: "metrics-server" or "prometheus"
+  type: "metrics-server"
+
+  # Prometheus configuration (only used if type is "prometheus")
+  prometheus:
+    # Prometheus server URL
+    url: "http://prometheus:9090"
+
+    # Authentication configuration
+    auth:
+      # Authentication type: "none", "basic", or "bearer"
+      type: "none"
+
+      # Basic authentication
+      basic:
+        username: ""
+        password: ""
+        # Reference to existing secret (recommended over inline credentials)
+        existingSecret:
+          name: ""
+          usernameKey: "username"
+          passwordKey: "password"  # pragma: allowlist secret
+
+      # Bearer token authentication
+      bearer:
+        token: ""
+        # Reference to existing secret (recommended over inline token)
+        existingSecret:
+          name: ""
+          key: "token"
+
+    # TLS configuration
+    tls:
+      enabled: false
+      insecureSkipVerify: false
+      # Reference to existing secret with TLS certificates
+      existingSecret:
+        name: ""
+        caKey: "ca.crt"
+        certKey: "tls.crt"
+        keyKey: "tls.key"
+
+    # HTTP client timeout
+    timeout: "30s"
+
+  # Metrics-server configuration (only used if type is "metrics-server")
+  metricsServer:
+    # Background sampling interval
+    samplingInterval: "5m"
+    # Maximum samples to cache per target
+    maxSamplesPerTarget: 2880
+    # Minimum samples required for recommendations
+    minSamplesRequired: 10
+    # Target eviction TTL
+    targetTTL: "15m"
 
 # Observability
 logging:
