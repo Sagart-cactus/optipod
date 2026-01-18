@@ -53,6 +53,9 @@ TEST_*.md
 .claude/
 .deploy/
 
+# AI-generated documentation (temporary)
+.ai-docs/
+
 # Test files and temporary artifacts
 test-*.yaml
 temp-*.yaml
