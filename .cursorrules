@@ -1,0 +1,188 @@
+# OptiPod Project - AI Assistant Guidelines
+
+## Project Overview
+
+OptiPod is an open-source Kubernetes operator that provides explainable recommendations for CPU and memory requests/limits. It's designed to be GitOps-safe and policy-driven.
+
+**Key Principles:**
+- Recommend first, apply when ready (safe by default)
+- GitOps-compatible (no fighting with ArgoCD/Flux)
+- Explainable recommendations (no black box)
+- Policy-driven resource optimization
+
+**Tech Stack:**
+- Language: Go (Kubernetes operator)
+- Framework: Kubebuilder/controller-runtime
+- Deployment: Helm charts
+- Metrics: Prometheus integration
+- Webhook: Mutating admission webhook (optional)
+
+## Git Workflow
+
+### Branch Strategy
+**ALWAYS create a new branch before pushing code changes.**
+
+Branch naming conventions:
+- `feature/` - New features
+- `fix/` - Bug fixes
+- `chore/` - Maintenance tasks, documentation
+- `refactor/` - Code refactoring
+- `test/` - Test additions/modifications
+
+### Pre-Commit Requirements
+**ALWAYS run CI checks before committing:**
+```bash
+./scripts/ci-checks-local.sh
+```
+
+Do not commit code that fails CI checks.
+
+### Commit Message Format
+Use conventional commits:
+```
+<type>: <short description>
+
+<optional longer description>
+```
+
+Types: `feat`, `fix`, `chore`, `docs`, `refactor`, `test`, `ci`
+
+### Workflow Steps
+1. Run `./scripts/ci-checks-local.sh`
+2. Create branch: `git checkout -b <type>/<description>`
+3. Stage changes: `git add <files>`
+4. Commit: `git commit -m "type: description"`
+5. Push: `git push -u origin <branch-name>`
+6. Create PR for review
+
+## AI-Generated Documentation
+
+**ALWAYS store AI-generated documentation in `.ai-docs/` folder:**
+
+```
+.ai-docs/
+├── analysis/          # Code reviews, security analysis
+├── summaries/         # Implementation summaries
+├── checklists/        # Testing checklists
+├── workflows/         # Workflow analysis
+└── planning/          # Test plans, design docs
+```
+
+**Do NOT create AI-generated docs in project root.**
+
+Keep official documentation separate:
+- README.md, CONTRIBUTING.md, GOVERNANCE.md (project root)
+- Release notes: RELEASE_NOTES_*.md (project root)
+- Official docs: docs/ folder
+
+## Documentation Updates
+
+**ALWAYS update BOTH locations when changing documentation:**
+
+1. **`docs/` folder** - Markdown files for developers
+2. **`website/` folder** - HTML files for end users
+
+### Documentation Mapping
+
+| Topic | docs/ | website/ |
+|-------|-------|----------|
+| Installation | `docs/installation.md` | `website/docs/installation/` |
+| Configuration | `docs/configuration.md` | `website/docs/configuration/` |
+| Prometheus Auth | `docs/prometheus-auth.md` | `website/docs/prometheus-authentication/` |
+| Getting Started | `docs/getting-started.md` | `website/docs/getting-started/` |
+
+### Update Workflow
+1. Update the Markdown file in `docs/`
+2. Update the corresponding HTML file in `website/`
+3. Keep content synchronized (same info, different formats)
+4. Ensure code examples match exactly
+5. Commit both changes together
+
+**Exception:** Only update one location if user explicitly specifies "only update docs/" or "only update website/"
+
+## Code Quality Standards
+
+### Go Code
+- Follow standard Go conventions
+- Use `golangci-lint` for linting
+- Write tests for new features
+- Maintain test coverage
+- Use meaningful variable names
+- Add comments for complex logic
+
+### Helm Charts
+- Validate with `helm lint`
+- Test with `helm template`
+- Follow Helm best practices
+- Document all values in values.yaml
+- Use semantic versioning
+
+### Testing
+- Unit tests: `make test`
+- E2E tests: `make test-e2e`
+- Local CI checks: `./scripts/ci-checks-local.sh`
+
+## Project Structure
+
+```
+optipod/
+├── api/                    # CRD definitions
+├── cmd/                    # Main applications
+├── internal/               # Internal packages
+│   ├── controller/        # Kubernetes controllers
+│   ├── webhook/           # Admission webhook
+│   └── metrics/           # Metrics providers
+├── charts/                # Helm charts
+│   └── optipod/          # Main chart
+├── config/                # Kubernetes manifests
+├── docs/                  # Official documentation
+├── scripts/               # Build and utility scripts
+├── test/                  # E2E tests
+└── .ai-docs/             # AI-generated docs (gitignored)
+```
+
+## Important Notes
+
+- **GitOps Compatibility**: OptiPod must work with ArgoCD/Flux
+- **Safety First**: Default to recommend mode, require explicit opt-in for mutations
+- **Explainability**: All recommendations must be explainable
+- **No SaaS**: OptiPod runs entirely in-cluster
+- **Webhook is Optional**: Controller works standalone
+
+## Development Commands
+
+```bash
+# Run tests
+make test
+
+# Run E2E tests
+make test-e2e
+
+# Build binary
+make build
+
+# Build Docker image
+make docker-build
+
+# Install CRDs
+make install
+
+# Deploy to cluster
+make deploy
+
+# Run locally
+make run
+
+# Lint code
+make lint
+
+# Run all CI checks locally
+./scripts/ci-checks-local.sh
+```
+
+## Getting Help
+
+- Documentation: docs/ folder
+- Examples: charts/optipod/examples/
+- Issues: GitHub Issues
+- Contributing: CONTRIBUTING.md
