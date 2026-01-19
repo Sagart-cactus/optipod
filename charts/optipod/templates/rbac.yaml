@@ -75,6 +75,15 @@ rules:
   verbs:
   - create
   - patch
+# Metrics Server API (for metrics-server provider)
+- apiGroups:
+  - metrics.k8s.io
+  resources:
+  - pods
+  - nodes
+  verbs:
+  - get
+  - list
 ---
 # ClusterRoleBinding for controller manager
 apiVersion: rbac.authorization.k8s.io/v1
