@@ -25,7 +25,10 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	metricsv1beta1 "k8s.io/metrics/pkg/apis/metrics/v1beta1"
 	metricsclientset "k8s.io/metrics/pkg/client/clientset/versioned"
+	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
+
+var log = logf.Log.WithName("metrics-sampler")
 
 // TargetKey identifies a workload container across pod restarts.
 type TargetKey struct {
@@ -249,12 +252,14 @@ func (s *MetricsServerSampler) RegisterTarget(key TargetKey, podName string) {
 
 // Start begins the sampling loop. It stops when the context is cancelled.
 func (s *MetricsServerSampler) Start(ctx context.Context) error {
+	log.Info("Starting metrics-server sampler", "interval", s.interval, "targetTTL", s.targetTTL)
 	ticker := time.NewTicker(s.interval)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ctx.Done():
+			log.Info("Stopping metrics-server sampler")
 			return nil
 		case <-ticker.C:
 			s.sampleOnce(ctx)
@@ -264,14 +269,35 @@ func (s *MetricsServerSampler) Start(ctx context.Context) error {
 
 func (s *MetricsServerSampler) sampleOnce(ctx context.Context) {
 	targets := s.store.listTargets()
+
+	if len(targets) == 0 {
+		log.V(1).Info("No targets registered, skipping sampling")
+		return
+	}
+
+	log.Info("Sampling metrics", "targetCount", len(targets))
+
+	successCount := 0
+	errorCount := 0
+
 	for _, target := range targets {
 		podMetrics, err := s.metricsClientset.MetricsV1beta1().PodMetricses(target.key.Namespace).Get(ctx, target.podName, metav1.GetOptions{})
 		if err != nil {
+			log.Error(err, "Failed to get pod metrics",
+				"namespace", target.key.Namespace,
+				"pod", target.podName,
+				"container", target.key.Container)
+			errorCount++
 			continue
 		}
 
 		containerMetrics := findContainerMetrics(podMetrics, target.key.Container)
 		if containerMetrics == nil {
+			log.Error(nil, "Container not found in pod metrics",
+				"namespace", target.key.Namespace,
+				"pod", target.podName,
+				"container", target.key.Container)
+			errorCount++
 			continue
 		}
 
@@ -281,7 +307,20 @@ func (s *MetricsServerSampler) sampleOnce(ctx context.Context) {
 			MemoryByte: containerMetrics.Usage.Memory().Value(),
 		}
 		s.store.appendSample(target.key, sample)
+		successCount++
+
+		log.V(1).Info("Collected sample",
+			"namespace", target.key.Namespace,
+			"workload", target.key.WorkloadName,
+			"container", target.key.Container,
+			"cpu", fmt.Sprintf("%dm", sample.CPUMilli),
+			"memory", fmt.Sprintf("%dMi", sample.MemoryByte/(1024*1024)))
 	}
+
+	log.Info("Sampling complete",
+		"targets", len(targets),
+		"success", successCount,
+		"errors", errorCount)
 
 	s.store.evictStaleTargets(s.targetTTL)
 }

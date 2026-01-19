@@ -307,11 +307,17 @@ func main() {
 		Sampler() *metrics.MetricsServerSampler
 	}); ok {
 		if sampler := samplerProvider.Sampler(); sampler != nil {
+			setupLog.Info("Registering metrics-server sampler with manager")
 			if err := mgr.Add(sampler); err != nil {
 				setupLog.Error(err, "unable to register metrics-server sampler")
 				os.Exit(1)
 			}
+			setupLog.Info("Metrics-server sampler registered successfully")
+		} else {
+			setupLog.Info("Metrics-server sampler is nil, skipping registration")
 		}
+	} else {
+		setupLog.Info("Metrics provider does not support sampling", "provider", operatorConfig.GetMetricsProvider())
 	}
 
 	// Initialize recommendation engine
