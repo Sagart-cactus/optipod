@@ -1,0 +1,524 @@
+---
+import Layout from '~/layouts/PageLayout.astro';
+
+import Hero from '~/components/widgets/Hero.astro';
+import Features from '~/components/widgets/Features.astro';
+import Features2 from '~/components/widgets/Features2.astro';
+import Steps from '~/components/widgets/Steps.astro';
+import Content from '~/components/widgets/Content.astro';
+import CallToAction from '~/components/widgets/CallToAction.astro';
+import ComparisonTable from '~/components/widgets/ComparisonTable.astro';
+import CodeBlock from '~/components/ui/CodeBlock.astro';
+import Badge from '~/components/ui/Badge.astro';
+
+const metadata = {
+  title: 'OptiPod — Open-Source Kubernetes Resource Optimization',
+  ignoreTitleTemplate: true,
+};
+
+const comparisonRows = [
+  {
+    feature: 'GitOps-safe (Webhook strategy)',
+    description: 'Webhook strategy applies resources at admission time without conflicting with GitOps reconciliation.',
+    optipod: 'yes' as const,
+    vpa: 'partial' as const,
+    optipodDetails: 'Uses a mutating webhook to apply recommendations at admission time while GitOps controllers continue to own manifests.',
+    vpaDetails: 'Uses traditional kubectl apply/patch, can override entire resource specifications, often conflicts with GitOps reconciliation.',
+  },
+  {
+    feature: 'Safe by default (Recommend mode)',
+    description: 'Clear separation: Recommend (no mutations) → Auto (opt-in) with safety constraints.',
+    optipod: 'yes' as const,
+    vpa: 'partial' as const,
+    optipodDetails: 'Recommend mode records recommendations for review. Auto applies changes only when you explicitly opt in.',
+    vpaDetails: 'Recommendation-only usage is possible, but adoption can be less predictable in GitOps workflows depending on configuration.',
+  },
+  {
+    feature: 'Explainable recommendations',
+    description: 'Shows usage data, percentiles, safety margins, and recommendation rationale.',
+    optipod: 'yes' as const,
+    vpa: 'partial' as const,
+    optipodDetails: 'Shows actual usage data and percentiles, explains safety margin calculations, documents bound enforcement rationale, provides historical recommendation tracking.',
+    vpaDetails: 'Provides recommendations, but the rationale and rollout behavior can be harder to reason about depending on configuration.',
+  },
+  {
+    feature: 'Policy-driven safety',
+    description: 'Configurable bounds, safety margins, change-rate limits, memory protection.',
+    optipod: 'yes' as const,
+    vpa: 'partial' as const,
+    optipodDetails: 'Configurable min/max resource bounds, safety margins to prevent resource starvation, change-rate limits to prevent disruption, memory decrease protection, workload type filtering.',
+    vpaDetails: 'Basic min/max bounds only, limited change-rate control, can cause disruptive pod restarts, less sophisticated safety logic.',
+  },
+];
+
+const helmInstallCode = `# Omit --version to install the latest chart.
+VERSION=<latest> # see https://github.com/Sagart-cactus/optipod/releases/latest
+helm install optipod oci://ghcr.io/sagart-cactus/charts/optipod \\
+  --version "\${VERSION}" \\
+  --namespace optipod-system \\
+  --create-namespace`;
+
+const policyCode = `apiVersion: optipod.optipod.io/v1alpha1
+kind: OptimizationPolicy
+metadata:
+  name: safe-recommendations
+  namespace: default
+spec:
+  mode: Recommend
+  selector:
+    workloadSelector:
+      matchLabels:
+        optimize: "true"
+  metricsConfig:
+    provider: metrics-server
+    rollingWindow: 24h
+    percentile: P90
+    safetyFactor: 1.2
+  resourceBounds:
+    cpu:
+      min: "100m"
+      max: "4000m"
+    memory:
+      min: "128Mi"
+      max: "8Gi"
+  updateStrategy:
+    allowInPlaceResize: true
+    allowRecreate: false
+    updateRequestsOnly: true`;
+---
+
+<Layout metadata={metadata}>
+  <!-- Hero Section -->
+  <Hero
+    actions={[
+      {
+        variant: 'primary',
+        text: 'View on GitHub',
+        href: 'https://github.com/Sagart-cactus/optipod',
+        target: '_blank',
+      },
+      {
+        text: 'Quick Start',
+        href: '#quick-start',
+      },
+    ]}
+  >
+    <Fragment slot="title">
+      OptiPod — <span class="text-accent dark:text-white">GitOps-Safe</span> Kubernetes Resource Optimization
+    </Fragment>
+
+    <Fragment slot="subtitle">
+      <span class="font-semibold">Kubernetes Operator</span> · GitOps-safe by design · Safe by default
+      <br /><br />
+      OptiPod makes explainable recommendations for CPU/memory requests and limits. It applies changes only when you opt in, and stays GitOps-safe with the webhook strategy (SSA optional).
+      <br /><br />
+      <Badge variant="success" size="lg">
+        Safe by default: start in Recommend mode. Nothing mutates without opt-in.
+      </Badge>
+    </Fragment>
+  </Hero>
+
+  <!-- Problem Statement Section -->
+  <Content
+    id="problem"
+    tagline="The Challenge"
+    title="Most clusters suffer from guesswork, automation fear, and GitOps conflicts"
+    items={[
+      {
+        title: 'CPU and memory requests guessed once and never revisited',
+        icon: 'tabler:alert-circle',
+      },
+      {
+        title: 'VPA conflicting with GitOps workflows',
+        icon: 'tabler:alert-triangle',
+      },
+      {
+        title: 'Fear of memory tuning due to OOMKills and restarts',
+        icon: 'tabler:skull',
+      },
+      {
+        title: 'Lack of explainability and auditability in tools',
+        icon: 'tabler:question-mark',
+      },
+    ]}
+  >
+    <Fragment slot="content">
+      <h3 class="text-2xl font-bold tracking-tight dark:text-white sm:text-3xl mb-2">
+        The result is indefinite over-provisioning or disabled optimization entirely
+      </h3>
+      <p class="text-lg">
+        So teams respond by:
+      </p>
+      <ul class="list-disc list-inside mt-4 space-y-2 text-muted">
+        <li>Over-provisioning indefinitely to stay safe</li>
+        <li>Disabling automation entirely to avoid surprises</li>
+        <li>Accepting waste as the cost of stability</li>
+        <li>Choosing manual tuning that never scales</li>
+      </ul>
+    </Fragment>
+
+    <Fragment slot="bg">
+      <div class="absolute inset-0 bg-red-50 dark:bg-transparent"></div>
+    </Fragment>
+  </Content>
+
+  <!-- Design Philosophy Section -->
+  <Features
+    id="features"
+    tagline="Design Philosophy"
+    title="Designed for trust, not surprises"
+    subtitle="OptiPod takes a fundamentally different approach to resource optimization: safe by default, GitOps-safe with the webhook strategy, and built around explainable recommendations and policy-driven safety."
+    items={[
+      {
+        title: 'GitOps-safe by design',
+        description:
+          'Uses the webhook strategy to apply only CPU/memory changes at admission time while GitOps controllers remain the source of truth.',
+        icon: 'tabler:git-merge',
+      },
+      {
+        title: 'Explainable recommendations',
+        description:
+          'Every recommendation includes usage data and margins, with rationale visible before any action is taken.',
+        icon: 'tabler:chart-line',
+      },
+      {
+        title: 'Policy-driven safety',
+        description:
+          'Conservative defaults, configurable bounds, controlled change rates, and memory safeguards.',
+        icon: 'tabler:shield-check',
+      },
+      {
+        title: 'Adopt gradually',
+        description:
+          'Start in Recommend mode, then enable Auto only when you\'re ready.',
+        icon: 'tabler:stairs-up',
+      },
+    ]}
+  />
+
+  <!-- What OptiPod Will Not Do -->
+  <Features
+    title="What OptiPod Will Not Do"
+    subtitle="Clear boundaries and safety guarantees. OptiPod is designed with explicit constraints to ensure predictable, safe behavior in production environments."
+    columns={2}
+    items={[
+      {
+        title: 'Will not mutate workloads',
+        description: 'Unless explicitly configured in your policy',
+        icon: 'tabler:lock',
+      },
+      {
+        title: 'Will not override GitOps',
+        description: 'GitOps controllers remain the source of truth',
+        icon: 'tabler:git-branch',
+      },
+      {
+        title: 'Will not blindly reduce memory',
+        description: 'Memory safeguards prevent dangerous reductions',
+        icon: 'tabler:shield-check',
+      },
+      {
+        title: 'Will not require a SaaS backend',
+        description: 'Runs entirely inside your cluster',
+        icon: 'tabler:server-off',
+      },
+    ]}
+  >
+    <Fragment slot="bg">
+      <div class="absolute inset-0 bg-red-50 dark:bg-transparent"></div>
+    </Fragment>
+  </Features>
+
+  <!-- How It Works Section -->
+  <Steps
+    id="how-it-works"
+    tagline="How It Works"
+    title="A Kubernetes-native control loop"
+    subtitle="OptiPod runs entirely inside your cluster, evaluates real usage, and makes reversible, auditable changes when you allow it."
+    classes={{ container: 'max-w-6xl', title: 'text-center', subtitle: 'text-center' }}
+    items={[
+      {
+        title: 'Discovers workloads',
+        description:
+          'Matching your policy selectors and workload type filters.',
+        icon: 'tabler:search',
+      },
+      {
+        title: 'Collects metrics',
+        description:
+          'Real-time and historical resource usage from metrics-server or Prometheus.',
+        icon: 'tabler:database',
+      },
+      {
+        title: 'Evaluates usage',
+        description:
+          'Using strategies like P50, P90, P99 percentiles.',
+        icon: 'tabler:chart-dots',
+      },
+      {
+        title: 'Generates recommendations',
+        description:
+          'Explainable recommendations with policy-driven safety applied.',
+        icon: 'tabler:bulb',
+      },
+      {
+        title: 'Applies changes',
+        description:
+          'Via the webhook strategy (GitOps-safe) or Server-Side Apply when you opt in.',
+        icon: 'tabler:check',
+      },
+      {
+        title: 'Records actions',
+        description:
+          'For auditing and review.',
+        icon: 'tabler:file-text',
+      },
+    ]}
+  >
+    <Fragment slot="bg">
+      <div class="absolute inset-0 bg-blue-50 dark:bg-transparent"></div>
+    </Fragment>
+  </Steps>
+
+  <!-- Capabilities Section -->
+  <Features2
+    title="Core capabilities"
+    subtitle="A toolkit built for platform teams who need precision, control, and trust in every optimization."
+    tagline="Capabilities"
+    items={[
+      {
+        title: 'Automatic Resource Optimization',
+        description: 'Continuously computes recommendations to right-size CPU and memory - applies changes only when you opt in.',
+        icon: 'tabler:adjustments',
+      },
+      {
+        title: 'GitOps-Safe Webhook Strategy',
+        description: 'Mutating admission applies OptiPod recommendations without fighting GitOps controllers.',
+        icon: 'tabler:webhook',
+      },
+      {
+        title: 'Multiple Operational Modes',
+        description: 'Recommend, Auto, or Disabled — adopt automation at your pace.',
+        icon: 'tabler:toggle-right',
+      },
+      {
+        title: 'Safety-First Resource Management',
+        description: 'Min/max bounds, safety margins, change-rate limits, and intelligent resize handling.',
+        icon: 'tabler:shield-lock',
+      },
+      {
+        title: 'Pluggable Metrics Backends',
+        description: 'Metrics-server and Prometheus fully supported; per-policy provider selection planned.',
+        icon: 'tabler:plug',
+      },
+      {
+        title: 'Workload Type Filtering',
+        description: 'Target specific workload types (Deployment, StatefulSet, DaemonSet) with include/exclude filters.',
+        icon: 'tabler:filter',
+      },
+      {
+        title: 'Multi-Tenant Ready',
+        description: 'Namespace and label-based workload selection with allow/deny lists and policy weight prioritization.',
+        icon: 'tabler:users',
+      },
+      {
+        title: 'Comprehensive Observability',
+        description: 'Prometheus metrics, Kubernetes events, and per-workload recommendation annotations.',
+        icon: 'tabler:eye',
+      },
+      {
+        title: 'Flexible Limit Configuration',
+        description: 'Configure CPU and memory limit multipliers to automatically calculate limits from recommendations.',
+        icon: 'tabler:settings',
+      },
+      {
+        title: 'Correctness by Design',
+        description: 'Extensive unit, integration, and property-based testing.',
+        icon: 'tabler:checkbox',
+      },
+      {
+        title: 'Explainable Recommendations',
+        description: 'Clear rationale for every change, with data visibility.',
+        icon: 'tabler:message-circle',
+      },
+    ]}
+  />
+
+  <!-- Comparison Section -->
+  <ComparisonTable
+    title="Why choose OptiPod over VPA?"
+    subtitle="OptiPod is built for GitOps-safe, Recommend mode first workflows with policy-driven safety and clear explainability."
+    rows={comparisonRows}
+  />
+
+  <!-- Target Audience Section -->
+  <Features
+    tagline="Built For"
+    title="Built for platform teams"
+    subtitle="OptiPod is designed for teams who care about stability, auditability, and control."
+    columns={2}
+    items={[
+      {
+        title: 'Platform Engineering teams',
+        description: 'Build and maintain internal developer platforms with optimized resource usage',
+        icon: 'tabler:building',
+      },
+      {
+        title: 'Site Reliability Engineers (SRE)',
+        description: 'Ensure system reliability while optimizing infrastructure costs',
+        icon: 'tabler:shield-check',
+      },
+      {
+        title: 'FinOps and cloud cost governance teams',
+        description: 'Control and optimize cloud spending with data-driven recommendations',
+        icon: 'tabler:coin',
+      },
+      {
+        title: 'Organizations running GitOps-managed Kubernetes clusters',
+        description: 'Maintain GitOps workflows while automating resource optimization',
+        icon: 'tabler:git-branch',
+      },
+    ]}
+  />
+
+  <!-- Quick Start Section -->
+  <Steps
+    id="quick-start"
+    title="Start safely in Recommend mode"
+    subtitle="In Recommend mode, no resources are changed and no pods are restarted."
+    items={[
+      {
+        title: 'Step 1: <span class="font-medium">Install OptiPod</span>',
+        description: 'Install with Helm to deploy the controller, CRDs, and webhook.',
+        icon: 'tabler:download',
+      },
+      {
+        title: 'Step 2: <span class="font-medium">Create a policy</span>',
+        description: 'Start in Recommend mode and review recommendations before opting in to Auto.',
+        icon: 'tabler:file-code',
+      },
+      {
+        title: 'Ready!',
+        description: 'OptiPod runs entirely inside your cluster, with no external SaaS dependency.',
+        icon: 'tabler:check',
+      },
+    ]}
+  >
+    <Fragment slot="bg">
+      <div class="absolute inset-0 bg-green-50 dark:bg-transparent"></div>
+    </Fragment>
+  </Steps>
+
+  <!-- Installation Code Block -->
+  <section class="px-4 py-8 mx-auto max-w-5xl">
+    <div class="space-y-8">
+      <div>
+        <h3 class="text-xl font-bold mb-4 text-gray-900 dark:text-white">Install with Helm:</h3>
+        <CodeBlock code={helmInstallCode} language="bash" />
+        <p class="mt-4 text-sm text-muted dark:text-slate-400">
+          OptiPod runs entirely inside your cluster, with no external SaaS dependency. Both metrics-server and Prometheus are fully supported.
+        </p>
+      </div>
+
+      <div>
+        <h3 class="text-xl font-bold mb-4 text-gray-900 dark:text-white">Create a policy in Recommend mode:</h3>
+        <CodeBlock code={policyCode} language="yaml" />
+        <div class="mt-4 flex items-start gap-2">
+          <Badge variant="success">Safety confirmation</Badge>
+          <p class="text-sm text-muted dark:text-slate-400">
+            As long as <code class="bg-gray-200 dark:bg-gray-800 px-2 py-1 rounded text-xs">spec.mode: Recommend</code>, OptiPod will not change workload specs.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Open Source Section -->
+  <section class="relative not-prose scroll-mt-[72px] bg-blue-50 dark:bg-transparent">
+    <div class="absolute inset-0 pointer-events-none" aria-hidden="true"></div>
+    <div class="relative max-w-7xl mx-auto px-4 sm:px-6 py-16 lg:py-20">
+      <div class="max-w-3xl mx-auto text-center">
+        <p class="text-base text-secondary dark:text-blue-200 font-bold tracking-wide uppercase mb-2">
+          Open Source
+        </p>
+        <h2 class="text-4xl md:text-5xl font-bold leading-tighter tracking-tighter mb-4 font-heading">
+          Open source first
+        </h2>
+        <p class="max-w-3xl mx-auto text-xl text-muted dark:text-slate-400 mb-8">
+          Transparent. Auditable. Extensible. OptiPod is open source and Kubernetes-native with a clear roadmap and contribution model.
+        </p>
+
+        <div class="flex gap-4 justify-center mb-8">
+          <a
+            href="https://github.com/Sagart-cactus/optipod"
+            target="_blank"
+            class="btn btn-primary"
+          >
+            GitHub
+          </a>
+          <a
+            href="#quick-start"
+            class="btn"
+          >
+            See the quick start
+          </a>
+        </div>
+
+        <p class="text-lg text-gray-700 dark:text-gray-300 mb-8">
+          <a href="https://github.com/Sagart-cactus/optipod/blob/main/CONTRIBUTING.md" target="_blank" class="text-blue-600 dark:text-blue-400 hover:underline">Contributing</a>
+          {' · '}
+          <a href="https://github.com/Sagart-cactus/optipod/blob/main/GOVERNANCE.md" target="_blank" class="text-blue-600 dark:text-blue-400 hover:underline">Governance</a>
+          {' · '}
+          <a href="https://github.com/Sagart-cactus/optipod/blob/main/CODE_OF_CONDUCT.md" target="_blank" class="text-blue-600 dark:text-blue-400 hover:underline">Code of Conduct</a>
+        </p>
+
+        <div class="border-l-4 border-primary dark:border-blue-400 pl-6 py-3 text-left max-w-2xl mx-auto mb-8">
+          <h4 class="text-xl font-bold text-gray-900 dark:text-white mb-2">Current development</h4>
+          <p class="text-gray-700 dark:text-gray-300 mb-3">Active development focuses on expanding metrics provider support:</p>
+          <ul class="space-y-2 text-gray-700 dark:text-gray-300">
+            <li class="flex items-start gap-2">
+              <span class="text-primary dark:text-blue-400 mt-1">•</span>
+              <span>Custom metrics provider plugin architecture</span>
+            </li>
+            <li class="flex items-start gap-2">
+              <span class="text-primary dark:text-blue-400 mt-1">•</span>
+              <span>Enhanced workload type filtering capabilities</span>
+            </li>
+            <li class="flex items-start gap-2">
+              <span class="text-primary dark:text-blue-400 mt-1">•</span>
+              <span>Improved observability and debugging tools</span>
+            </li>
+          </ul>
+        </div>
+
+        <p class="text-gray-700 dark:text-gray-300">
+          See the <a href="https://github.com/Sagart-cactus/optipod/blob/main/ROADMAP.md" target="_blank" class="text-blue-600 dark:text-blue-400 hover:underline font-semibold">ROADMAP.md</a> for complete implementation status and future plans.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Final CTA -->
+  <CallToAction
+    actions={[
+      {
+        variant: 'primary',
+        text: 'View the project on GitHub',
+        href: 'https://github.com/Sagart-cactus/optipod',
+        target: '_blank',
+      },
+      {
+        text: 'Try it in Recommend mode',
+        href: '#quick-start',
+      },
+    ]}
+  >
+    <Fragment slot="title">
+      Ready to optimize Kubernetes resources<br class="hidden md:inline" /> without breaking trust?
+    </Fragment>
+
+    <Fragment slot="subtitle">
+      Start safely in Recommend mode. Nothing mutates without opt-in.
+    </Fragment>
+  </CallToAction>
+</Layout>

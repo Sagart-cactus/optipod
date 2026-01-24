@@ -1,0 +1,499 @@
+---
+title: CRD Specification
+description: Technical specification of the OptimizationPolicy CRD
+---
+
+This page provides the complete technical specification for the OptimizationPolicy Custom Resource Definition (CRD).
+
+## CRD Metadata
+
+```yaml
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: optimizationpolicies.optipod.io
+spec:
+  group: optipod.io
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+  scope: Namespaced
+  names:
+    plural: optimizationpolicies
+    singular: optimizationpolicy
+    kind: OptimizationPolicy
+    shortNames:
+      - optpol
+      - op
+```
+
+## Schema Definition
+
+### Root Schema
+
+```yaml
+openAPIV3Schema:
+  type: object
+  required:
+    - spec
+  properties:
+    apiVersion:
+      type: string
+    kind:
+      type: string
+    metadata:
+      type: object
+    spec:
+      type: object
+      required:
+        - mode
+        - targetWorkloads
+        - metricsConfig
+        - resourceBounds
+    status:
+      type: object
+```
+
+## Spec Schema
+
+### spec.mode
+
+```yaml
+mode:
+  type: string
+  enum:
+    - Recommend
+    - Auto
+    - Disabled
+  description: Operational mode for the policy
+```
+
+### spec.updateStrategy
+
+```yaml
+updateStrategy:
+  type: string
+  enum:
+    - ServerSideApply
+    - Webhook
+  default: ServerSideApply
+  description: How to apply recommendations in Auto mode
+```
+
+### spec.targetWorkloads
+
+```yaml
+targetWorkloads:
+  type: object
+  properties:
+    kinds:
+      type: array
+      items:
+        type: string
+        enum:
+          - Deployment
+          - StatefulSet
+          - DaemonSet
+          - Job
+          - CronJob
+    labelSelector:
+      type: object
+      properties:
+        matchLabels:
+          type: object
+          additionalProperties:
+            type: string
+        matchExpressions:
+          type: array
+          items:
+            type: object
+            required:
+              - key
+              - operator
+            properties:
+              key:
+                type: string
+              operator:
+                type: string
+                enum:
+                  - In
+                  - NotIn
+                  - Exists
+                  - DoesNotExist
+              values:
+                type: array
+                items:
+                  type: string
+    namespaceSelector:
+      type: object
+      # Same structure as labelSelector
+```
+
+### spec.metricsConfig
+
+```yaml
+metricsConfig:
+  type: object
+  required:
+    - provider
+    - lookbackWindow
+  properties:
+    provider:
+      type: string
+      enum:
+        - prometheus
+        - metrics-server
+        - custom
+    lookbackWindow:
+      type: string
+      pattern: '^[0-9]+(d|h|m)$'
+      description: Duration like 7d, 24h, 30m
+    sampleInterval:
+      type: string
+      pattern: '^[0-9]+(d|h|m)$'
+      default: 5m
+    prometheus:
+      type: object
+      properties:
+        address:
+          type: string
+          format: uri
+        queryTimeout:
+          type: string
+          pattern: '^[0-9]+(s|m)$'
+          default: 30s
+    custom:
+      type: object
+      properties:
+        endpoint:
+          type: string
+          format: uri
+        authSecret:
+          type: string
+```
+
+### spec.resourceBounds
+
+```yaml
+resourceBounds:
+  type: object
+  required:
+    - cpu
+    - memory
+  properties:
+    cpu:
+      type: object
+      required:
+        - min
+        - max
+      properties:
+        min:
+          type: string
+          pattern: '^[0-9]+m?$'
+        max:
+          type: string
+          pattern: '^[0-9]+m?$'
+        defaultRequest:
+          type: string
+          pattern: '^[0-9]+m?$'
+        defaultLimit:
+          type: string
+          pattern: '^[0-9]+m?$'
+    memory:
+      type: object
+      required:
+        - min
+        - max
+      properties:
+        min:
+          type: string
+          pattern: '^[0-9]+(Mi|Gi|M|G)$'
+        max:
+          type: string
+          pattern: '^[0-9]+(Mi|Gi|M|G)$'
+        defaultRequest:
+          type: string
+          pattern: '^[0-9]+(Mi|Gi|M|G)$'
+        defaultLimit:
+          type: string
+          pattern: '^[0-9]+(Mi|Gi|M|G)$'
+    containerOverrides:
+      type: array
+      items:
+        type: object
+        required:
+          - name
+        properties:
+          name:
+            type: string
+          cpu:
+            type: object
+            # Same structure as cpu above
+          memory:
+            type: object
+            # Same structure as memory above
+```
+
+### spec.safetyConfig
+
+```yaml
+safetyConfig:
+  type: object
+  properties:
+    confidenceThreshold:
+      type: string
+      enum:
+        - high
+        - medium
+        - low
+      default: high
+    maxChangePercent:
+      type: integer
+      minimum: 1
+      maximum: 100
+      default: 50
+    minUpdateInterval:
+      type: string
+      pattern: '^[0-9]+(d|h|m)$'
+      default: 24h
+    memoryFloor:
+      type: string
+      pattern: '^[0-9]+(Mi|Gi|M|G)$'
+      default: 64Mi
+    memoryHeadroom:
+      type: integer
+      minimum: 0
+      maximum: 100
+      default: 20
+    enableRollback:
+      type: boolean
+      default: true
+    rollbackTriggers:
+      type: array
+      items:
+        type: string
+        enum:
+          - oomKills
+          - crashLoops
+          - highErrorRate
+    cooldownPeriod:
+      type: string
+      pattern: '^[0-9]+(d|h|m)$'
+      default: 168h
+```
+
+### spec.ssaConfig
+
+```yaml
+ssaConfig:
+  type: object
+  properties:
+    fieldManager:
+      type: string
+      default: optipod
+    force:
+      type: boolean
+      default: false
+    managedFields:
+      type: array
+      items:
+        type: string
+      default:
+        - resources.requests.cpu
+        - resources.requests.memory
+        - resources.limits.cpu
+        - resources.limits.memory
+```
+
+### spec.webhookConfig
+
+```yaml
+webhookConfig:
+  type: object
+  properties:
+    failurePolicy:
+      type: string
+      enum:
+        - Ignore
+        - Fail
+      default: Ignore
+    timeoutSeconds:
+      type: integer
+      minimum: 1
+      maximum: 30
+      default: 10
+    namespaceSelector:
+      type: object
+      # Same structure as labelSelector
+    objectSelector:
+      type: object
+      # Same structure as labelSelector
+```
+
+## Status Schema
+
+```yaml
+status:
+  type: object
+  properties:
+    phase:
+      type: string
+      enum:
+        - Active
+        - Disabled
+        - Error
+    observedGeneration:
+      type: integer
+    conditions:
+      type: array
+      items:
+        type: object
+        required:
+          - type
+          - status
+        properties:
+          type:
+            type: string
+          status:
+            type: string
+            enum:
+              - "True"
+              - "False"
+              - Unknown
+          lastTransitionTime:
+            type: string
+            format: date-time
+          reason:
+            type: string
+          message:
+            type: string
+    targetedWorkloads:
+      type: integer
+      minimum: 0
+    lastUpdate:
+      type: string
+      format: date-time
+    safetyStatus:
+      type: object
+      properties:
+        lastUpdate:
+          type: string
+          format: date-time
+        rollbackCount:
+          type: integer
+          minimum: 0
+        inCooldown:
+          type: boolean
+        cooldownUntil:
+          type: string
+          format: date-time
+        recentIssues:
+          type: array
+          items:
+            type: string
+```
+
+## Validation Rules
+
+### Cross-Field Validation
+
+```yaml
+x-kubernetes-validations:
+  - rule: "self.spec.mode == 'Auto' || !has(self.spec.safetyConfig)"
+    message: "safetyConfig is only valid in Auto mode"
+
+  - rule: "self.spec.updateStrategy == 'ServerSideApply' || !has(self.spec.ssaConfig)"
+    message: "ssaConfig is only valid with ServerSideApply strategy"
+
+  - rule: "self.spec.updateStrategy == 'Webhook' || !has(self.spec.webhookConfig)"
+    message: "webhookConfig is only valid with Webhook strategy"
+
+  - rule: "int(self.spec.resourceBounds.cpu.min) < int(self.spec.resourceBounds.cpu.max)"
+    message: "cpu.min must be less than cpu.max"
+
+  - rule: "int(self.spec.resourceBounds.memory.min) < int(self.spec.resourceBounds.memory.max)"
+    message: "memory.min must be less than memory.max"
+```
+
+## Subresources
+
+### Status Subresource
+
+```yaml
+subresources:
+  status: {}
+```
+
+This allows updating status independently from spec.
+
+### Scale Subresource
+
+Not applicable for OptimizationPolicy.
+
+## Additional Printer Columns
+
+```yaml
+additionalPrinterColumns:
+  - name: Mode
+    type: string
+    jsonPath: .spec.mode
+  - name: Strategy
+    type: string
+    jsonPath: .spec.updateStrategy
+  - name: Workloads
+    type: integer
+    jsonPath: .status.targetedWorkloads
+  - name: Phase
+    type: string
+    jsonPath: .status.phase
+  - name: Age
+    type: date
+    jsonPath: .metadata.creationTimestamp
+```
+
+## Example kubectl Output
+
+```bash
+$ kubectl get optimizationpolicy
+NAME                MODE        STRATEGY           WORKLOADS   PHASE    AGE
+production-policy   Auto        ServerSideApply    15          Active   7d
+dev-policy          Recommend   ServerSideApply    8           Active   3d
+```
+
+## RBAC Requirements
+
+### Cluster Role
+
+```yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: optipod-operator
+rules:
+  - apiGroups: ["optipod.io"]
+    resources: ["optimizationpolicies"]
+    verbs: ["get", "list", "watch"]
+
+  - apiGroups: ["optipod.io"]
+    resources: ["optimizationpolicies/status"]
+    verbs: ["get", "update", "patch"]
+
+  - apiGroups: ["apps"]
+    resources: ["deployments", "statefulsets", "daemonsets"]
+    verbs: ["get", "list", "watch", "update", "patch"]
+
+  - apiGroups: ["batch"]
+    resources: ["jobs", "cronjobs"]
+    verbs: ["get", "list", "watch", "update", "patch"]
+```
+
+## Conversion Webhook
+
+Not currently implemented. Future versions may support conversion between API versions.
+
+## Next Steps
+
+- [API Reference](/docs/reference/api/)
+- [Annotations Reference](/docs/reference/annotations/)
+- [Creating Policies](/docs/guides/creating-policies/)

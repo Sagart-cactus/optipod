@@ -1,10 +1,13 @@
-# Simple workflow for deploying static content to GitHub Pages
-name: Deploy static content to Pages
+# Deploy OptiPod website to GitHub Pages
+name: Deploy Website to Pages
 
 on:
-  # Runs on pushes targeting the default branch
+  # Runs on pushes targeting the default branch that affect website files
   push:
     branches: ["main"]
+    paths:
+      - 'website/**'
+      - '.github/workflows/static.yml'
 
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
@@ -43,22 +46,24 @@ jobs:
         run: npm ci
         working-directory: website
 
-      - name: Build site
-        run: npm run build:assets
+      - name: Build Astro site
+        run: npm run build
         working-directory: website
 
       - name: Verify build output
         run: |
+          test -d website/dist
           test -f website/dist/index.html
-          test -f website/dist/css/styles.min.css
-          test -f website/dist/js/bundle.min.js
+          echo "Build output verified successfully"
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
+
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
           path: './website/dist'
+
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4

@@ -1,0 +1,188 @@
+---
+title: Quick Start
+description: Get started with OptiPod in 5 minutes
+---
+
+This guide will walk you through creating your first OptimizationPolicy and getting recommendations for your workloads.
+
+## Step 1: Create an OptimizationPolicy
+
+Create a policy that targets deployments in the `default` namespace:
+
+```yaml
+apiVersion: optipod.io/v1alpha1
+kind: OptimizationPolicy
+metadata:
+  name: default-policy
+  namespace: default
+spec:
+  mode: Recommend
+  targetWorkloads:
+    kinds:
+      - Deployment
+    labelSelector:
+      matchLabels:
+        optipod.io/enabled: "true"
+  metricsConfig:
+    provider: prometheus
+    lookbackWindow: 7d
+  resourceBounds:
+    cpu:
+      min: 10m
+      max: 4000m
+    memory:
+      min: 64Mi
+      max: 8Gi
+```
+
+Apply the policy:
+
+```bash
+kubectl apply -f policy.yaml
+```
+
+## Step 2: Label a Workload
+
+Label an existing deployment to opt-in to optimization:
+
+```bash
+kubectl label deployment my-app optipod.io/enabled=true
+```
+
+Or add the label to your deployment YAML:
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-app
+  labels:
+    optipod.io/enabled: "true"
+spec:
+  # ... rest of deployment spec
+```
+
+## Step 3: Wait for Recommendations
+
+OptiPod will analyze your workload's resource usage over the lookback window (7 days in this example). After sufficient data is collected, recommendations will appear as annotations on your deployment.
+
+Check for recommendations:
+
+```bash
+kubectl get deployment my-app -o yaml | grep optipod.io/recommendation
+```
+
+You should see annotations like:
+
+```yaml
+annotations:
+  optipod.io/recommendation: |
+    {
+      "containers": {
+        "my-app": {
+          "requests": {
+            "cpu": "250m",
+            "memory": "512Mi"
+          },
+          "limits": {
+            "cpu": "500m",
+            "memory": "1Gi"
+          }
+        }
+      },
+      "confidence": "high",
+      "estimatedImpact": {
+        "cpuSavings": "50%",
+        "memorySavings": "30%"
+      }
+    }
+```
+
+## Step 4: Review and Apply
+
+Review the recommendations and decide whether to apply them:
+
+### Option A: Manual Application (GitOps-friendly)
+
+Update your deployment YAML with the recommended values:
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-app
+spec:
+  template:
+    spec:
+      containers:
+      - name: my-app
+        resources:
+          requests:
+            cpu: 250m
+            memory: 512Mi
+          limits:
+            cpu: 500m
+            memory: 1Gi
+```
+
+Commit to Git and let your GitOps tool apply the changes.
+
+### Option B: Auto Mode (Advanced)
+
+Once you're confident in OptiPod's recommendations, switch to Auto mode:
+
+```yaml
+apiVersion: optipod.io/v1alpha1
+kind: OptimizationPolicy
+metadata:
+  name: default-policy
+  namespace: default
+spec:
+  mode: Auto  # Changed from Recommend
+  updateStrategy: ServerSideApply
+  # ... rest of spec
+```
+
+OptiPod will automatically apply recommendations with safety guardrails.
+
+## Step 5: Monitor Results
+
+After applying recommendations, monitor your workload:
+
+```bash
+# Check pod status
+kubectl get pods -l app=my-app
+
+# Check resource usage
+kubectl top pod -l app=my-app
+
+# Check OptiPod policy status
+kubectl get optimizationpolicy default-policy -o yaml
+```
+
+## What's Next?
+
+Now that you've seen OptiPod in action, explore more features:
+
+- [Learn about operational modes](/docs/concepts/operational-modes/)
+- [Understand update strategies](/docs/concepts/update-strategies/)
+- [Configure advanced policies](/docs/guides/creating-policies/)
+- [Review the safety model](/docs/concepts/safety-model/)
+
+## Common Questions
+
+### How long until I see recommendations?
+
+OptiPod needs sufficient metrics data to make confident recommendations. With the default 7-day lookback window, you'll typically see recommendations within 24-48 hours if your workload has consistent traffic.
+
+### Can I use OptiPod with GitOps?
+
+Yes! OptiPod is designed to be GitOps-safe. Use Recommend mode and apply changes through your GitOps workflow.
+
+### What if recommendations seem wrong?
+
+You can adjust the policy's `resourceBounds`, `lookbackWindow`, or `confidenceThreshold` to fine-tune recommendations. See the [Creating Policies guide](/docs/guides/creating-policies/) for details.
+
+### Is it safe to use Auto mode?
+
+Auto mode includes safety guardrails, but we recommend starting with Recommend mode to build confidence. See the [Safety Model](/docs/concepts/safety-model/) for details.

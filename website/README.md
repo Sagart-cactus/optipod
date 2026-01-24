@@ -1,97 +1,147 @@
-# OptipOd Landing Page
+# OptiPod Website
 
-Modern, high-performance landing page for OptipOd Kubernetes resource optimization.
+Marketing and documentation website for OptiPod - an open-source Kubernetes resource optimization operator.
 
-## Development Setup
-
-### Prerequisites
-
-- Node.js 18+ and npm 9+
-- Modern web browser for testing
-
-### Installation
+## Quick Start
 
 ```bash
 cd website
 npm install
+npm run dev
 ```
 
-### Development Commands
+Visit `http://localhost:4321`
+
+## Available Commands
 
 ```bash
-# Start development server with live reload
-npm run dev
-
-# Build optimized version
-npm run build
-
-# Run all validation and tests
-npm test
-
-# Individual validation commands
-npm run validate:html    # HTML validation
-npm run validate:css     # CSS linting
-npm run validate:js      # JavaScript linting
-
-# Performance testing
-npm run lighthouse       # Lighthouse CI audit
-
-# Asset optimization
-npm run optimize:images  # Image compression and WebP conversion
-npm run optimize:css     # CSS minification
-npm run optimize:js      # JavaScript minification
-
-# Clean build artifacts
-npm run clean
+npm run dev          # Start dev server
+npm run build        # Build for production
+npm run preview      # Preview production build
+npm run check        # Run Astro + ESLint + Prettier checks
+npm run fix          # Auto-fix ESLint and Prettier issues
 ```
 
-## Performance Requirements
+## Tech Stack
 
-The landing page must meet these Lighthouse thresholds:
+- **Framework**: [Astro](https://astro.build) - Static site generator
+- **Styling**: [Tailwind CSS](https://tailwindcss.com) - Utility-first CSS
+- **Documentation**: [Starlight](https://starlight.astro.build) - Astro docs theme
+- **Template**: Based on [AstroWind](https://github.com/onwidget/astrowind)
 
-- **Performance**: ≥90
-- **Accessibility**: ≥95
-- **Best Practices**: ≥90
-- **SEO**: ≥90
-
-Core Web Vitals targets:
-- First Contentful Paint: ≤2s
-- Largest Contentful Paint: ≤3s
-- Cumulative Layout Shift: ≤0.1
-- Total Blocking Time: ≤300ms
-
-## Code Quality Standards
-
-- **HTML**: W3C validation with semantic markup
-- **CSS**: Stylelint standard configuration
-- **JavaScript**: ESLint standard configuration
-- **Images**: Optimized with WebP/AVIF support
-
-## File Structure
+## Project Structure
 
 ```
 website/
-├── index.html              # Main landing page
-├── package.json            # Dependencies and scripts
-├── lighthouserc.json       # Performance testing config
-├── .htmlvalidate.json      # HTML validation rules
-├── .stylelintrc.json       # CSS linting rules
-├── .eslintrc.json          # JavaScript linting rules
-├── .gitignore              # Git ignore patterns
-└── README.md               # This file
+├── public/              # Static assets (favicon, robots.txt, etc.)
+├── src/
+│   ├── assets/         # Images, styles, favicons
+│   ├── components/     # Astro components
+│   │   ├── blog/       # Blog-specific components
+│   │   ├── common/     # Shared components (meta, analytics)
+│   │   ├── ui/         # UI primitives (buttons, forms)
+│   │   └── widgets/    # Page sections (hero, features, etc.)
+│   ├── content/        # Content collections
+│   │   └── docs/       # Documentation MDX files
+│   ├── layouts/        # Page layouts
+│   ├── pages/          # File-based routing
+│   └── utils/          # Helper functions
+├── astro.config.ts     # Astro configuration
+├── tailwind.config.js  # Tailwind configuration
+└── package.json
 ```
+
+## Content Management
+
+### Documentation
+
+Documentation lives in `src/content/docs/docs/` and is organized by category:
+
+- `getting-started/` - Installation, quick start, introduction
+- `concepts/` - Core concepts and terminology
+- `guides/` - How-to guides
+- `reference/` - API reference, CRD specs, annotations
+- `advanced/` - Advanced topics
+
+Edit `.mdx` files directly. Starlight handles navigation and layout automatically.
+
+### Homepage & Marketing Pages
+
+Main pages are in `src/pages/`:
+- `index.astro` - Homepage
+- `privacy.md` - Privacy policy
+- `terms.md` - Terms of service
+
+## Configuration
+
+### Site Metadata
+
+Edit `src/config.yaml` for site-wide settings:
+- Site name, description, URLs
+- Social media links
+- Analytics configuration
+- Navigation structure
+
+### Astro Config
+
+`astro.config.ts` controls:
+- Integrations (Tailwind, MDX, Sitemap, etc.)
+- Build settings
+- Starlight documentation configuration
 
 ## Deployment
 
-The landing page is automatically deployed to GitHub Pages via GitHub Actions when changes are pushed to the `main` branch in the `website/` directory.
+The site deploys automatically via GitHub Actions when changes are pushed to `main`.
 
-## Contributing
+### GitHub Pages
 
-1. Make changes to the landing page
-2. Run `npm test` to validate all code quality checks
-3. Ensure Lighthouse performance thresholds are met
-4. Commit changes - deployment is automatic
+Workflow: `.github/workflows/website-build.yml`
+- Builds on push to `website/**` paths
+- Deploys to GitHub Pages
+- URL: `https://sagart-cactus.github.io/optipod/`
+
+### Manual Deployment
+
+```bash
+npm run build
+# Output in dist/ directory
+```
+
+## Development Notes
+
+### Adding New Documentation
+
+1. Create `.mdx` file in appropriate `src/content/docs/docs/` subdirectory
+2. Add frontmatter:
+   ```yaml
+   ---
+   title: Page Title
+   description: Page description
+   ---
+   ```
+3. Navigation updates automatically based on file structure
+
+### Styling Guidelines
+
+- Use Tailwind utility classes
+- Follow existing component patterns
+- Keep designs minimal and technical
+- Prioritize readability and whitespace
+
+### Target Audience
+
+- Staff+ engineers
+- Platform / SRE teams
+- Infrastructure-focused OSS contributors
+
+Avoid marketing hype. Prefer clarity, precision, and calm confidence.
+
+## Related Documentation
+
+- [Main OptiPod README](../README.md) - Operator documentation
+- [Contributing Guide](../CONTRIBUTING.md) - How to contribute
+- [Roadmap](../ROADMAP.md) - Project roadmap
 
 ## License
 
-Apache 2.0 - see the [LICENSE](../LICENSE) file for details.
+Apache 2.0 - See [LICENSE.md](../LICENSE.md)
