@@ -1,0 +1,78 @@
+/* OptiPod Documentation Custom Styles */
+
+:root {
+  /* Light theme colors */
+  --sl-color-accent-low: #dbeafe;
+  --sl-color-accent: #2563eb;
+  --sl-color-accent-high: #1e40af;
+  --sl-color-white: #111827;
+  --sl-color-gray-1: #1f2937;
+  --sl-color-gray-2: #374151;
+  --sl-color-gray-3: #4b5563;
+  --sl-color-gray-4: #6b7280;
+  --sl-color-gray-5: #9ca3af;
+  --sl-color-gray-6: #e5e7eb;
+  --sl-color-black: #f9fafb;
+}
+
+:root[data-theme='dark'] {
+  /* Dark theme colors */
+  --sl-color-accent-low: #1e3a8a;
+  --sl-color-accent: #3b82f6;
+  --sl-color-accent-high: #60a5fa;
+  --sl-color-white: #f9fafb;
+  --sl-color-gray-1: #f9fafb;
+  --sl-color-gray-2: #f3f4f6;
+  --sl-color-gray-3: #e5e7eb;
+  --sl-color-gray-4: #d1d5db;
+  --sl-color-gray-5: #6b7280;
+  --sl-color-gray-6: #374151;
+  --sl-color-black: #111827;
+}
+
+/* Custom styling for code blocks */
+.expressive-code {
+  margin: 1.5rem 0;
+}
+
+/* Callout boxes */
+.starlight-aside {
+  border-radius: 0.5rem;
+  padding: 1rem;
+  margin: 1.5rem 0;
+}
+
+.starlight-aside--note {
+  background-color: var(--sl-color-accent-low);
+  border-left: 4px solid var(--sl-color-accent);
+}
+
+.starlight-aside--tip {
+  background-color: #d1fae5;
+  border-left: 4px solid #10b981;
+}
+
+:root[data-theme='dark'] .starlight-aside--tip {
+  background-color: #064e3b;
+  border-left: 4px solid #10b981;
+}
+
+.starlight-aside--caution {
+  background-color: #fef3c7;
+  border-left: 4px solid #f59e0b;
+}
+
+:root[data-theme='dark'] .starlight-aside--caution {
+  background-color: #78350f;
+  border-left: 4px solid #f59e0b;
+}
+
+.starlight-aside--danger {
+  background-color: #fee2e2;
+  border-left: 4px solid #ef4444;
+}
+
+:root[data-theme='dark'] .starlight-aside--danger {
+  background-color: #7f1d1d;
+  border-left: 4px solid #ef4444;
+}

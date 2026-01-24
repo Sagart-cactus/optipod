@@ -1,0 +1,76 @@
+---
+import '@fontsource-variable/inter';
+
+// 'DM Sans'
+// Nunito
+// Dosis
+// Outfit
+// Roboto
+// Literata
+// 'IBM Plex Sans'
+// Karla
+// Poppins
+// 'Fira Sans'
+// 'Libre Franklin'
+// Inconsolata
+// Raleway
+// Oswald
+// 'Space Grotesk'
+// Urbanist
+---
+
+<style is:inline>
+  :root {
+    --aw-font-sans: 'Inter Variable';
+    --aw-font-serif: 'Inter Variable';
+    --aw-font-heading: 'Inter Variable';
+
+    /* OptiPod Brand Colors - Light Mode */
+    --aw-color-primary: rgb(37 99 235); /* blue-600 - Kubernetes blue */
+    --aw-color-secondary: rgb(16 185 129); /* green-500 - Success/GitOps green */
+    --aw-color-accent: rgb(59 130 246); /* blue-500 - Lighter accent */
+
+    --aw-color-text-heading: rgb(0 0 0);
+    --aw-color-text-default: rgb(16 16 16);
+    --aw-color-text-muted: rgb(16 16 16 / 66%);
+    --aw-color-bg-page: rgb(255 255 255);
+
+    --aw-color-bg-page-dark: rgb(3 6 32);
+
+    /* OptiPod specific colors */
+    --optipod-success: rgb(34 197 94); /* green-500 */
+    --optipod-warning: rgb(234 179 8); /* yellow-500 */
+    --optipod-danger: rgb(239 68 68); /* red-500 */
+
+    ::selection {
+      background-color: rgb(191 219 254); /* blue-200 */
+      color: rgb(30 58 138); /* blue-900 */
+    }
+  }
+
+  .dark {
+    --aw-font-sans: 'Inter Variable';
+    --aw-font-serif: 'Inter Variable';
+    --aw-font-heading: 'Inter Variable';
+
+    /* OptiPod Brand Colors - Dark Mode */
+    --aw-color-primary: rgb(59 130 246); /* blue-500 - Brighter for dark mode */
+    --aw-color-secondary: rgb(34 197 94); /* green-500 */
+    --aw-color-accent: rgb(96 165 250); /* blue-400 */
+
+    --aw-color-text-heading: rgb(247 248 248);
+    --aw-color-text-default: rgb(229 236 246);
+    --aw-color-text-muted: rgb(229 236 246 / 66%);
+    --aw-color-bg-page: rgb(3 6 32);
+
+    /* OptiPod specific colors for dark mode */
+    --optipod-success: rgb(34 197 94);
+    --optipod-warning: rgb(234 179 8);
+    --optipod-danger: rgb(239 68 68);
+
+    ::selection {
+      background-color: rgb(30 58 138); /* blue-900 */
+      color: rgb(191 219 254); /* blue-200 */
+    }
+  }
+</style>

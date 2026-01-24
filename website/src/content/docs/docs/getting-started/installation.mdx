@@ -1,0 +1,212 @@
+---
+title: Installation
+description: Install OptiPod in your Kubernetes cluster
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+## Prerequisites
+
+Before installing OptiPod, ensure you have:
+
+- Kubernetes cluster (v1.19+)
+- `kubectl` configured to access your cluster
+- Helm 3.x (for Helm installation method)
+- A metrics provider (Prometheus or metrics-server)
+
+## Installation Methods
+
+<Tabs>
+  <TabItem label="Helm">
+
+### Install with Helm
+
+The easiest way to install OptiPod is using Helm:
+
+```bash
+# Add the OptiPod Helm repository
+helm repo add optipod https://sagart-cactus.github.io/optipod/charts
+helm repo update
+
+# Install OptiPod
+helm install optipod optipod/optipod \
+  --namespace optipod-system \
+  --create-namespace
+```
+
+### Custom Configuration
+
+You can customize the installation with a values file:
+
+```yaml
+# values.yaml
+replicaCount: 2
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+metricsProvider:
+  type: prometheus
+  prometheus:
+    address: http://prometheus-server.monitoring.svc:9090
+```
+
+Install with custom values:
+
+```bash
+helm install optipod optipod/optipod \
+  --namespace optipod-system \
+  --create-namespace \
+  -f values.yaml
+```
+
+  </TabItem>
+  <TabItem label="kubectl">
+
+### Install with kubectl
+
+You can also install OptiPod directly using kubectl:
+
+```bash
+# Install CRDs
+kubectl apply -f https://raw.githubusercontent.com/Sagart-cactus/optipod/main/deploy/crds/optimizationpolicy.yaml
+
+# Install OptiPod operator
+kubectl apply -f https://raw.githubusercontent.com/Sagart-cactus/optipod/main/deploy/operator.yaml
+```
+
+This will create the `optipod-system` namespace, install the OptimizationPolicy CRD, deploy the OptiPod operator, and create necessary RBAC resources.
+
+  </TabItem>
+  <TabItem label="Automated Script">
+
+### Automated Installation
+
+Use our installation script for a guided setup:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Sagart-cactus/optipod/main/install.sh | bash
+```
+
+The script will check prerequisites, detect your metrics provider, install OptiPod with recommended settings, and verify the installation.
+
+  </TabItem>
+</Tabs>
+
+## Verify Installation
+
+Check that OptiPod is running:
+
+```bash
+kubectl get pods -n optipod-system
+```
+
+You should see:
+
+```
+NAME                              READY   STATUS    RESTARTS   AGE
+optipod-operator-xxxxxxxxx-xxxxx  1/1     Running   0          30s
+```
+
+Check the operator logs:
+
+```bash
+kubectl logs -n optipod-system -l app=optipod-operator
+```
+
+## Configure Metrics Provider
+
+OptiPod needs access to metrics to make recommendations. Configure your metrics provider:
+
+<Tabs>
+  <TabItem label="Prometheus">
+
+### Prometheus Configuration
+
+If using Prometheus, create a ConfigMap with the Prometheus address:
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: optipod-config
+  namespace: optipod-system
+data:
+  metrics-provider: prometheus
+  prometheus-address: http://prometheus-server.monitoring.svc:9090
+```
+
+Apply the configuration:
+
+```bash
+kubectl apply -f prometheus-config.yaml
+```
+
+  </TabItem>
+  <TabItem label="metrics-server">
+
+### metrics-server Configuration
+
+If using metrics-server, OptiPod will auto-detect it:
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: optipod-config
+  namespace: optipod-system
+data:
+  metrics-provider: metrics-server
+```
+
+:::note
+metrics-server provides basic CPU and memory metrics. For more detailed recommendations, consider using Prometheus.
+:::
+
+  </TabItem>
+</Tabs>
+
+## Next Steps
+
+Now that OptiPod is installed, you're ready to:
+
+1. [Create your first policy](/docs/guides/creating-policies)
+2. [Learn about core concepts](/docs/concepts/terminology)
+3. [Review the Quick Start guide](/docs/getting-started/quick-start)
+
+## Troubleshooting
+
+If you encounter issues during installation:
+
+- Check that your cluster meets the prerequisites
+- Verify RBAC permissions are correctly configured
+- Ensure your metrics provider is accessible
+- Review the [Troubleshooting guide](/docs/advanced/troubleshooting)
+
+## Uninstallation
+
+To remove OptiPod from your cluster:
+
+<Tabs>
+  <TabItem label="Helm">
+
+```bash
+helm uninstall optipod -n optipod-system
+kubectl delete namespace optipod-system
+```
+
+  </TabItem>
+  <TabItem label="kubectl">
+
+```bash
+kubectl delete -f https://raw.githubusercontent.com/Sagart-cactus/optipod/main/deploy/operator.yaml
+kubectl delete -f https://raw.githubusercontent.com/Sagart-cactus/optipod/main/deploy/crds/optimizationpolicy.yaml
+```
+
+  </TabItem>
+</Tabs>

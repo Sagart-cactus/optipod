@@ -1,0 +1,607 @@
+---
+title: Troubleshooting
+description: Common issues and solutions for OptiPod
+---
+
+This guide covers common issues you might encounter with OptiPod and how to resolve them.
+
+## General Troubleshooting Steps
+
+Before diving into specific issues, try these general steps:
+
+1. **Check operator logs**
+```bash
+kubectl logs -n optipod-system -l app=optipod-operator --tail=100
+```
+
+2. **Verify policy status**
+```bash
+kubectl get optimizationpolicy -A
+kubectl describe optimizationpolicy <policy-name> -n <namespace>
+```
+
+3. **Check workload labels**
+```bash
+kubectl get deployment <name> -o jsonpath='{.metadata.labels}'
+```
+
+4. **Verify metrics provider**
+```bash
+# For Prometheus
+kubectl get svc -n monitoring prometheus-server
+
+# For metrics-server
+kubectl get apiservice v1beta1.metrics.k8s.io
+```
+
+## Installation Issues
+
+### Operator Pod Not Starting
+
+**Symptoms:**
+- OptiPod operator pod in CrashLoopBackOff
+- Pod fails to start
+
+**Diagnosis:**
+```bash
+kubectl get pods -n optipod-system
+kubectl describe pod <pod-name> -n optipod-system
+kubectl logs <pod-name> -n optipod-system
+```
+
+**Common Causes:**
+
+1. **Insufficient RBAC permissions**
+```bash
+# Check RBAC
+kubectl get clusterrole optipod-operator
+kubectl get clusterrolebinding optipod-operator
+```
+
+**Solution:** Reinstall with correct RBAC:
+```bash
+kubectl apply -f https://raw.githubusercontent.com/Sagart-cactus/optipod/main/deploy/rbac.yaml
+```
+
+2. **Missing CRDs**
+```bash
+# Check CRDs
+kubectl get crd optimizationpolicies.optipod.io
+```
+
+**Solution:** Install CRDs:
+```bash
+kubectl apply -f https://raw.githubusercontent.com/Sagart-cactus/optipod/main/deploy/crds/
+```
+
+3. **Resource constraints**
+
+**Solution:** Increase operator resources:
+```yaml
+resources:
+  requests:
+    cpu: 200m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+```
+
+### Webhook Configuration Issues
+
+**Symptoms:**
+- Pods fail to start
+- Webhook timeout errors
+
+**Diagnosis:**
+```bash
+kubectl get mutatingwebhookconfiguration optipod-webhook
+kubectl describe mutatingwebhookconfiguration optipod-webhook
+```
+
+**Solution:**
+
+1. **Set failure policy to Ignore**
+```yaml
+webhookConfig:
+  failurePolicy: Ignore
+```
+
+2. **Check webhook service**
+```bash
+kubectl get svc -n optipod-system optipod-webhook
+```
+
+3. **Verify certificates**
+```bash
+kubectl get secret -n optipod-system optipod-webhook-cert
+```
+
+## Policy Issues
+
+### No Recommendations Generated
+
+**Symptoms:**
+- Workloads labeled but no recommendations appear
+- `optipod.io/recommendation` annotation missing
+
+**Diagnosis:**
+```bash
+# Check if workload is targeted
+kubectl get deployment <name> -o yaml | grep -A 5 labels
+
+# Check policy
+kubectl get optimizationpolicy -n <namespace>
+kubectl describe optimizationpolicy <policy-name> -n <namespace>
+
+# Check operator logs
+kubectl logs -n optipod-system -l app=optipod-operator | grep <workload-name>
+```
+
+**Common Causes:**
+
+1. **Insufficient metrics data**
+
+**Solution:** Wait for more data (typically 24-48 hours with 7-day lookback)
+
+2. **Workload not matching policy selector**
+
+**Solution:** Verify labels match:
+```bash
+# Check workload labels
+kubectl get deployment <name> -o jsonpath='{.metadata.labels}'
+
+# Check policy selector
+kubectl get optimizationpolicy <policy-name> -o jsonpath='{.spec.targetWorkloads.labelSelector}'
+```
+
+3. **Policy in Disabled mode**
+
+**Solution:**
+```bash
+kubectl patch optimizationpolicy <policy-name> \
+  --type merge \
+  -p '{"spec":{"mode":"Recommend"}}'
+```
+
+4. **Metrics provider unreachable**
+
+**Solution:** Check connectivity:
+```bash
+# Test Prometheus
+kubectl run -it --rm debug --image=curlimages/curl --restart=Never -- \
+  curl http://prometheus-server.monitoring.svc:9090/-/healthy
+
+# Check metrics-server
+kubectl top nodes
+```
+
+### Recommendations Not Updating
+
+**Symptoms:**
+- Old recommendations not refreshing
+- Timestamp not changing
+
+**Diagnosis:**
+```bash
+# Check last update time
+kubectl get deployment <name> \
+  -o jsonpath='{.metadata.annotations.optipod\.io/last-updated}'
+
+# Check policy status
+kubectl get optimizationpolicy <policy-name> -o yaml
+```
+
+**Common Causes:**
+
+1. **In cooldown period**
+
+**Solution:** Wait for cooldown to expire or adjust:
+```yaml
+safetyConfig:
+  minUpdateInterval: 12h  # Reduce interval
+```
+
+2. **Confidence threshold too high**
+
+**Solution:**
+```yaml
+safetyConfig:
+  confidenceThreshold: medium  # Lower threshold
+```
+
+3. **Operator not running**
+
+**Solution:**
+```bash
+kubectl get pods -n optipod-system
+kubectl rollout restart deployment optipod-operator -n optipod-system
+```
+
+### Recommendations Seem Incorrect
+
+**Symptoms:**
+- Recommendations too high or too low
+- Don't match actual usage
+
+**Diagnosis:**
+```bash
+# Check actual usage
+kubectl top pod -l app=<name>
+
+# Check recommendation
+kubectl get deployment <name> \
+  -o jsonpath='{.metadata.annotations.optipod\.io/recommendation}' | jq .
+
+# Check metrics analysis
+kubectl get deployment <name> \
+  -o jsonpath='{.metadata.annotations.optipod\.io/recommendation}' | \
+  jq '.metricsAnalysis'
+```
+
+**Common Causes:**
+
+1. **Lookback window too short**
+
+**Solution:**
+```yaml
+metricsConfig:
+  lookbackWindow: 14d  # Increase window
+```
+
+2. **Resource bounds too restrictive**
+
+**Solution:**
+```yaml
+resourceBounds:
+  cpu:
+    min: 10m   # Lower minimum
+    max: 8000m # Raise maximum
+```
+
+3. **Unstable workload**
+
+**Solution:** Some workloads aren't good candidates for optimization. Consider:
+- Increasing lookback window
+- Using manual tuning instead
+- Accepting lower confidence recommendations
+
+## Auto Mode Issues
+
+### Changes Not Being Applied
+
+**Symptoms:**
+- Policy in Auto mode but resources not updating
+- No `optipod.io/last-applied` annotation
+
+**Diagnosis:**
+```bash
+# Check policy mode
+kubectl get optimizationpolicy <policy-name> -o jsonpath='{.spec.mode}'
+
+# Check safety status
+kubectl get optimizationpolicy <policy-name> -o jsonpath='{.status.safetyStatus}'
+
+# Check operator logs
+kubectl logs -n optipod-system -l app=optipod-operator | grep "Applied recommendation"
+```
+
+**Common Causes:**
+
+1. **Confidence threshold not met**
+
+**Solution:**
+```yaml
+safetyConfig:
+  confidenceThreshold: medium  # Lower threshold
+```
+
+2. **In cooldown period**
+
+**Solution:** Check cooldown status:
+```bash
+kubectl get deployment <name> \
+  -o jsonpath='{.metadata.annotations.optipod\.io/cooldown-until}'
+```
+
+3. **Change exceeds maxChangePercent**
+
+**Solution:**
+```yaml
+safetyConfig:
+  maxChangePercent: 75  # Allow larger changes
+```
+
+4. **SSA field ownership conflict**
+
+**Solution:**
+```yaml
+ssaConfig:
+  force: true  # Force ownership (use carefully!)
+```
+
+### Frequent Rollbacks
+
+**Symptoms:**
+- OptiPod keeps rolling back changes
+- High rollback count
+
+**Diagnosis:**
+```bash
+# Check rollback count
+kubectl get optimizationpolicy <policy-name> \
+  -o jsonpath='{.status.safetyStatus.rollbackCount}'
+
+# Check recent issues
+kubectl get optimizationpolicy <policy-name> \
+  -o jsonpath='{.status.safetyStatus.recentIssues}'
+
+# Check for OOM kills
+kubectl get events --field-selector reason=OOMKilled
+```
+
+**Common Causes:**
+
+1. **Memory recommendations too low**
+
+**Solution:**
+```yaml
+safetyConfig:
+  memoryFloor: 128Mi    # Increase floor
+  memoryHeadroom: 30    # Increase headroom
+```
+
+2. **Changes too aggressive**
+
+**Solution:**
+```yaml
+safetyConfig:
+  maxChangePercent: 25  # Smaller changes
+  minUpdateInterval: 48h # Slower updates
+```
+
+3. **Workload has memory spikes**
+
+**Solution:**
+- Increase lookback window to capture spikes
+- Increase memory headroom
+- Consider manual tuning
+
+### OOM Kills After OptiPod Changes
+
+**Symptoms:**
+- Pods being OOM killed
+- Started after OptiPod applied changes
+
+**Immediate Action:**
+```bash
+# Disable Auto mode
+kubectl patch optimizationpolicy <policy-name> \
+  --type merge \
+  -p '{"spec":{"mode":"Disabled"}}'
+
+# Revert memory
+kubectl set resources deployment <name> \
+  --requests=memory=<previous-value> \
+  --limits=memory=<previous-value>
+```
+
+**Investigation:**
+```bash
+# Check memory usage
+kubectl top pod -l app=<name>
+
+# Check recommendation that was applied
+kubectl get deployment <name> \
+  -o jsonpath='{.metadata.annotations.optipod\.io/recommendation}' | \
+  jq '.metricsAnalysis'
+
+# Check for memory spikes in Prometheus
+# Query: container_memory_usage_bytes{pod=~"<name>.*"}
+```
+
+**Prevention:**
+```yaml
+safetyConfig:
+  memoryFloor: 256Mi      # Higher floor
+  memoryHeadroom: 50      # More headroom
+  maxChangePercent: 25    # Smaller changes
+  enableRollback: true    # Ensure rollback enabled
+  rollbackTriggers:
+    - oomKills
+```
+
+## Metrics Issues
+
+### Prometheus Connection Failed
+
+**Symptoms:**
+- Operator logs show Prometheus errors
+- No recommendations generated
+
+**Diagnosis:**
+```bash
+# Check Prometheus address in policy
+kubectl get optimizationpolicy <policy-name> \
+  -o jsonpath='{.spec.metricsConfig.prometheus.address}'
+
+# Test connectivity from operator pod
+kubectl exec -n optipod-system <operator-pod> -- \
+  curl -v http://prometheus-server.monitoring.svc:9090/-/healthy
+```
+
+**Solution:**
+
+1. **Verify Prometheus address**
+```yaml
+metricsConfig:
+  prometheus:
+    address: http://prometheus-server.monitoring.svc:9090
+```
+
+2. **Check network policies**
+```bash
+kubectl get networkpolicy -n optipod-system
+kubectl get networkpolicy -n monitoring
+```
+
+3. **Verify Prometheus is running**
+```bash
+kubectl get pods -n monitoring -l app=prometheus
+```
+
+### metrics-server Not Available
+
+**Symptoms:**
+- `kubectl top` commands fail
+- OptiPod can't get metrics
+
+**Diagnosis:**
+```bash
+# Check metrics-server
+kubectl get apiservice v1beta1.metrics.k8s.io
+kubectl get pods -n kube-system -l k8s-app=metrics-server
+```
+
+**Solution:**
+
+1. **Install metrics-server**
+```bash
+kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+```
+
+2. **Fix metrics-server issues**
+```bash
+# Common fix for self-signed certs
+kubectl patch deployment metrics-server -n kube-system --type='json' \
+  -p='[{"op": "add", "path": "/spec/template/spec/containers/0/args/-", "value": "--kubelet-insecure-tls"}]'
+```
+
+## GitOps Integration Issues
+
+### ArgoCD/Flux Detecting Drift
+
+**Symptoms:**
+- GitOps tool shows resources as out-of-sync
+- Constant sync attempts
+
+**Solution:**
+
+1. **Use Server-Side Apply**
+```yaml
+updateStrategy: ServerSideApply
+```
+
+2. **Configure GitOps to ignore OptiPod fields**
+
+For ArgoCD:
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cm
+data:
+  resource.customizations: |
+    apps/Deployment:
+      ignoreDifferences: |
+        jsonPointers:
+        - /spec/template/spec/containers/0/resources/requests/cpu
+        - /spec/template/spec/containers/0/resources/requests/memory
+        - /spec/template/spec/containers/0/resources/limits/cpu
+        - /spec/template/spec/containers/0/resources/limits/memory
+```
+
+For Flux:
+```yaml
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: apps
+spec:
+  force: false
+  prune: true
+```
+
+3. **Use Recommend mode**
+```yaml
+mode: Recommend  # Manual application via GitOps
+```
+
+## Performance Issues
+
+### Operator Using Too Much CPU/Memory
+
+**Diagnosis:**
+```bash
+kubectl top pod -n optipod-system
+```
+
+**Solution:**
+
+1. **Increase operator resources**
+```yaml
+resources:
+  requests:
+    cpu: 500m
+    memory: 512Mi
+  limits:
+    cpu: 1000m
+    memory: 1Gi
+```
+
+2. **Reduce workload count**
+- Use more specific label selectors
+- Split into multiple policies
+
+3. **Increase sample interval**
+```yaml
+metricsConfig:
+  sampleInterval: 10m  # Less frequent sampling
+```
+
+### Slow Recommendation Generation
+
+**Solution:**
+
+1. **Reduce lookback window**
+```yaml
+metricsConfig:
+  lookbackWindow: 3d  # Shorter window
+```
+
+2. **Increase query timeout**
+```yaml
+metricsConfig:
+  prometheus:
+    queryTimeout: 60s
+```
+
+## Getting Help
+
+If you can't resolve your issue:
+
+1. **Collect diagnostic information**
+```bash
+# Operator logs
+kubectl logs -n optipod-system -l app=optipod-operator > operator-logs.txt
+
+# Policy status
+kubectl get optimizationpolicy -A -o yaml > policies.yaml
+
+# Workload status
+kubectl get deployment <name> -o yaml > workload.yaml
+```
+
+2. **Check GitHub Issues**
+- Search existing issues: https://github.com/Sagart-cactus/optipod/issues
+- Create new issue with diagnostic info
+
+3. **Community Support**
+- Join discussions: https://github.com/Sagart-cactus/optipod/discussions
+- Ask questions with full context
+
+## Next Steps
+
+- [Review safety model](/docs/concepts/safety-model/)
+- [Check API reference](/docs/reference/api/)
+- [Read operational modes guide](/docs/concepts/operational-modes/)

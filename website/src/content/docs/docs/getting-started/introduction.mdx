@@ -1,0 +1,79 @@
+---
+title: Introduction to OptiPod
+description: Learn what OptiPod is and why it exists
+---
+
+## What is OptiPod?
+
+OptiPod is an open-source Kubernetes operator that helps you optimize resource requests and limits for your workloads. It analyzes actual resource usage and provides recommendations to right-size your containers, reducing waste and improving cluster efficiency.
+
+## Why OptiPod Exists
+
+Kubernetes requires you to specify resource requests and limits for your containers, but getting these values right is challenging:
+
+- **Overprovisioning** wastes cluster resources and increases costs
+- **Underprovisioning** causes performance issues and OOM kills
+- **Manual tuning** is time-consuming and error-prone
+- **VPA (Vertical Pod Autoscaler)** can conflict with GitOps workflows
+
+OptiPod solves these problems by providing **safe, explainable, and GitOps-friendly** resource optimization.
+
+## Key Differences from VPA
+
+| Feature | OptiPod | VPA |
+|---------|---------|-----|
+| GitOps-safe | ✅ Yes | ❌ Webhook conflicts |
+| Explainable recommendations | ✅ Yes | ❌ Opaque |
+| Policy-driven control | ✅ Fine-grained | ⚠️ Limited |
+| Recommend-only mode | ✅ Yes | ✅ Yes |
+| Auto-apply mode | ✅ With safeguards | ✅ Yes |
+| Update strategy options | ✅ Webhook or SSA | ⚠️ Webhook only |
+| Impact estimation | ✅ Yes | ❌ No |
+
+## How It Works
+
+1. **Deploy OptiPod** operator in your cluster
+2. **Create OptimizationPolicy** CRDs to define what to optimize
+3. **Label workloads** to opt-in to optimization
+4. **Review recommendations** stored as annotations on your workloads
+5. **Apply changes** manually or let OptiPod auto-apply with safety guardrails
+
+## Operational Modes
+
+OptiPod supports three operational modes:
+
+### Recommend Mode (Default)
+- OptiPod analyzes workloads and stores recommendations as annotations
+- You review and apply changes manually (via GitOps or kubectl)
+- **Best for**: Getting started, testing, GitOps-strict environments
+
+### Auto Mode
+- OptiPod automatically applies recommendations with safety guardrails
+- Conservative defaults prevent dangerous changes
+- Change-rate limits prevent rapid oscillation
+- **Best for**: Production environments with confidence in OptiPod
+
+### Disabled Mode
+- OptiPod stops analyzing and updating workloads
+- Existing recommendations remain but aren't updated
+- **Best for**: Temporary pauses or troubleshooting
+
+## Safety Model
+
+OptiPod is designed with safety as a top priority:
+
+- **Conservative defaults**: Never reduce memory below safe thresholds
+- **Policy-driven controls**: You define bounds and change limits
+- **Memory safeguards**: Prevents OOM kills from aggressive reductions
+- **Change-rate limits**: Prevents rapid oscillation
+- **Impact estimation**: Shows expected impact before changes
+
+## Next Steps
+
+Ready to get started? Follow our installation guide:
+
+[Install OptiPod →](/docs/getting-started/installation)
+
+Or learn more about core concepts:
+
+[Core Concepts →](/docs/concepts/terminology)

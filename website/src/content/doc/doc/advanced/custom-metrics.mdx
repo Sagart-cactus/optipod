@@ -1,0 +1,520 @@
+---
+title: Custom Metrics
+description: Integrate custom metrics providers with OptiPod
+---
+
+OptiPod supports custom metrics providers beyond Prometheus and metrics-server. This guide shows you how to integrate your own metrics source.
+
+## Custom Metrics Provider Interface
+
+OptiPod expects metrics providers to implement a simple HTTP API that returns resource usage data.
+
+### API Specification
+
+#### Endpoint: GET /api/v1/metrics
+
+**Query Parameters:**
+- `workload`: Workload name
+- `namespace`: Namespace
+- `container`: Container name (optional)
+- `metric`: Metric type (`cpu` or `memory`)
+- `start`: Start time (RFC3339)
+- `end`: End time (RFC3339)
+- `step`: Sample interval (duration)
+
+**Response Format:**
+```json
+{
+  "status": "success",
+  "data": {
+    "resultType": "matrix",
+    "result": [
+      {
+        "metric": {
+          "container": "my-app",
+          "pod": "my-app-xxx",
+          "namespace": "default"
+        },
+        "values": [
+          [1706097600, "0.25"],
+          [1706097900, "0.30"],
+          [1706098200, "0.28"]
+        ]
+      }
+    ]
+  }
+}
+```
+
+**Values Format:**
+- First element: Unix timestamp
+- Second element: Metric value as string
+  - CPU: cores (e.g., "0.25" = 250m)
+  - Memory: bytes (e.g., "536870912" = 512Mi)
+
+## Configuration
+
+### Basic Configuration
+
+```yaml
+apiVersion: optipod.io/v1alpha1
+kind: OptimizationPolicy
+metadata:
+  name: custom-metrics-policy
+spec:
+  metricsConfig:
+    provider: custom
+    custom:
+      endpoint: http://custom-metrics.monitoring.svc:8080
+      authSecret: custom-metrics-auth
+      queryTimeout: 30s
+    lookbackWindow: 7d
+    sampleInterval: 5m
+```
+
+### Authentication
+
+Create a secret with authentication credentials:
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: custom-metrics-auth
+  namespace: default
+type: Opaque
+stringData:
+  token: "your-api-token"  # pragma: allowlist secret
+  # Or for basic auth:
+  username: "user"
+  password: "pass"  # pragma: allowlist secret
+```
+
+OptiPod will include authentication in requests:
+
+**Bearer Token:**
+```
+Authorization: Bearer <token>
+```
+
+**Basic Auth:**
+```
+Authorization: Basic <base64(username:password)>
+```
+
+## Implementation Examples
+
+### Example 1: Datadog Metrics
+
+```python
+from flask import Flask, request, jsonify
+import requests
+from datetime import datetime
+
+app = Flask(__name__)
+
+DATADOG_API_KEY = "your-api-key"  # pragma: allowlist secret
+DATADOG_APP_KEY = "your-app-key"  # pragma: allowlist secret
+
+@app.route('/api/v1/metrics', methods=['GET'])
+def get_metrics():
+    workload = request.args.get('workload')
+    namespace = request.args.get('namespace')
+    metric_type = request.args.get('metric')
+    start = int(datetime.fromisoformat(request.args.get('start')).timestamp())
+    end = int(datetime.fromisoformat(request.args.get('end')).timestamp())
+
+    # Map to Datadog metric
+    if metric_type == 'cpu':
+        query = f"avg:kubernetes.cpu.usage{{kube_deployment:{workload},kube_namespace:{namespace}}}"
+    else:
+        query = f"avg:kubernetes.memory.usage{{kube_deployment:{workload},kube_namespace:{namespace}}}"
+
+    # Query Datadog
+    response = requests.get(
+        'https://api.datadoghq.com/api/v1/query',
+        params={
+            'query': query,
+            'from': start,
+            'to': end
+        },
+        headers={
+            'DD-API-KEY': DATADOG_API_KEY,
+            'DD-APPLICATION-KEY': DATADOG_APP_KEY
+        }
+    )
+
+    # Transform to OptiPod format
+    datadog_data = response.json()
+    values = [[point[0] / 1000, str(point[1])] for point in datadog_data['series'][0]['pointlist']]
+
+    return jsonify({
+        'status': 'success',
+        'data': {
+            'resultType': 'matrix',
+            'result': [{
+                'metric': {
+                    'container': workload,
+                    'namespace': namespace
+                },
+                'values': values
+            }]
+        }
+    })
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=8080)
+```
+
+### Example 2: New Relic Metrics
+
+```javascript
+const express = require('express');
+const axios = require('axios');
+
+const app = express();
+const NEW_RELIC_API_KEY = process.env.NEW_RELIC_API_KEY;
+
+app.get('/api/v1/metrics', async (req, res) => {
+  const { workload, namespace, metric, start, end } = req.query;
+
+  // Build NRQL query
+  const metricName = metric === 'cpu'
+    ? 'k8s.container.cpuUsedCores'
+    : 'k8s.container.memoryUsedBytes';
+
+  const nrql = `
+    SELECT average(${metricName})
+    FROM Metric
+    WHERE k8s.deploymentName = '${workload}'
+    AND k8s.namespaceName = '${namespace}'
+    SINCE ${new Date(start).getTime()}
+    UNTIL ${new Date(end).getTime()}
+    TIMESERIES 5 minutes
+  `;
+
+  // Query New Relic
+  const response = await axios.post(
+    'https://insights-api.newrelic.com/v1/accounts/YOUR_ACCOUNT_ID/query',
+    { nrql },
+    {
+      headers: {
+        'X-Query-Key': NEW_RELIC_API_KEY
+      }
+    }
+  );
+
+  // Transform to OptiPod format
+  const values = response.data.results[0].timeSeries.map(point => [
+    point.beginTimeSeconds,
+    point.results[0].average.toString()
+  ]);
+
+  res.json({
+    status: 'success',
+    data: {
+      resultType: 'matrix',
+      result: [{
+        metric: {
+          container: workload,
+          namespace: namespace
+        },
+        values: values
+      }]
+    }
+  });
+});
+
+app.listen(8080, () => {
+  console.log('Custom metrics provider listening on port 8080');
+});
+```
+
+### Example 3: CloudWatch Metrics
+
+```go
+package main
+
+import (
+    "encoding/json"
+    "net/http"
+    "time"
+
+    "github.com/aws/aws-sdk-go/aws"
+    "github.com/aws/aws-sdk-go/aws/session"
+    "github.com/aws/aws-sdk-go/service/cloudwatch"
+)
+
+type MetricsResponse struct {
+    Status string `json:"status"`
+    Data   Data   `json:"data"`
+}
+
+type Data struct {
+    ResultType string   `json:"resultType"`
+    Result     []Result `json:"result"`
+}
+
+type Result struct {
+    Metric map[string]string `json:"metric"`
+    Values [][]interface{}   `json:"values"`
+}
+
+func metricsHandler(w http.ResponseWriter, r *http.Request) {
+    workload := r.URL.Query().Get("workload")
+    namespace := r.URL.Query().Get("namespace")
+    metricType := r.URL.Query().Get("metric")
+    start, _ := time.Parse(time.RFC3339, r.URL.Query().Get("start"))
+    end, _ := time.Parse(time.RFC3339, r.URL.Query().Get("end"))
+
+    // Create CloudWatch client
+    sess := session.Must(session.NewSession())
+    cw := cloudwatch.New(sess)
+
+    // Determine metric name
+    var metricName string
+    if metricType == "cpu" {
+        metricName = "CPUUtilization"
+    } else {
+        metricName = "MemoryUtilization"
+    }
+
+    // Query CloudWatch
+    input := &cloudwatch.GetMetricStatisticsInput{
+        Namespace:  aws.String("AWS/ECS"),
+        MetricName: aws.String(metricName),
+        Dimensions: []*cloudwatch.Dimension{
+            {
+                Name:  aws.String("ServiceName"),
+                Value: aws.String(workload),
+            },
+        },
+        StartTime:  aws.Time(start),
+        EndTime:    aws.Time(end),
+        Period:     aws.Int64(300),
+        Statistics: []*string{aws.String("Average")},
+    }
+
+    result, err := cw.GetMetricStatistics(input)
+    if err != nil {
+        http.Error(w, err.Error(), http.StatusInternalServerError)
+        return
+    }
+
+    // Transform to OptiPod format
+    values := make([][]interface{}, len(result.Datapoints))
+    for i, dp := range result.Datapoints {
+        values[i] = []interface{}{
+            dp.Timestamp.Unix(),
+            *dp.Average,
+        }
+    }
+
+    response := MetricsResponse{
+        Status: "success",
+        Data: Data{
+            ResultType: "matrix",
+            Result: []Result{{
+                Metric: map[string]string{
+                    "container": workload,
+                    "namespace": namespace,
+                },
+                Values: values,
+            }},
+        },
+    }
+
+    json.NewEncoder(w).Encode(response)
+}
+
+func main() {
+    http.HandleFunc("/api/v1/metrics", metricsHandler)
+    http.ListenAndServe(":8080", nil)
+}
+```
+
+## Deployment
+
+### Deploy as Kubernetes Service
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: custom-metrics-provider
+  namespace: monitoring
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: custom-metrics-provider
+  template:
+    metadata:
+      labels:
+        app: custom-metrics-provider
+    spec:
+      containers:
+      - name: provider
+        image: your-registry/custom-metrics-provider:latest
+        ports:
+        - containerPort: 8080
+        env:
+        - name: API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: metrics-provider-secret
+              key: api-key
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: custom-metrics-provider
+  namespace: monitoring
+spec:
+  selector:
+    app: custom-metrics-provider
+  ports:
+  - port: 8080
+    targetPort: 8080
+```
+
+## Testing
+
+### Test Metrics Endpoint
+
+```bash
+# Test directly
+curl "http://custom-metrics-provider.monitoring.svc:8080/api/v1/metrics?workload=my-app&namespace=default&metric=cpu&start=2026-01-24T00:00:00Z&end=2026-01-24T23:59:59Z&step=5m"
+
+# Test with authentication
+curl -H "Authorization: Bearer your-token" \
+  "http://custom-metrics-provider.monitoring.svc:8080/api/v1/metrics?..."
+```
+
+### Validate Response Format
+
+```bash
+# Check response structure
+curl ... | jq '.data.result[0].values[0]'
+# Should output: [timestamp, "value"]
+
+# Verify timestamps are Unix timestamps
+curl ... | jq '.data.result[0].values[0][0]'
+# Should output: 1706097600
+
+# Verify values are strings
+curl ... | jq '.data.result[0].values[0][1] | type'
+# Should output: "string"
+```
+
+## Monitoring
+
+### Provider Health Check
+
+Add health endpoint to your provider:
+
+```python
+@app.route('/health', methods=['GET'])
+def health():
+    return jsonify({'status': 'healthy'}), 200
+```
+
+Monitor with Kubernetes:
+
+```yaml
+livenessProbe:
+  httpGet:
+    path: /health
+    port: 8080
+  initialDelaySeconds: 10
+  periodSeconds: 30
+
+readinessProbe:
+  httpGet:
+    path: /health
+    port: 8080
+  initialDelaySeconds: 5
+  periodSeconds: 10
+```
+
+### Metrics Provider Metrics
+
+Expose metrics about your provider:
+
+```python
+from prometheus_client import Counter, Histogram, generate_latest
+
+requests_total = Counter('metrics_requests_total', 'Total requests')
+request_duration = Histogram('metrics_request_duration_seconds', 'Request duration')
+
+@app.route('/metrics', methods=['GET'])
+def metrics():
+    return generate_latest()
+```
+
+## Troubleshooting
+
+### OptiPod Can't Reach Provider
+
+```bash
+# Test from OptiPod operator pod
+kubectl exec -n optipod-system <operator-pod> -- \
+  curl -v http://custom-metrics-provider.monitoring.svc:8080/health
+
+# Check service
+kubectl get svc -n monitoring custom-metrics-provider
+
+# Check endpoints
+kubectl get endpoints -n monitoring custom-metrics-provider
+```
+
+### Authentication Failures
+
+```bash
+# Verify secret exists
+kubectl get secret custom-metrics-auth -n default
+
+# Check secret contents
+kubectl get secret custom-metrics-auth -n default -o jsonpath='{.data.token}' | base64 -d
+
+# Test with authentication
+curl -H "Authorization: Bearer $(kubectl get secret custom-metrics-auth -n default -o jsonpath='{.data.token}' | base64 -d)" \
+  http://custom-metrics-provider.monitoring.svc:8080/api/v1/metrics?...
+```
+
+### Invalid Response Format
+
+```bash
+# Validate JSON structure
+curl ... | jq '.data.result[0]'
+
+# Check for required fields
+curl ... | jq 'has("status") and has("data")'
+
+# Verify values array format
+curl ... | jq '.data.result[0].values[] | length == 2'
+```
+
+## Best Practices
+
+1. **Caching**: Cache metrics to reduce load on upstream provider
+2. **Rate limiting**: Implement rate limiting to prevent abuse
+3. **Error handling**: Return appropriate HTTP status codes
+4. **Logging**: Log all requests for debugging
+5. **Monitoring**: Expose metrics about your provider
+6. **High availability**: Run multiple replicas
+7. **Authentication**: Always use authentication
+8. **Validation**: Validate all input parameters
+
+## Next Steps
+
+- [Multi-tenant Setup](/docs/advanced/multi-tenant/)
+- [Troubleshooting](/docs/advanced/troubleshooting/)
+- [API Reference](/docs/reference/api/)

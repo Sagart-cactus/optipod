@@ -1,0 +1,515 @@
+---
+title: Creating Policies
+description: Learn how to create and configure OptimizationPolicy resources
+---
+
+OptimizationPolicy is the core resource that controls how OptiPod optimizes your workloads. This guide covers everything you need to know about creating effective policies.
+
+## Basic Policy Structure
+
+Every OptimizationPolicy has four main sections:
+
+```yaml
+apiVersion: optipod.io/v1alpha1
+kind: OptimizationPolicy
+metadata:
+  name: my-policy
+  namespace: default
+spec:
+  # 1. Operational mode
+  mode: Recommend
+
+  # 2. Target workloads
+  targetWorkloads:
+    kinds: [Deployment]
+    labelSelector:
+      matchLabels:
+        optipod.io/enabled: "true"
+
+  # 3. Metrics configuration
+  metricsConfig:
+    provider: prometheus
+    lookbackWindow: 7d
+
+  # 4. Resource bounds
+  resourceBounds:
+    cpu:
+      min: 10m
+      max: 4000m
+    memory:
+      min: 64Mi
+      max: 8Gi
+```
+
+## Target Workloads
+
+Define which workloads this policy applies to.
+
+### By Kind
+
+Target specific workload types:
+
+```yaml
+targetWorkloads:
+  kinds:
+    - Deployment
+    - StatefulSet
+    - DaemonSet
+```
+
+### By Label Selector
+
+Use labels to opt-in workloads:
+
+```yaml
+targetWorkloads:
+  labelSelector:
+    matchLabels:
+      optipod.io/enabled: "true"
+      environment: production
+```
+
+Or use expressions for more flexibility:
+
+```yaml
+targetWorkloads:
+  labelSelector:
+    matchExpressions:
+      - key: optipod.io/enabled
+        operator: In
+        values: ["true"]
+      - key: tier
+        operator: NotIn
+        values: ["critical"]
+```
+
+### By Namespace
+
+Policies are namespace-scoped by default:
+
+```yaml
+metadata:
+  name: production-policy
+  namespace: production  # Only affects workloads in 'production' namespace
+```
+
+### Combined Selectors
+
+Combine multiple selectors:
+
+```yaml
+targetWorkloads:
+  kinds:
+    - Deployment
+    - StatefulSet
+  labelSelector:
+    matchLabels:
+      optipod.io/enabled: "true"
+  namespaceSelector:
+    matchLabels:
+      environment: production
+```
+
+## Metrics Configuration
+
+Configure how OptiPod collects and analyzes metrics.
+
+### Prometheus
+
+```yaml
+metricsConfig:
+  provider: prometheus
+  prometheus:
+    address: http://prometheus-server.monitoring.svc:9090
+    queryTimeout: 30s
+  lookbackWindow: 7d
+  sampleInterval: 5m
+```
+
+### metrics-server
+
+```yaml
+metricsConfig:
+  provider: metrics-server
+  lookbackWindow: 7d
+  sampleInterval: 1m
+```
+
+### Lookback Window
+
+How far back to analyze metrics:
+
+- **3 days**: Fast adaptation, less stable
+- **7 days**: Balanced (recommended)
+- **14 days**: Very stable, slow adaptation
+- **30 days**: Maximum stability
+
+```yaml
+metricsConfig:
+  lookbackWindow: 14d  # 14 days
+```
+
+### Sample Interval
+
+How often to collect metrics:
+
+```yaml
+metricsConfig:
+  sampleInterval: 5m  # Every 5 minutes
+```
+
+Shorter intervals = more data points = better accuracy (but more storage)
+
+## Resource Bounds
+
+Set minimum and maximum values for recommendations.
+
+### CPU Bounds
+
+```yaml
+resourceBounds:
+  cpu:
+    min: 10m       # Minimum 10 millicores
+    max: 4000m     # Maximum 4 cores
+    defaultRequest: 100m
+    defaultLimit: 200m
+```
+
+### Memory Bounds
+
+```yaml
+resourceBounds:
+  memory:
+    min: 64Mi      # Minimum 64 MiB
+    max: 8Gi       # Maximum 8 GiB
+    defaultRequest: 256Mi
+    defaultLimit: 512Mi
+```
+
+### Per-Container Bounds
+
+Override bounds for specific containers:
+
+```yaml
+resourceBounds:
+  containerOverrides:
+    - name: nginx
+      cpu:
+        min: 50m
+        max: 1000m
+      memory:
+        min: 128Mi
+        max: 2Gi
+    - name: sidecar
+      cpu:
+        min: 10m
+        max: 100m
+```
+
+## Safety Configuration
+
+Configure safety guardrails (Auto mode only).
+
+### Basic Safety
+
+```yaml
+safetyConfig:
+  confidenceThreshold: high
+  maxChangePercent: 50
+  minUpdateInterval: 24h
+```
+
+### Memory Protection
+
+```yaml
+safetyConfig:
+  memoryFloor: 64Mi
+  memoryHeadroom: 20%
+  preventOOMKills: true
+```
+
+### Rollback Configuration
+
+```yaml
+safetyConfig:
+  enableRollback: true
+  rollbackTriggers:
+    - oomKills
+    - crashLoops
+    - highErrorRate
+  cooldownPeriod: 168h  # 7 days
+```
+
+## Update Strategy
+
+Choose how OptiPod applies recommendations.
+
+### Server-Side Apply (Recommended)
+
+```yaml
+updateStrategy: ServerSideApply
+ssaConfig:
+  fieldManager: optipod
+  force: false
+```
+
+### Webhook
+
+```yaml
+updateStrategy: Webhook
+webhookConfig:
+  failurePolicy: Ignore
+  timeoutSeconds: 10
+```
+
+## Complete Examples
+
+### Example 1: GitOps-Friendly Policy
+
+For teams using ArgoCD or Flux:
+
+```yaml
+apiVersion: optipod.io/v1alpha1
+kind: OptimizationPolicy
+metadata:
+  name: gitops-policy
+  namespace: production
+spec:
+  mode: Recommend  # Manual application via GitOps
+
+  targetWorkloads:
+    kinds:
+      - Deployment
+      - StatefulSet
+    labelSelector:
+      matchLabels:
+        optipod.io/enabled: "true"
+
+  metricsConfig:
+    provider: prometheus
+    prometheus:
+      address: http://prometheus-server.monitoring.svc:9090
+    lookbackWindow: 14d  # Stable recommendations
+    sampleInterval: 5m
+
+  resourceBounds:
+    cpu:
+      min: 10m
+      max: 4000m
+    memory:
+      min: 128Mi
+      max: 8Gi
+```
+
+### Example 2: Auto-Optimization Policy
+
+For production workloads with Auto mode:
+
+```yaml
+apiVersion: optipod.io/v1alpha1
+kind: OptimizationPolicy
+metadata:
+  name: auto-policy
+  namespace: production
+spec:
+  mode: Auto
+  updateStrategy: ServerSideApply
+
+  targetWorkloads:
+    kinds:
+      - Deployment
+    labelSelector:
+      matchLabels:
+        optipod.io/enabled: "true"
+        tier: "frontend"
+
+  metricsConfig:
+    provider: prometheus
+    lookbackWindow: 7d
+    sampleInterval: 5m
+
+  resourceBounds:
+    cpu:
+      min: 50m
+      max: 2000m
+    memory:
+      min: 128Mi
+      max: 4Gi
+
+  safetyConfig:
+    confidenceThreshold: high
+    maxChangePercent: 50
+    minUpdateInterval: 24h
+    memoryFloor: 128Mi
+    memoryHeadroom: 20%
+    enableRollback: true
+    rollbackTriggers:
+      - oomKills
+      - crashLoops
+```
+
+### Example 3: Development Environment
+
+For non-production with aggressive optimization:
+
+```yaml
+apiVersion: optipod.io/v1alpha1
+kind: OptimizationPolicy
+metadata:
+  name: dev-policy
+  namespace: development
+spec:
+  mode: Auto
+  updateStrategy: ServerSideApply
+
+  targetWorkloads:
+    kinds:
+      - Deployment
+      - StatefulSet
+    labelSelector:
+      matchLabels:
+        optipod.io/enabled: "true"
+
+  metricsConfig:
+    provider: metrics-server
+    lookbackWindow: 3d  # Faster adaptation
+    sampleInterval: 1m
+
+  resourceBounds:
+    cpu:
+      min: 10m
+      max: 1000m
+    memory:
+      min: 32Mi
+      max: 2Gi
+
+  safetyConfig:
+    confidenceThreshold: medium  # Less strict
+    maxChangePercent: 75
+    minUpdateInterval: 12h
+    memoryFloor: 32Mi
+    memoryHeadroom: 10%
+```
+
+### Example 4: Multi-Tier Policy
+
+Different settings for different tiers:
+
+```yaml
+# Critical tier - conservative
+apiVersion: optipod.io/v1alpha1
+kind: OptimizationPolicy
+metadata:
+  name: critical-policy
+  namespace: production
+spec:
+  mode: Recommend
+  targetWorkloads:
+    labelSelector:
+      matchLabels:
+        tier: critical
+  metricsConfig:
+    lookbackWindow: 30d
+  safetyConfig:
+    confidenceThreshold: high
+    maxChangePercent: 25
+---
+# Standard tier - balanced
+apiVersion: optipod.io/v1alpha1
+kind: OptimizationPolicy
+metadata:
+  name: standard-policy
+  namespace: production
+spec:
+  mode: Auto
+  targetWorkloads:
+    labelSelector:
+      matchLabels:
+        tier: standard
+  metricsConfig:
+    lookbackWindow: 7d
+  safetyConfig:
+    maxChangePercent: 50
+```
+
+## Policy Management
+
+### Create Policy
+
+```bash
+kubectl apply -f policy.yaml
+```
+
+### View Policy
+
+```bash
+kubectl get optimizationpolicy -n production
+kubectl describe optimizationpolicy my-policy -n production
+```
+
+### Update Policy
+
+```bash
+kubectl edit optimizationpolicy my-policy -n production
+```
+
+Or patch specific fields:
+
+```bash
+kubectl patch optimizationpolicy my-policy -n production \
+  --type merge \
+  -p '{"spec":{"mode":"Auto"}}'
+```
+
+### Delete Policy
+
+```bash
+kubectl delete optimizationpolicy my-policy -n production
+```
+
+:::caution
+Deleting a policy stops optimization for affected workloads. Existing recommendations remain as annotations.
+:::
+
+## Best Practices
+
+1. **Start with Recommend mode**: Build confidence before Auto mode
+2. **Use long lookback windows**: 7-14 days for stable recommendations
+3. **Set appropriate bounds**: Prevent unrealistic recommendations
+4. **Label selectively**: Opt-in workloads gradually
+5. **One policy per tier**: Different settings for different criticality levels
+6. **Document policies**: Add annotations explaining the configuration
+7. **Version control**: Store policies in Git
+8. **Test in non-prod**: Validate policies before production
+
+## Troubleshooting
+
+### No Recommendations Generated
+
+Check:
+- Workload has correct labels
+- Policy targets correct kinds/namespaces
+- Sufficient metrics data available
+- Confidence threshold not too high
+
+### Recommendations Seem Wrong
+
+Adjust:
+- Lookback window (longer = more stable)
+- Resource bounds (may be too restrictive)
+- Sample interval (more frequent = better accuracy)
+- Confidence threshold
+
+### Policy Not Applying Changes
+
+Verify:
+- Mode is set to Auto
+- Update strategy is configured
+- Safety thresholds are met
+- No rollback cooldown active
+
+## Next Steps
+
+- [Review recommendations](/docs/guides/reviewing-recommendations)
+- [Switch to Auto mode](/docs/guides/switching-to-auto)
+- [Understand safety model](/docs/concepts/safety-model)

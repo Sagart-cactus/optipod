@@ -1,0 +1,139 @@
+---
+interface Props {
+  code: string;
+  language?: string;
+  title?: string;
+  showLineNumbers?: boolean;
+  class?: string;
+}
+
+const {
+  code,
+  language = 'bash',
+  title,
+  showLineNumbers = false,
+  class: className = '',
+} = Astro.props;
+
+const lines = code.split('\n');
+---
+
+<div class={`code-block-wrapper ${className}`}>
+  {title && (
+    <div class="code-block-header bg-gray-800 text-gray-100 px-4 py-2 rounded-t-lg font-semibold text-sm">
+      {title}
+    </div>
+  )}
+  <div class={`code-block relative ${title ? 'rounded-t-none' : ''}`}>
+    <button
+      class="copy-button absolute top-2 right-2 bg-gray-700 hover:bg-gray-600 text-gray-100 px-3 py-1 rounded text-xs transition-colors z-10"
+      data-code={code}
+      aria-label="Copy code"
+    >
+      Copy
+    </button>
+    <pre class={`overflow-x-auto p-4 ${showLineNumbers ? 'pl-12' : ''}`}><code class={`language-${language}`}>{
+      showLineNumbers
+        ? lines.map((line, i) => `${String(i + 1).padStart(2, ' ')} ${line}`).join('\n')
+        : code
+    }</code></pre>
+  </div>
+</div>
+
+<style>
+  .code-block {
+    @apply bg-gray-900 text-gray-100 rounded-lg shadow-lg;
+  }
+
+  .code-block pre {
+    @apply m-0;
+  }
+
+  .code-block code {
+    @apply text-sm font-mono leading-relaxed;
+  }
+
+  .copy-button:active {
+    @apply scale-95;
+  }
+
+  /* Enhanced syntax highlighting colors */
+  .code-block :global(.token.comment),
+  .code-block :global(.token.prolog),
+  .code-block :global(.token.doctype),
+  .code-block :global(.token.cdata) {
+    @apply text-gray-500;
+  }
+
+  .code-block :global(.token.punctuation) {
+    @apply text-gray-300;
+  }
+
+  .code-block :global(.token.property),
+  .code-block :global(.token.tag),
+  .code-block :global(.token.boolean),
+  .code-block :global(.token.number),
+  .code-block :global(.token.constant),
+  .code-block :global(.token.symbol) {
+    @apply text-blue-400;
+  }
+
+  .code-block :global(.token.selector),
+  .code-block :global(.token.attr-name),
+  .code-block :global(.token.string),
+  .code-block :global(.token.char),
+  .code-block :global(.token.builtin) {
+    @apply text-green-400;
+  }
+
+  .code-block :global(.token.operator),
+  .code-block :global(.token.entity),
+  .code-block :global(.token.url),
+  .code-block :global(.token.variable) {
+    @apply text-yellow-400;
+  }
+
+  .code-block :global(.token.atrule),
+  .code-block :global(.token.attr-value),
+  .code-block :global(.token.keyword) {
+    @apply text-purple-400;
+  }
+
+  .code-block :global(.token.function),
+  .code-block :global(.token.class-name) {
+    @apply text-pink-400;
+  }
+</style>
+
+<script>
+  import Prism from 'prismjs';
+  import 'prismjs/themes/prism-tomorrow.css';
+  import 'prismjs/components/prism-bash';
+  import 'prismjs/components/prism-yaml';
+
+  document.addEventListener('DOMContentLoaded', () => {
+    // Highlight all code blocks
+    Prism.highlightAll();
+
+    // Copy button functionality
+    const copyButtons = document.querySelectorAll('.copy-button');
+
+    copyButtons.forEach((button) => {
+      button.addEventListener('click', async () => {
+        const code = button.getAttribute('data-code');
+        if (code) {
+          try {
+            await navigator.clipboard.writeText(code);
+            const originalText = button.textContent;
+            button.textContent = 'Copied!';
+            setTimeout(() => {
+              button.textContent = originalText;
+            }, 2000);
+          } catch (err) {
+            console.error('Failed to copy:', err);
+          }
+        }
+      });
+    });
+  });
+</script>

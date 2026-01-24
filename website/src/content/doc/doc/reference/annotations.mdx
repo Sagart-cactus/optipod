@@ -1,0 +1,361 @@
+---
+title: Annotations Reference
+description: Complete reference for OptiPod annotations
+---
+
+OptiPod uses Kubernetes annotations to store recommendations and metadata on workloads. This page provides a complete reference.
+
+## Recommendation Annotations
+
+### optipod.io/recommendation
+
+**Type:** JSON string
+**Applied to:** Workload resources (Deployment, StatefulSet, etc.)
+**Set by:** OptiPod operator
+**Mode:** All modes
+
+Contains the complete recommendation for the workload.
+
+**Format:**
+```json
+{
+  "containers": {
+    "<container-name>": {
+      "current": {
+        "requests": {"cpu": "string", "memory": "string"},
+        "limits": {"cpu": "string", "memory": "string"}
+      },
+      "recommended": {
+        "requests": {"cpu": "string", "memory": "string"},
+        "limits": {"cpu": "string", "memory": "string"}
+      }
+    }
+  },
+  "confidence": "high|medium|low",
+  "timestamp": "RFC3339",
+  "metricsAnalysis": {
+    "cpuP95": "string",
+    "memoryP95": "string",
+    "cpuP99": "string",
+    "memoryP99": "string",
+    "sampleCount": number
+  },
+  "estimatedImpact": {
+    "cpuSavings": "string",
+    "memorySavings": "string",
+    "costSavings": "string",
+    "riskLevel": "low|medium|high"
+  },
+  "reasoning": "string"
+}
+```
+
+**Example:**
+```yaml
+annotations:
+  optipod.io/recommendation: |
+    {
+      "containers": {
+        "nginx": {
+          "current": {
+            "requests": {"cpu": "1000m", "memory": "2Gi"},
+            "limits": {"cpu": "2000m", "memory": "4Gi"}
+          },
+          "recommended": {
+            "requests": {"cpu": "250m", "memory": "512Mi"},
+            "limits": {"cpu": "500m", "memory": "1Gi"}
+          }
+        }
+      },
+      "confidence": "high",
+      "timestamp": "2026-01-24T10:30:00Z",
+      "metricsAnalysis": {
+        "cpuP95": "200m",
+        "memoryP95": "400Mi",
+        "cpuP99": "230m",
+        "memoryP99": "450Mi",
+        "sampleCount": 2016
+      },
+      "estimatedImpact": {
+        "cpuSavings": "75%",
+        "memorySavings": "75%",
+        "costSavings": "$45/month",
+        "riskLevel": "low"
+      },
+      "reasoning": "Workload consistently uses 20-25% of requested resources."
+    }
+```
+
+## Timestamp Annotations
+
+### optipod.io/last-updated
+
+**Type:** RFC3339 timestamp
+**Applied to:** Workload resources
+**Set by:** OptiPod operator
+**Mode:** All modes
+
+Timestamp when the recommendation was last updated.
+
+**Example:**
+```yaml
+annotations:
+  optipod.io/last-updated: "2026-01-24T10:30:00Z"
+```
+
+### optipod.io/last-applied
+
+**Type:** RFC3339 timestamp
+**Applied to:** Workload resources
+**Set by:** OptiPod operator
+**Mode:** Auto mode only
+
+Timestamp when OptiPod last applied a recommendation to this workload.
+
+**Example:**
+```yaml
+annotations:
+  optipod.io/last-applied: "2026-01-24T10:30:00Z"
+```
+
+## Policy Annotations
+
+### optipod.io/policy
+
+**Type:** string
+**Applied to:** Workload resources
+**Set by:** OptiPod operator
+**Mode:** All modes
+
+Name of the OptimizationPolicy managing this workload.
+
+**Example:**
+```yaml
+annotations:
+  optipod.io/policy: "production-policy"
+```
+
+### optipod.io/confidence
+
+**Type:** string
+**Values:** `high`, `medium`, `low`
+**Applied to:** Workload resources
+**Set by:** OptiPod operator
+**Mode:** All modes
+
+Confidence level of the current recommendation.
+
+**Example:**
+```yaml
+annotations:
+  optipod.io/confidence: "high"
+```
+
+## Safety Annotations
+
+### optipod.io/rollback-count
+
+**Type:** integer (as string)
+**Applied to:** Workload resources
+**Set by:** OptiPod operator
+**Mode:** Auto mode only
+
+Number of times OptiPod has automatically rolled back changes to this workload.
+
+**Example:**
+```yaml
+annotations:
+  optipod.io/rollback-count: "2"
+```
+
+### optipod.io/cooldown-until
+
+**Type:** RFC3339 timestamp
+**Applied to:** Workload resources
+**Set by:** OptiPod operator
+**Mode:** Auto mode only
+
+Timestamp when the cooldown period ends after a rollback. OptiPod will not make changes until this time.
+
+**Example:**
+```yaml
+annotations:
+  optipod.io/cooldown-until: "2026-01-31T10:30:00Z"
+```
+
+### optipod.io/last-rollback
+
+**Type:** RFC3339 timestamp
+**Applied to:** Workload resources
+**Set by:** OptiPod operator
+**Mode:** Auto mode only
+
+Timestamp of the most recent rollback.
+
+**Example:**
+```yaml
+annotations:
+  optipod.io/last-rollback: "2026-01-24T10:30:00Z"
+```
+
+### optipod.io/rollback-reason
+
+**Type:** string
+**Applied to:** Workload resources
+**Set by:** OptiPod operator
+**Mode:** Auto mode only
+
+Reason for the most recent rollback.
+
+**Example:**
+```yaml
+annotations:
+  optipod.io/rollback-reason: "OOM kills detected after resource reduction"
+```
+
+## User Annotations
+
+These annotations can be set by users to control OptiPod behavior.
+
+### optipod.io/exclude
+
+**Type:** string
+**Values:** `"true"`, `"false"`
+**Applied to:** Workload resources
+**Set by:** User
+**Mode:** All modes
+
+Exclude this workload from optimization even if it matches policy selectors.
+
+**Example:**
+```yaml
+annotations:
+  optipod.io/exclude: "true"
+```
+
+### optipod.io/min-cpu
+
+**Type:** Kubernetes resource quantity
+**Applied to:** Workload resources
+**Set by:** User
+**Mode:** All modes
+
+Override minimum CPU for this specific workload.
+
+**Example:**
+```yaml
+annotations:
+  optipod.io/min-cpu: "100m"
+```
+
+### optipod.io/max-cpu
+
+**Type:** Kubernetes resource quantity
+**Applied to:** Workload resources
+**Set by:** User
+**Mode:** All modes
+
+Override maximum CPU for this specific workload.
+
+**Example:**
+```yaml
+annotations:
+  optipod.io/max-cpu: "2000m"
+```
+
+### optipod.io/min-memory
+
+**Type:** Kubernetes resource quantity
+**Applied to:** Workload resources
+**Set by:** User
+**Mode:** All modes
+
+Override minimum memory for this specific workload.
+
+**Example:**
+```yaml
+annotations:
+  optipod.io/min-memory: "256Mi"
+```
+
+### optipod.io/max-memory
+
+**Type:** Kubernetes resource quantity
+**Applied to:** Workload resources
+**Set by:** User
+**Mode:** All modes
+
+Override maximum memory for this specific workload.
+
+**Example:**
+```yaml
+annotations:
+  optipod.io/max-memory: "4Gi"
+```
+
+## Querying Annotations
+
+### Get Recommendation
+
+```bash
+kubectl get deployment my-app \
+  -o jsonpath='{.metadata.annotations.optipod\.io/recommendation}' | jq .
+```
+
+### Get Confidence Level
+
+```bash
+kubectl get deployment my-app \
+  -o jsonpath='{.metadata.annotations.optipod\.io/confidence}'
+```
+
+### Get Last Update Time
+
+```bash
+kubectl get deployment my-app \
+  -o jsonpath='{.metadata.annotations.optipod\.io/last-updated}'
+```
+
+### Check Cooldown Status
+
+```bash
+kubectl get deployment my-app \
+  -o jsonpath='{.metadata.annotations.optipod\.io/cooldown-until}'
+```
+
+### List All OptiPod Annotations
+
+```bash
+kubectl get deployment my-app -o json | \
+  jq '.metadata.annotations | with_entries(select(.key | startswith("optipod.io/")))'
+```
+
+## Setting User Annotations
+
+### Exclude Workload
+
+```bash
+kubectl annotate deployment my-app optipod.io/exclude=true
+```
+
+### Set Resource Overrides
+
+```bash
+kubectl annotate deployment my-app \
+  optipod.io/min-cpu=100m \
+  optipod.io/max-cpu=2000m \
+  optipod.io/min-memory=256Mi \
+  optipod.io/max-memory=4Gi
+```
+
+### Remove Annotations
+
+```bash
+kubectl annotate deployment my-app optipod.io/exclude-
+```
+
+## Next Steps
+
+- [API Reference](/docs/reference/api/)
+- [CRD Specification](/docs/reference/crd-spec/)
+- [Reviewing Recommendations](/docs/guides/reviewing-recommendations/)

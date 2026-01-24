@@ -1,45 +1,24 @@
-# Dependencies
+# build output
+dist/
+.output/
+
+# dependencies
 node_modules/
+
+# logs
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+pnpm-debug.log*
 
-# Build outputs
-dist/
-build/
-*.min.css
-*.min.js
 
-# Lighthouse reports
-.lighthouseci/
-lhci_reports/
+# environment variables
+.env
+.env.production
 
-# OS generated files
+# macOS-specific files
 .DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-Thumbs.db
 
-# Editor directories and files
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
+pnpm-lock.yaml
 
-# Temporary files
-*.tmp
-*.temp
-
-# Log files
-*.log
-
-# Coverage directory used by tools like istanbul
-coverage/
-
-# Cache directories
-.cache/
-.parcel-cache/
+.astro

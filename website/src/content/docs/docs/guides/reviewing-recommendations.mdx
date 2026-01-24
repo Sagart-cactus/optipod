@@ -1,0 +1,401 @@
+---
+title: Reviewing Recommendations
+description: How to review and interpret OptiPod's resource recommendations
+---
+
+OptiPod stores recommendations as annotations on your workloads. This guide shows you how to review, interpret, and act on these recommendations.
+
+## Finding Recommendations
+
+### List Workloads with Recommendations
+
+```bash
+kubectl get deployments -l optipod.io/enabled=true \
+  -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.metadata.annotations.optipod\.io/recommendation}{"\n"}{end}'
+```
+
+### View Recommendation for Specific Workload
+
+```bash
+kubectl get deployment my-app \
+  -o jsonpath='{.metadata.annotations.optipod\.io/recommendation}' | jq .
+```
+
+## Recommendation Format
+
+Recommendations are stored as JSON annotations:
+
+```json
+{
+  "containers": {
+    "my-app": {
+      "current": {
+        "requests": {"cpu": "1000m", "memory": "2Gi"},
+        "limits": {"cpu": "2000m", "memory": "4Gi"}
+      },
+      "recommended": {
+        "requests": {"cpu": "250m", "memory": "512Mi"},
+        "limits": {"cpu": "500m", "memory": "1Gi"}
+      }
+    }
+  },
+  "confidence": "high",
+  "timestamp": "2026-01-24T10:30:00Z",
+  "metricsAnalysis": {
+    "cpuP95": "200m",
+    "memoryP95": "400Mi",
+    "cpuP99": "230m",
+    "memoryP99": "450Mi",
+    "sampleCount": 2016
+  },
+  "estimatedImpact": {
+    "cpuSavings": "75%",
+    "memorySavings": "75%",
+    "costSavings": "$45/month",
+    "riskLevel": "low"
+  },
+  "reasoning": "Workload consistently uses 20-25% of requested resources. Recommendation includes 20% headroom above P95 usage."
+}
+```
+
+## Understanding Recommendations
+
+### Confidence Levels
+
+**High Confidence**
+- 14+ days of stable metrics
+- Low variance in usage patterns
+- Sufficient sample count (more than 2000 samples)
+- **Action**: Safe to apply
+
+**Medium Confidence**
+- 7-14 days of metrics
+- Moderate variance
+- Adequate samples (1000-2000)
+- **Action**: Review carefully before applying
+
+**Low Confidence**
+- Less than 7 days of metrics
+- High variance or insufficient data
+- **Action**: Wait for more data
+
+### Metrics Analysis
+
+```json
+"metricsAnalysis": {
+  "cpuP95": "200m",      // 95th percentile CPU usage
+  "memoryP95": "400Mi",  // 95th percentile memory usage
+  "cpuP99": "230m",      // 99th percentile CPU usage
+  "memoryP99": "450Mi",  // 99th percentile memory usage
+  "sampleCount": 2016    // Number of data points analyzed
+}
+```
+
+**Interpretation:**
+- P95 means 95% of the time, usage is below this value
+- P99 captures occasional spikes
+- Recommendations typically use P95 + headroom
+
+### Impact Estimation
+
+```json
+"estimatedImpact": {
+  "cpuSavings": "75%",           // Reduction in CPU requests
+  "memorySavings": "75%",        // Reduction in memory requests
+  "costSavings": "$45/month",    // Estimated cost savings
+  "riskLevel": "low"             // Risk assessment
+}
+```
+
+**Risk Levels:**
+- **Low**: Small change, high confidence, stable workload
+- **Medium**: Moderate change or medium confidence
+- **High**: Large change, low confidence, or unstable workload
+
+### Reasoning
+
+Human-readable explanation of why the recommendation was made:
+
+```json
+"reasoning": "Workload consistently uses 20-25% of requested resources. Recommendation includes 20% headroom above P95 usage."
+```
+
+## Reviewing Recommendations
+
+### Step 1: Check Confidence
+
+Only proceed if confidence is high or medium:
+
+```bash
+kubectl get deployment my-app \
+  -o jsonpath='{.metadata.annotations.optipod\.io/recommendation}' | \
+  jq -r '.confidence'
+```
+
+### Step 2: Review Current vs Recommended
+
+Compare current and recommended values:
+
+```bash
+kubectl get deployment my-app \
+  -o jsonpath='{.metadata.annotations.optipod\.io/recommendation}' | \
+  jq '.containers[] | {current, recommended}'
+```
+
+### Step 3: Check Impact
+
+Review estimated impact and risk:
+
+```bash
+kubectl get deployment my-app \
+  -o jsonpath='{.metadata.annotations.optipod\.io/recommendation}' | \
+  jq '.estimatedImpact'
+```
+
+### Step 4: Analyze Metrics
+
+Look at actual usage patterns:
+
+```bash
+kubectl get deployment my-app \
+  -o jsonpath='{.metadata.annotations.optipod\.io/recommendation}' | \
+  jq '.metricsAnalysis'
+```
+
+### Step 5: Read Reasoning
+
+Understand why the recommendation was made:
+
+```bash
+kubectl get deployment my-app \
+  -o jsonpath='{.metadata.annotations.optipod\.io/recommendation}' | \
+  jq -r '.reasoning'
+```
+
+## Decision Framework
+
+Use this framework to decide whether to apply a recommendation:
+
+### ✅ Apply Immediately
+
+- Confidence: High
+- Risk: Low
+- Change: Less than 50% reduction or less than 100% increase
+- Workload: Non-critical
+- Savings: More than 30%
+
+### ⚠️ Apply with Caution
+
+- Confidence: Medium
+- Risk: Medium
+- Change: 50-75% reduction or 100-200% increase
+- Workload: Important but not critical
+- Savings: 20-30%
+
+### ❌ Don't Apply Yet
+
+- Confidence: Low
+- Risk: High
+- Change: More than 75% reduction or more than 200% increase
+- Workload: Critical
+- Insufficient data or unstable patterns
+
+## Applying Recommendations
+
+### Manual Application
+
+Update your deployment YAML:
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-app
+spec:
+  template:
+    spec:
+      containers:
+      - name: my-app
+        resources:
+          requests:
+            cpu: 250m      # From recommendation
+            memory: 512Mi  # From recommendation
+          limits:
+            cpu: 500m      # From recommendation
+            memory: 1Gi    # From recommendation
+```
+
+### Using kubectl
+
+```bash
+kubectl set resources deployment my-app \
+  --requests=cpu=250m,memory=512Mi \
+  --limits=cpu=500m,memory=1Gi
+```
+
+### GitOps Workflow
+
+1. Extract recommendation
+2. Update deployment YAML in Git
+3. Create pull request
+4. Review and merge
+5. GitOps tool applies changes
+
+## Monitoring After Application
+
+### Check Pod Status
+
+```bash
+kubectl get pods -l app=my-app
+kubectl describe pod <pod-name>
+```
+
+### Monitor Resource Usage
+
+```bash
+kubectl top pod -l app=my-app
+```
+
+### Watch for Issues
+
+```bash
+# Check for OOM kills
+kubectl get events --field-selector reason=OOMKilled
+
+# Check for restarts
+kubectl get pods -l app=my-app -o jsonpath='{.items[*].status.containerStatuses[*].restartCount}'
+
+# Check logs for errors
+kubectl logs -l app=my-app --tail=100
+```
+
+### Compare Before/After
+
+Track metrics before and after applying recommendations:
+
+```bash
+# Before
+kubectl top pod -l app=my-app > before.txt
+
+# Apply recommendation
+kubectl set resources deployment my-app ...
+
+# Wait 24 hours
+
+# After
+kubectl top pod -l app=my-app > after.txt
+
+# Compare
+diff before.txt after.txt
+```
+
+## Bulk Review
+
+### Script to Review All Recommendations
+
+```bash
+#!/bin/bash
+# review-recommendations.sh
+
+echo "Reviewing all OptiPod recommendations..."
+echo
+
+kubectl get deployments -A -l optipod.io/enabled=true -o json | \
+  jq -r '.items[] |
+    select(.metadata.annotations."optipod.io/recommendation" != null) |
+    {
+      namespace: .metadata.namespace,
+      name: .metadata.name,
+      confidence: (.metadata.annotations."optipod.io/recommendation" | fromjson | .confidence),
+      cpuSavings: (.metadata.annotations."optipod.io/recommendation" | fromjson | .estimatedImpact.cpuSavings),
+      memorySavings: (.metadata.annotations."optipod.io/recommendation" | fromjson | .estimatedImpact.memorySavings),
+      riskLevel: (.metadata.annotations."optipod.io/recommendation" | fromjson | .estimatedImpact.riskLevel)
+    } |
+    "\(.namespace)/\(.name): Confidence=\(.confidence), CPU=\(.cpuSavings), Memory=\(.memorySavings), Risk=\(.riskLevel)"'
+```
+
+### Export to CSV
+
+```bash
+#!/bin/bash
+# export-recommendations.sh
+
+echo "Namespace,Name,Confidence,CPU Savings,Memory Savings,Risk Level" > recommendations.csv
+
+kubectl get deployments -A -l optipod.io/enabled=true -o json | \
+  jq -r '.items[] |
+    select(.metadata.annotations."optipod.io/recommendation" != null) |
+    [
+      .metadata.namespace,
+      .metadata.name,
+      (.metadata.annotations."optipod.io/recommendation" | fromjson | .confidence),
+      (.metadata.annotations."optipod.io/recommendation" | fromjson | .estimatedImpact.cpuSavings),
+      (.metadata.annotations."optipod.io/recommendation" | fromjson | .estimatedImpact.memorySavings),
+      (.metadata.annotations."optipod.io/recommendation" | fromjson | .estimatedImpact.riskLevel)
+    ] | @csv' >> recommendations.csv
+
+echo "Exported to recommendations.csv"
+```
+
+## Best Practices
+
+1. **Review regularly**: Check recommendations weekly
+2. **Start small**: Apply to non-critical workloads first
+3. **Monitor closely**: Watch for 24-48 hours after applying
+4. **Document decisions**: Note why you applied or rejected recommendations
+5. **Track results**: Measure actual savings and impact
+6. **Iterate**: Adjust policies based on results
+7. **Automate**: Use scripts for bulk review and application
+
+## Troubleshooting
+
+### No Recommendations Appearing
+
+Check:
+```bash
+# Verify workload is labeled
+kubectl get deployment my-app -o jsonpath='{.metadata.labels}'
+
+# Check policy status
+kubectl get optimizationpolicy -n <namespace>
+
+# Verify metrics are available
+kubectl logs -n optipod-system -l app=optipod-operator
+```
+
+### Recommendations Seem Incorrect
+
+Investigate:
+```bash
+# Check metrics analysis
+kubectl get deployment my-app \
+  -o jsonpath='{.metadata.annotations.optipod\.io/recommendation}' | \
+  jq '.metricsAnalysis'
+
+# Review policy configuration
+kubectl get optimizationpolicy <policy-name> -o yaml
+
+# Check actual resource usage
+kubectl top pod -l app=my-app
+```
+
+### Recommendations Not Updating
+
+Verify:
+```bash
+# Check last update timestamp
+kubectl get deployment my-app \
+  -o jsonpath='{.metadata.annotations.optipod\.io/last-updated}'
+
+# Check policy mode
+kubectl get optimizationpolicy <policy-name> -o jsonpath='{.spec.mode}'
+
+# Review operator logs
+kubectl logs -n optipod-system -l app=optipod-operator --tail=100
+```
+
+## Next Steps
+
+- [Switch to Auto mode](/docs/guides/switching-to-auto)
+- [Understand safety model](/docs/concepts/safety-model)
+- [Troubleshooting guide](/docs/advanced/troubleshooting)
