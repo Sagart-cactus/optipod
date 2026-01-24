@@ -24,7 +24,7 @@ const whenExternalScripts = (items: (() => AstroIntegration) | (() => AstroInteg
 
 export default defineConfig({
   site: 'https://sagart-cactus.github.io',
-  base: '/',
+  base: '/optipod',
   output: 'static',
   devToolbar: {
     enabled: false,
