@@ -23,9 +23,10 @@ const whenExternalScripts = (items: (() => AstroIntegration) | (() => AstroInteg
   hasExternalScripts ? (Array.isArray(items) ? items.map((item) => item()) : [items()]) : [];
 
 export default defineConfig({
-  site: 'https://sagart-cactus.github.io',
-  base: '/',
+  site: 'https://sagart-cactus.github.io/optipod/',
+  base: '/optipod',
   output: 'static',
+  trailingSlash: 'ignore',
   devToolbar: {
     enabled: false,
   },
