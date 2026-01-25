@@ -1,0 +1,105 @@
+---
+interface ComparisonRow {
+  feature: string;
+  description: string;
+  optipod: 'yes' | 'no' | 'partial';
+  vpa: 'yes' | 'no' | 'partial';
+  optipodDetails?: string;
+  vpaDetails?: string;
+}
+
+interface Props {
+  title?: string;
+  subtitle?: string;
+  rows: ComparisonRow[];
+  legend?: string;
+}
+
+const {
+  title = 'Comparison',
+  subtitle,
+  rows = [],
+  legend = 'Legend: ✅ supported, ❌ not supported, ⚠️ supported with caveats.',
+} = Astro.props;
+
+const getIcon = (status: 'yes' | 'no' | 'partial') => {
+  switch (status) {
+    case 'yes':
+      return '✅';
+    case 'no':
+      return '❌';
+    case 'partial':
+      return '⚠️';
+  }
+};
+---
+
+<section id="comparison" class="relative px-4 py-16 bg-blue-50 dark:bg-slate-800">
+  <div class="mx-auto max-w-7xl lg:py-4">
+    <div class="relative mb-8 text-center">
+      {title && (
+        <>
+          <p class="text-base text-secondary dark:text-green-400 font-semibold tracking-wide uppercase mb-2">Comparison</p>
+          <h2 class="text-4xl md:text-5xl font-bold leading-tighter tracking-tighter mb-4 font-heading dark:text-white">
+            {title}
+          </h2>
+        </>
+      )}
+      {subtitle && (
+        <p class="max-w-3xl mx-auto text-xl text-muted dark:text-slate-400">
+          {subtitle}
+        </p>
+      )}
+    </div>
+
+  <div class="relative overflow-x-auto">
+    <table class="w-full border-collapse bg-white dark:bg-slate-900 shadow-lg rounded-lg">
+      <thead>
+        <tr class="bg-blue-50 dark:bg-slate-800">
+          <th class="p-4 text-left font-semibold text-gray-900 dark:text-white">Feature</th>
+          <th class="p-4 text-center font-semibold text-gray-900 dark:text-white">OptiPod</th>
+          <th class="p-4 text-center font-semibold text-gray-900 dark:text-white">Kubernetes VPA</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((row) => (
+          <tr class="border-t border-gray-200 dark:border-gray-700">
+            <td class="p-4">
+              <strong class="text-gray-900 dark:text-white">{row.feature}</strong>
+              <p class="text-sm text-muted dark:text-slate-400 mt-1">{row.description}</p>
+              {(row.optipodDetails || row.vpaDetails) && (
+                <details class="mt-2 group">
+                  <summary class="text-sm text-blue-600 dark:text-blue-400 cursor-pointer hover:underline flex items-center gap-1 select-none">
+                    <svg class="w-4 h-4 transition-transform group-open:rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+                    </svg>
+                    Show details
+                  </summary>
+                  <div class="mt-3 text-sm space-y-2 pl-5 border-l-2 border-blue-200 dark:border-blue-800">
+                    {row.optipodDetails && (
+                      <p class="text-gray-700 dark:text-gray-300">
+                        <strong class="text-gray-900 dark:text-white">OptiPod:</strong> {row.optipodDetails}
+                      </p>
+                    )}
+                    {row.vpaDetails && (
+                      <p class="text-gray-700 dark:text-gray-300">
+                        <strong class="text-gray-900 dark:text-white">VPA:</strong> {row.vpaDetails}
+                      </p>
+                    )}
+                  </div>
+                </details>
+              )}
+            </td>
+            <td class="p-4 text-center text-2xl">{getIcon(row.optipod)}</td>
+            <td class="p-4 text-center text-2xl">{getIcon(row.vpa)}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+    {legend && (
+      <p class="relative mt-4 text-sm text-muted dark:text-slate-400 text-center">
+        {legend}
+      </p>
+    )}
+  </div>
+</section>
