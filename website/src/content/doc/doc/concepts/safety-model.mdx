@@ -1,0 +1,383 @@
+---
+title: Safety Model
+description: How OptiPod protects your workloads from dangerous changes
+---
+
+OptiPod is designed with safety as a top priority. Multiple layers of protection ensure that resource optimizations don't cause outages or performance degradation.
+
+## Safety Principles
+
+1. **Conservative by default**: Err on the side of caution
+2. **Gradual changes**: Small, incremental adjustments
+3. **High confidence required**: Only act on reliable data
+4. **Memory protection**: Never risk OOM kills
+5. **Rollback capability**: Detect and revert problematic changes
+
+## Safety Layers
+
+### Layer 1: Resource Bounds
+
+Hard limits on resource values prevent extreme recommendations.
+
+```yaml
+apiVersion: optipod.io/v1alpha1
+kind: OptimizationPolicy
+metadata:
+  name: safe-policy
+spec:
+  resourceBounds:
+    cpu:
+      min: 10m      # Never recommend less than 10m
+      max: 4000m    # Never recommend more than 4 cores
+    memory:
+      min: 64Mi     # Never recommend less than 64Mi
+      max: 8Gi      # Never recommend more than 8Gi
+```
+
+**Protection:**
+- Prevents recommendations below minimum viable resources
+- Prevents wasteful over-provisioning
+- Customizable per policy
+
+### Layer 2: Change Limits
+
+Restricts how much resources can change in a single update.
+
+```yaml
+spec:
+  safetyConfig:
+    maxChangePercent: 50  # Max 50% change per update
+    minUpdateInterval: 24h  # Min 24 hours between updates
+```
+
+**Protection:**
+- Prevents sudden, dramatic changes
+- Allows gradual adaptation
+- Reduces risk of performance issues
+
+**Example:**
+```
+Current: 1000m CPU
+Max increase: 1500m (50% increase)
+Max decrease: 500m (50% decrease)
+```
+
+### Layer 3: Confidence Threshold
+
+Only applies recommendations with sufficient confidence.
+
+```yaml
+spec:
+  safetyConfig:
+    confidenceThreshold: high  # Only apply high-confidence recommendations
+```
+
+**Confidence levels:**
+- **High**: 14+ days of stable data, low variance
+- **Medium**: 7+ days of data, moderate variance
+- **Low**: Less than 7 days or high variance
+
+**Protection:**
+- Avoids acting on insufficient data
+- Waits for stable usage patterns
+- Reduces false positives
+
+### Layer 4: Memory Floor
+
+Special protection for memory to prevent OOM kills.
+
+```yaml
+spec:
+  safetyConfig:
+    memoryFloor: 64Mi  # Absolute minimum memory
+    memoryHeadroom: 20%  # Extra headroom above P95
+```
+
+**Protection:**
+- Never reduces memory below floor
+- Adds headroom above observed peak
+- Accounts for memory spikes
+
+**Calculation:**
+```
+Observed P95: 400Mi
+With 20% headroom: 480Mi
+Recommendation: max(480Mi, 64Mi) = 480Mi
+```
+
+### Layer 5: Rate Limiting
+
+Prevents rapid oscillation of resource values.
+
+```yaml
+spec:
+  safetyConfig:
+    minUpdateInterval: 24h  # Minimum time between updates
+    cooldownPeriod: 168h    # 7 days after rollback
+```
+
+**Protection:**
+- Prevents thrashing
+- Allows time to observe effects
+- Enforces cooldown after rollbacks
+
+### Layer 6: Rollback Detection
+
+Automatically detects and reverts problematic changes.
+
+```yaml
+spec:
+  safetyConfig:
+    enableRollback: true
+    rollbackTriggers:
+      - oomKills
+      - crashLoops
+      - highErrorRate
+```
+
+**Protection:**
+- Monitors workload health after changes
+- Automatically reverts if issues detected
+- Enters cooldown period
+
+**Triggers:**
+- OOM kills increase
+- Pod crash loops
+- Error rate spikes
+- Latency degradation
+
+## Safety Configuration
+
+### Conservative (Default)
+
+Safest settings for production:
+
+```yaml
+apiVersion: optipod.io/v1alpha1
+kind: OptimizationPolicy
+metadata:
+  name: conservative-policy
+spec:
+  mode: Recommend  # Manual approval
+  safetyConfig:
+    confidenceThreshold: high
+    maxChangePercent: 25
+    minUpdateInterval: 48h
+    memoryFloor: 128Mi
+    memoryHeadroom: 30%
+    enableRollback: true
+```
+
+### Balanced
+
+Moderate safety for stable workloads:
+
+```yaml
+spec:
+  mode: Auto
+  safetyConfig:
+    confidenceThreshold: high
+    maxChangePercent: 50
+    minUpdateInterval: 24h
+    memoryFloor: 64Mi
+    memoryHeadroom: 20%
+    enableRollback: true
+```
+
+### Aggressive
+
+Faster optimization for non-critical workloads:
+
+```yaml
+spec:
+  mode: Auto
+  safetyConfig:
+    confidenceThreshold: medium
+    maxChangePercent: 75
+    minUpdateInterval: 12h
+    memoryFloor: 32Mi
+    memoryHeadroom: 10%
+    enableRollback: true
+```
+
+:::caution
+Aggressive settings increase risk. Only use for non-critical workloads where you can tolerate occasional issues.
+:::
+
+## Safety Scenarios
+
+### Scenario 1: Insufficient Data
+
+**Situation:** New workload with only 2 days of metrics
+
+**OptiPod behavior:**
+- Confidence: Low
+- Action: No recommendation generated
+- Reason: Insufficient data for reliable recommendation
+
+**Resolution:** Wait for more data (7+ days)
+
+### Scenario 2: Unstable Usage
+
+**Situation:** Workload with highly variable resource usage
+
+**OptiPod behavior:**
+- Confidence: Low to Medium
+- Action: Conservative recommendation or no action
+- Reason: High variance makes prediction unreliable
+
+**Resolution:**
+- Increase lookback window
+- Lower confidence threshold (carefully)
+- Accept that some workloads aren't good candidates
+
+### Scenario 3: Large Change Needed
+
+**Situation:** Current: 100m CPU, Optimal: 500m CPU
+
+**OptiPod behavior:**
+- First update: 100m → 150m (50% increase)
+- Wait 24 hours
+- Second update: 150m → 225m (50% increase)
+- Wait 24 hours
+- Third update: 225m → 337m (50% increase)
+- Continue until reaching 500m
+
+**Protection:** Gradual changes allow monitoring at each step
+
+### Scenario 4: Memory Spike
+
+**Situation:** Workload normally uses 200Mi, spikes to 800Mi occasionally
+
+**OptiPod behavior:**
+- Observes P95: 250Mi
+- Adds 20% headroom: 300Mi
+- Checks against floor: max(300Mi, 64Mi) = 300Mi
+- Recommendation: 300Mi
+
+**Protection:** Headroom prevents OOM during spikes
+
+### Scenario 5: OOM After Update
+
+**Situation:** OptiPod reduces memory, workload experiences OOM kills
+
+**OptiPod behavior:**
+1. Detects OOM kill increase
+2. Triggers automatic rollback
+3. Reverts to previous memory value
+4. Enters 7-day cooldown period
+5. Logs incident for review
+
+**Protection:** Automatic recovery prevents prolonged outage
+
+## Monitoring Safety
+
+### Check Policy Status
+
+```bash
+kubectl get optimizationpolicy my-policy -o yaml
+```
+
+Look for:
+```yaml
+status:
+  safetyStatus:
+    lastUpdate: "2026-01-24T10:00:00Z"
+    rollbackCount: 0
+    inCooldown: false
+    recentIssues: []
+```
+
+### Monitor Workload Health
+
+```bash
+# Check for OOM kills
+kubectl get events --field-selector reason=OOMKilled
+
+# Check pod restarts
+kubectl get pods -l app=my-app
+
+# Check resource usage
+kubectl top pod -l app=my-app
+```
+
+### Review Recommendations
+
+```bash
+# Get recommendation with confidence
+kubectl get deployment my-app -o jsonpath='{.metadata.annotations.optipod\.io/recommendation}' | jq .
+
+# Check confidence level
+kubectl get deployment my-app -o jsonpath='{.metadata.annotations.optipod\.io/recommendation}' | jq .confidence
+```
+
+## Overriding Safety
+
+Sometimes you need to override safety settings. Do this carefully!
+
+### Temporarily Disable Safety
+
+```yaml
+spec:
+  safetyConfig:
+    maxChangePercent: 100  # Allow any change
+    confidenceThreshold: low  # Accept low confidence
+    enableRollback: false  # Disable rollback
+```
+
+:::danger
+Disabling safety features increases risk significantly. Only do this in non-production environments or with careful monitoring.
+:::
+
+### Force a Specific Value
+
+Use resource bounds to force a specific range:
+
+```yaml
+spec:
+  resourceBounds:
+    cpu:
+      min: 500m
+      max: 500m  # Forces exactly 500m
+```
+
+## Best Practices
+
+1. **Start conservative**: Use default safety settings initially
+2. **Monitor closely**: Watch for issues after enabling Auto mode
+3. **Gradual relaxation**: Slowly reduce safety constraints as confidence grows
+4. **Document overrides**: Note why you changed safety settings
+5. **Review incidents**: Learn from rollbacks and adjust policies
+6. **Test in non-prod**: Validate safety settings before production
+7. **Have rollback plan**: Know how to quickly disable OptiPod if needed
+
+## Emergency Procedures
+
+### If OptiPod Causes Issues
+
+1. **Immediate**: Switch policy to Disabled mode
+```bash
+kubectl patch optimizationpolicy my-policy --type merge -p '{"spec":{"mode":"Disabled"}}'
+```
+
+2. **Revert changes**: Manually restore previous resource values
+```bash
+kubectl set resources deployment my-app --requests=cpu=1000m,memory=1Gi
+```
+
+3. **Investigate**: Review logs and recommendations
+```bash
+kubectl logs -n optipod-system -l app=optipod-operator
+```
+
+4. **Adjust policy**: Update safety settings
+5. **Test**: Re-enable in Recommend mode
+6. **Monitor**: Watch closely before returning to Auto mode
+
+## Next Steps
+
+Now that you understand OptiPod's safety model:
+
+- [Create your first policy](/docs/guides/creating-policies/)
+- [Learn about operational modes](/docs/concepts/operational-modes/)
+- [Review troubleshooting guide](/docs/advanced/troubleshooting/)

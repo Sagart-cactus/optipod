@@ -1,0 +1,180 @@
+---
+title: Key Terminology
+description: Essential concepts and terms used in OptiPod
+---
+
+Understanding these key terms will help you work effectively with OptiPod.
+
+## Core Concepts
+
+### Operator
+
+A Kubernetes operator is a software extension that uses custom resources to manage applications and their components. OptiPod is an operator that manages resource optimization for your workloads.
+
+**Key characteristics:**
+- Runs as a deployment in your cluster
+- Watches for OptimizationPolicy resources
+- Analyzes workload metrics
+- Generates and applies recommendations
+
+### OptimizationPolicy
+
+A Custom Resource Definition (CRD) that defines how OptiPod should optimize workloads. Each policy specifies:
+
+- **Target workloads**: Which resources to optimize (by kind, namespace, labels)
+- **Operational mode**: Recommend, Auto, or Disabled
+- **Metrics configuration**: Data source and lookback window
+- **Resource bounds**: Min/max limits for CPU and memory
+- **Update strategy**: How to apply recommendations
+
+**Example:**
+```yaml
+apiVersion: optipod.io/v1alpha1
+kind: OptimizationPolicy
+metadata:
+  name: production-policy
+  namespace: production
+spec:
+  mode: Recommend
+  targetWorkloads:
+    kinds: [Deployment, StatefulSet]
+```
+
+### Workload
+
+A Kubernetes resource that runs containers. OptiPod supports:
+
+- **Deployments**: Stateless applications
+- **StatefulSets**: Stateful applications
+- **DaemonSets**: Node-level services
+- **Jobs**: Batch workloads
+- **CronJobs**: Scheduled tasks
+
+Workloads must be labeled to opt-in to optimization.
+
+### Recommendation
+
+A suggested change to a workload's resource requests and limits, based on actual usage patterns. Recommendations include:
+
+- **Resource values**: Suggested CPU and memory requests/limits
+- **Confidence level**: High, medium, or low
+- **Impact estimation**: Expected savings or improvements
+- **Reasoning**: Why the recommendation was made
+
+Recommendations are stored as annotations on the workload.
+
+## GitOps
+
+### GitOps
+
+A deployment methodology where Git is the single source of truth for infrastructure and application configuration. Changes are made through Git commits and automatically applied to the cluster.
+
+**OptiPod's GitOps compatibility:**
+- Recommend mode stores suggestions as annotations
+- You review and commit changes to Git
+- Your GitOps tool (ArgoCD, Flux) applies changes
+- No webhook conflicts or unexpected modifications
+
+### Server-Side Apply (SSA)
+
+A Kubernetes feature that allows multiple controllers to manage different fields of the same resource without conflicts. OptiPod can use SSA to apply recommendations while respecting GitOps ownership.
+
+**Benefits:**
+- No webhook required
+- Works with GitOps tools
+- Clear field ownership
+- Conflict-free updates
+
+## Metrics
+
+### Metrics Provider
+
+The source of resource usage data. OptiPod supports:
+
+- **Prometheus**: Full-featured metrics with historical data
+- **metrics-server**: Basic CPU/memory metrics
+- **Custom providers**: Integrate your own metrics source
+
+### Lookback Window
+
+The time period OptiPod analyzes to generate recommendations. Longer windows provide more stable recommendations but take longer to react to changes.
+
+**Typical values:**
+- **7 days**: Balanced (default)
+- **14 days**: More stable, slower to adapt
+- **3 days**: Faster adaptation, less stable
+
+### Percentile
+
+The statistical measure used to determine resource recommendations. OptiPod typically uses P95 (95th percentile) to ensure recommendations handle peak usage.
+
+**Example:**
+- P95 CPU = 250m means 95% of the time, CPU usage is below 250m
+- Recommendations include headroom above P95 for safety
+
+## Resource Management
+
+### Resource Request
+
+The amount of CPU/memory Kubernetes guarantees for a container. Used for scheduling decisions.
+
+**Impact:**
+- Too low: Pod may be scheduled on overloaded nodes
+- Too high: Wastes cluster capacity
+
+### Resource Limit
+
+The maximum amount of CPU/memory a container can use.
+
+**Impact:**
+- CPU: Container is throttled if exceeded
+- Memory: Container is OOM-killed if exceeded
+
+### Vertical Pod Autoscaler (VPA)
+
+Kubernetes' built-in solution for adjusting resource requests/limits. OptiPod is an alternative designed to be more GitOps-friendly and explainable.
+
+**Key differences:**
+- VPA uses webhooks (can conflict with GitOps)
+- OptiPod offers Recommend mode and SSA
+- OptiPod provides impact estimation
+
+## Safety
+
+### Confidence Level
+
+OptiPod's assessment of how reliable a recommendation is, based on:
+
+- Amount of historical data
+- Stability of usage patterns
+- Variance in metrics
+
+**Levels:**
+- **High**: Stable patterns, sufficient data
+- **Medium**: Some variance or limited data
+- **Low**: Unstable patterns or insufficient data
+
+### Safety Guardrails
+
+Built-in protections that prevent dangerous recommendations:
+
+- **Memory floor**: Never reduce memory below safe thresholds
+- **Change limits**: Maximum percentage change per update
+- **Rate limiting**: Minimum time between updates
+- **Confidence threshold**: Only apply high-confidence recommendations
+
+### Impact Estimation
+
+OptiPod's prediction of how a recommendation will affect your workload:
+
+- **Resource savings**: Expected reduction in requests
+- **Performance impact**: Potential effects on latency/throughput
+- **Risk level**: Assessment of change safety
+
+## Next Steps
+
+Now that you understand the terminology, learn about:
+
+- [Operational Modes](/docs/concepts/operational-modes)
+- [Update Strategies](/docs/concepts/update-strategies)
+- [Safety Model](/docs/concepts/safety-model)

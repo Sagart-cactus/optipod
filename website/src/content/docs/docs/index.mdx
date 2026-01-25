@@ -1,0 +1,72 @@
+---
+title: OptiPod Documentation
+description: Open-source Kubernetes operator for safe, explainable resource optimization
+template: splash
+hero:
+  tagline: GitOps-safe by design with policy-driven safety
+  actions:
+    - text: Get Started
+      link: /optipod/docs/getting-started/introduction
+      icon: right-arrow
+      variant: primary
+    - text: View on GitHub
+      link: https://github.com/Sagart-cactus/optipod
+      icon: external
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+## Why OptiPod?
+
+OptiPod is a Kubernetes operator that helps you optimize resource requests and limits for your workloads. Unlike traditional VPA (Vertical Pod Autoscaler), OptiPod is designed to be GitOps-safe and provides explainable recommendations.
+
+<CardGrid>
+  <Card title="GitOps-Safe" icon="approve-check">
+    Works seamlessly with GitOps workflows. No webhook conflicts or unexpected changes.
+  </Card>
+  <Card title="Policy-Driven" icon="setting">
+    Fine-grained control through OptimizationPolicy CRDs. You decide what gets optimized and how.
+  </Card>
+  <Card title="Explainable" icon="information">
+    Clear recommendations with impact estimation. Understand why changes are suggested.
+  </Card>
+  <Card title="Safe by Default" icon="warning">
+    Conservative defaults, memory safeguards, and change-rate limits protect your workloads.
+  </Card>
+</CardGrid>
+
+## Quick Links
+
+<CardGrid>
+  <Card title="Installation" icon="rocket">
+    Get OptiPod running in your cluster in minutes.
+    [Install Now →](/optipod/docs/getting-started/installation)
+  </Card>
+  <Card title="Concepts" icon="open-book">
+    Learn about operational modes, update strategies, and safety models.
+    [Learn More →](/optipod/docs/concepts/terminology)
+  </Card>
+  <Card title="API Reference" icon="document">
+    Complete reference for OptimizationPolicy CRD and annotations.
+    [View Reference →](/optipod/docs/reference/api)
+  </Card>
+  <Card title="Troubleshooting" icon="puzzle">
+    Common issues and debugging tips.
+    [Get Help →](/optipod/docs/advanced/troubleshooting)
+  </Card>
+</CardGrid>
+
+## Key Features
+
+- **Recommend Mode**: Review recommendations before applying them
+- **Auto Mode**: Automatically apply optimizations with safety guardrails
+- **Multiple Update Strategies**: Choose between webhook-based or Server-Side Apply
+- **Metrics Flexibility**: Works with Prometheus, metrics-server, or custom providers
+- **Multi-tenant Ready**: Namespace-scoped policies for team autonomy
+
+## Next Steps
+
+1. [Install OptiPod](/optipod/docs/getting-started/installation) in your cluster
+2. [Create your first policy](/optipod/docs/guides/creating-policies)
+3. [Review recommendations](/optipod/docs/guides/reviewing-recommendations)
+4. [Switch to Auto mode](/optipod/docs/guides/switching-to-auto) when ready

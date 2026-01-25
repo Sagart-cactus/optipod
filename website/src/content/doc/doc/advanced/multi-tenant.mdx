@@ -1,0 +1,518 @@
+---
+title: Multi-tenant Setup
+description: Configure OptiPod for multi-tenant Kubernetes environments
+---
+
+OptiPod supports multi-tenant Kubernetes environments where different teams or applications share the same cluster. This guide shows you how to configure OptiPod for multi-tenancy.
+
+## Multi-tenancy Models
+
+### Namespace-based Tenancy
+
+Each tenant gets their own namespace(s) with isolated policies.
+
+**Benefits:**
+- Clear separation of concerns
+- Team autonomy
+- Independent policy configuration
+
+**Setup:**
+```yaml
+# Team A policy
+apiVersion: optipod.io/v1alpha1
+kind: OptimizationPolicy
+metadata:
+  name: team-a-policy
+  namespace: team-a
+spec:
+  mode: Auto
+  targetWorkloads:
+    kinds: [Deployment]
+    labelSelector:
+      matchLabels:
+        optipod.io/enabled: "true"
+---
+# Team B policy
+apiVersion: optipod.io/v1alpha1
+kind: OptimizationPolicy
+metadata:
+  name: team-b-policy
+  namespace: team-b
+spec:
+  mode: Recommend
+  targetWorkloads:
+    kinds: [Deployment, StatefulSet]
+    labelSelector:
+      matchLabels:
+        optipod.io/enabled: "true"
+```
+
+### Label-based Tenancy
+
+Multiple tenants share namespaces but use labels for isolation.
+
+**Benefits:**
+- Flexible resource sharing
+- Fine-grained control
+- Works with existing namespace structure
+
+**Setup:**
+```yaml
+apiVersion: optipod.io/v1alpha1
+kind: OptimizationPolicy
+metadata:
+  name: tenant-policy
+  namespace: shared
+spec:
+  mode: Auto
+  targetWorkloads:
+    labelSelector:
+      matchLabels:
+        tenant: team-a
+        optipod.io/enabled: "true"
+```
+
+## Configuration Patterns
+
+### Pattern 1: Centralized Management
+
+Single operations team manages all policies.
+
+```yaml
+# Central ops team creates policies for all tenants
+apiVersion: optipod.io/v1alpha1
+kind: OptimizationPolicy
+metadata:
+  name: standard-policy
+  namespace: tenant-1
+  labels:
+    managed-by: ops-team
+spec:
+  mode: Auto
+  updateStrategy: ServerSideApply
+  # Standard configuration for all tenants
+  metricsConfig:
+    provider: prometheus
+    lookbackWindow: 7d
+  resourceBounds:
+    cpu: {min: 10m, max: 4000m}
+    memory: {min: 64Mi, max: 8Gi}
+  safetyConfig:
+    confidenceThreshold: high
+    maxChangePercent: 50
+```
+
+**RBAC:**
+```yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: optipod-admin
+rules:
+  - apiGroups: ["optipod.io"]
+    resources: ["optimizationpolicies"]
+    verbs: ["*"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: ops-team-optipod-admin
+subjects:
+  - kind: Group
+    name: ops-team
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: ClusterRole
+  name: optipod-admin
+  apiGroup: rbac.authorization.k8s.io
+```
+
+### Pattern 2: Delegated Management
+
+Each tenant manages their own policies.
+
+```yaml
+# Tenant-specific RBAC
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: optipod-manager
+  namespace: team-a
+rules:
+  - apiGroups: ["optipod.io"]
+    resources: ["optimizationpolicies"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: team-a-optipod-manager
+  namespace: team-a
+subjects:
+  - kind: Group
+    name: team-a
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: Role
+  name: optipod-manager
+  apiGroup: rbac.authorization.k8s.io
+```
+
+### Pattern 3: Hybrid Approach
+
+Central defaults with tenant overrides.
+
+```yaml
+# Central default policy
+apiVersion: optipod.io/v1alpha1
+kind: OptimizationPolicy
+metadata:
+  name: default-policy
+  namespace: team-a
+  labels:
+    policy-type: default
+spec:
+  mode: Recommend
+  # Conservative defaults
+
+---
+# Tenant override policy
+apiVersion: optipod.io/v1alpha1
+kind: OptimizationPolicy
+metadata:
+  name: team-a-custom
+  namespace: team-a
+  labels:
+    policy-type: custom
+spec:
+  mode: Auto
+  targetWorkloads:
+    labelSelector:
+      matchLabels:
+        team: team-a
+        tier: non-critical
+  # Team-specific configuration
+```
+
+## Resource Isolation
+
+### CPU and Memory Quotas
+
+Ensure OptiPod respects namespace quotas:
+
+```yaml
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: team-a-quota
+  namespace: team-a
+spec:
+  hard:
+    requests.cpu: "100"
+    requests.memory: 200Gi
+    limits.cpu: "200"
+    limits.memory: 400Gi
+```
+
+Configure policy bounds within quota:
+
+```yaml
+spec:
+  resourceBounds:
+    cpu:
+      min: 10m
+      max: 2000m  # Per-pod max, well within quota
+    memory:
+      min: 64Mi
+      max: 4Gi    # Per-pod max, well within quota
+```
+
+### Limit Ranges
+
+Set default limits for tenant namespaces:
+
+```yaml
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: team-a-limits
+  namespace: team-a
+spec:
+  limits:
+    - type: Container
+      default:
+        cpu: 500m
+        memory: 512Mi
+      defaultRequest:
+        cpu: 100m
+        memory: 128Mi
+      max:
+        cpu: 4000m
+        memory: 8Gi
+      min:
+        cpu: 10m
+        memory: 64Mi
+```
+
+## Metrics Isolation
+
+### Prometheus with Multi-tenancy
+
+Configure tenant-specific Prometheus queries:
+
+```yaml
+spec:
+  metricsConfig:
+    provider: prometheus
+    prometheus:
+      address: http://prometheus-server.monitoring.svc:9090
+      # Queries automatically filtered by namespace
+```
+
+### Separate Prometheus Instances
+
+Each tenant gets their own Prometheus:
+
+```yaml
+# Team A policy
+spec:
+  metricsConfig:
+    provider: prometheus
+    prometheus:
+      address: http://prometheus-team-a.team-a.svc:9090
+
+---
+# Team B policy
+spec:
+  metricsConfig:
+    provider: prometheus
+    prometheus:
+      address: http://prometheus-team-b.team-b.svc:9090
+```
+
+## Policy Templates
+
+Create reusable policy templates for tenants:
+
+```yaml
+# Template ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: optipod-policy-template
+  namespace: optipod-system
+data:
+  standard-policy.yaml: |
+    apiVersion: optipod.io/v1alpha1
+    kind: OptimizationPolicy
+    metadata:
+      name: standard-policy
+      namespace: ${NAMESPACE}
+    spec:
+      mode: Recommend
+      targetWorkloads:
+        kinds: [Deployment, StatefulSet]
+        labelSelector:
+          matchLabels:
+            optipod.io/enabled: "true"
+      metricsConfig:
+        provider: prometheus
+        lookbackWindow: 7d
+      resourceBounds:
+        cpu: {min: 10m, max: 4000m}
+        memory: {min: 64Mi, max: 8Gi}
+```
+
+Apply template for new tenant:
+
+```bash
+#!/bin/bash
+NAMESPACE=$1
+kubectl create namespace $NAMESPACE
+envsubst < policy-template.yaml | kubectl apply -f -
+```
+
+## Monitoring and Observability
+
+### Per-Tenant Metrics
+
+Track OptiPod activity per tenant:
+
+```promql
+# Recommendations generated per namespace
+sum by (namespace) (optipod_recommendations_total)
+
+# Resource savings per namespace
+sum by (namespace) (optipod_cpu_savings_cores)
+sum by (namespace) (optipod_memory_savings_bytes)
+
+# Rollbacks per namespace
+sum by (namespace) (optipod_rollbacks_total)
+```
+
+### Tenant Dashboards
+
+Create Grafana dashboards per tenant:
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: team-a-dashboard
+  namespace: team-a
+data:
+  dashboard.json: |
+    {
+      "dashboard": {
+        "title": "Team A - OptiPod",
+        "panels": [
+          {
+            "title": "Recommendations",
+            "targets": [{
+              "expr": "optipod_recommendations_total{namespace='team-a'}"
+            }]
+          }
+        ]
+      }
+    }
+```
+
+## Cost Allocation
+
+### Track Savings Per Tenant
+
+```promql
+# CPU cost savings per tenant (assuming $0.05 per core-hour)
+sum by (namespace) (
+  optipod_cpu_savings_cores * 0.05 * 24 * 30
+)
+
+# Memory cost savings per tenant (assuming $0.01 per GB-hour)
+sum by (namespace) (
+  optipod_memory_savings_bytes / 1024 / 1024 / 1024 * 0.01 * 24 * 30
+)
+```
+
+### Chargeback Reports
+
+Generate monthly reports:
+
+```bash
+#!/bin/bash
+# generate-chargeback-report.sh
+
+for namespace in $(kubectl get namespaces -l tenant=true -o jsonpath='{.items[*].metadata.name}'); do
+  echo "Tenant: $namespace"
+
+  # Get savings
+  cpu_savings=$(kubectl get optimizationpolicy -n $namespace -o json | \
+    jq -r '.items[].status.totalCPUSavings')
+
+  memory_savings=$(kubectl get optimizationpolicy -n $namespace -o json | \
+    jq -r '.items[].status.totalMemorySavings')
+
+  echo "  CPU Savings: $cpu_savings cores"
+  echo "  Memory Savings: $memory_savings GB"
+  echo "  Estimated Cost Savings: \$$(calculate_cost $cpu_savings $memory_savings)"
+  echo
+done
+```
+
+## Security Considerations
+
+### Network Policies
+
+Isolate tenant traffic:
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: tenant-isolation
+  namespace: team-a
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: team-a
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: team-a
+    - to:  # Allow OptiPod operator
+        - namespaceSelector:
+            matchLabels:
+              name: optipod-system
+```
+
+### Pod Security Standards
+
+Enforce security standards per tenant:
+
+```yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: team-a
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+```
+
+## Best Practices
+
+1. **Namespace per tenant**: Use dedicated namespaces for clear isolation
+2. **RBAC boundaries**: Restrict policy management to appropriate teams
+3. **Resource quotas**: Prevent resource exhaustion
+4. **Separate metrics**: Use tenant-specific Prometheus when possible
+5. **Policy templates**: Standardize configurations across tenants
+6. **Monitor per tenant**: Track savings and issues by tenant
+7. **Document policies**: Clear documentation of who manages what
+8. **Regular reviews**: Audit tenant configurations quarterly
+
+## Troubleshooting Multi-tenant Issues
+
+### Policy Conflicts
+
+**Problem:** Multiple policies targeting same workload
+
+**Solution:**
+```bash
+# Find conflicting policies
+kubectl get optimizationpolicy -A -o json | \
+  jq -r '.items[] | select(.spec.targetWorkloads.labelSelector.matchLabels."optipod.io/enabled" == "true") |
+    "\(.metadata.namespace)/\(.metadata.name)"'
+```
+
+Use more specific selectors:
+```yaml
+targetWorkloads:
+  labelSelector:
+    matchLabels:
+      optipod.io/enabled: "true"
+      tenant: team-a  # Add tenant label
+```
+
+### Cross-namespace Access
+
+**Problem:** Tenant trying to access other tenant's policies
+
+**Solution:** Verify RBAC:
+```bash
+kubectl auth can-i get optimizationpolicy \
+  --namespace team-b \
+  --as system:serviceaccount:team-a:default
+```
+
+## Next Steps
+
+- [Creating Policies](/docs/guides/creating-policies/)
+- [Custom Metrics](/docs/advanced/custom-metrics/)
+- [Troubleshooting](/docs/advanced/troubleshooting/)
