@@ -1,7 +1,7 @@
 site:
   name: OptiPod
-  site: 'https://sagart-cactus.github.io'
-  base: '/'
+  site: 'https://sagart-cactus.github.io/optipod'
+  base: '/optipod'
   trailingSlash: false
 
   googleSiteVerificationId: false
