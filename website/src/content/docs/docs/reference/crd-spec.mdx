@@ -11,9 +11,9 @@ This page provides the complete technical specification for the OptimizationPoli
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
-  name: optimizationpolicies.optipod.io
+  name: optimizationpolicies.optipod.optipod.io
 spec:
-  group: optipod.io
+  group: optipod.optipod.io
   versions:
     - name: v1alpha1
       served: true
@@ -25,80 +25,76 @@ spec:
     kind: OptimizationPolicy
     shortNames:
       - optpol
-      - op
 ```
 
-## Schema Definition
-
-### Root Schema
+## Additional Printer Columns
 
 ```yaml
-openAPIV3Schema:
-  type: object
-  required:
-    - spec
-  properties:
-    apiVersion:
-      type: string
-    kind:
-      type: string
-    metadata:
-      type: object
-    spec:
-      type: object
-      required:
-        - mode
-        - targetWorkloads
-        - metricsConfig
-        - resourceBounds
-    status:
-      type: object
+additionalPrinterColumns:
+  - name: Mode
+    type: string
+    jsonPath: .spec.mode
+  - name: Provider
+    type: string
+    jsonPath: .spec.metricsConfig.provider
+  - name: Age
+    type: date
+    jsonPath: .metadata.creationTimestamp
 ```
 
-## Spec Schema
+## Complete Spec Schema
+
+### Required Fields
+
+```yaml
+spec:
+  required:
+    - mode
+    - selector
+    - metricsConfig
+    - resourceBounds
+    - updateStrategy
+```
 
 ### spec.mode
 
+**Type:** string
+**Required:** Yes
+**Enum:** `Recommend`, `Auto`, `Disabled`
+
+Operational mode for the policy.
+
 ```yaml
-mode:
-  type: string
-  enum:
-    - Recommend
-    - Auto
-    - Disabled
-  description: Operational mode for the policy
+mode: Recommend
 ```
 
-### spec.updateStrategy
+### spec.weight
+
+**Type:** integer
+**Required:** No
+**Default:** 100
+**Range:** 1-1000
+
+Priority when multiple policies match the same workload. Higher weight wins.
 
 ```yaml
-updateStrategy:
-  type: string
-  enum:
-    - ServerSideApply
-    - Webhook
-  default: ServerSideApply
-  description: How to apply recommendations in Auto mode
+weight: 200
 ```
 
-### spec.targetWorkloads
+### spec.selector
+
+**Type:** object
+**Required:** Yes
+
+Defines which workloads this policy applies to.
 
 ```yaml
-targetWorkloads:
+selector:
   type: object
   properties:
-    kinds:
-      type: array
-      items:
-        type: string
-        enum:
-          - Deployment
-          - StatefulSet
-          - DaemonSet
-          - Job
-          - CronJob
-    labelSelector:
+    workloadSelector:
       type: object
+      description: Label selector for workloads
       properties:
         matchLabels:
           type: object
@@ -116,64 +112,126 @@ targetWorkloads:
                 type: string
               operator:
                 type: string
-                enum:
-                  - In
-                  - NotIn
-                  - Exists
-                  - DoesNotExist
+                enum: [In, NotIn, Exists, DoesNotExist]
               values:
                 type: array
                 items:
                   type: string
+
     namespaceSelector:
       type: object
-      # Same structure as labelSelector
+      description: Label selector for namespaces
+      # Same structure as workloadSelector
+
+    namespaces:
+      type: object
+      description: Allow/deny lists for namespaces
+      properties:
+        allow:
+          type: array
+          items:
+            type: string
+        deny:
+          type: array
+          items:
+            type: string
+
+    workloadTypes:
+      type: object
+      description: Include/exclude filters for workload types
+      properties:
+        include:
+          type: array
+          items:
+            type: string
+            enum: [Deployment, StatefulSet, DaemonSet]
+        exclude:
+          type: array
+          items:
+            type: string
+            enum: [Deployment, StatefulSet, DaemonSet]
+```
+
+**Example:**
+```yaml
+selector:
+  workloadSelector:
+    matchLabels:
+      optipod.io/enabled: "true"
+  workloadTypes:
+    include:
+      - Deployment
+      - StatefulSet
+  namespaces:
+    allow:
+      - production
+      - staging
+    deny:
+      - kube-system
 ```
 
 ### spec.metricsConfig
+
+**Type:** object
+**Required:** Yes
+
+Configuration for metrics collection and processing.
 
 ```yaml
 metricsConfig:
   type: object
   required:
     - provider
-    - lookbackWindow
   properties:
     provider:
       type: string
-      enum:
-        - prometheus
-        - metrics-server
-        - custom
-    lookbackWindow:
+      enum: [prometheus, metrics-server, custom]
+      description: Metrics backend
+
+    rollingWindow:
       type: string
-      pattern: '^[0-9]+(d|h|m)$'
-      description: Duration like 7d, 24h, 30m
-    sampleInterval:
+      default: "24h"
+      description: Time period for metrics aggregation
+      pattern: '^[0-9]+(d|h|m|s)$'
+
+    percentile:
       type: string
-      pattern: '^[0-9]+(d|h|m)$'
-      default: 5m
-    prometheus:
+      enum: [P50, P90, P99]
+      default: "P90"
+      description: Percentile for recommendations
+
+    safetyFactor:
+      type: number
+      default: 1.2
+      minimum: 1.0
+      description: Multiplier applied to percentile
+
+    metricsServer:
       type: object
+      description: metrics-server specific configuration
       properties:
-        address:
-          type: string
-          format: uri
-        queryTimeout:
-          type: string
-          pattern: '^[0-9]+(s|m)$'
-          default: 30s
-    custom:
-      type: object
-      properties:
-        endpoint:
-          type: string
-          format: uri
-        authSecret:
-          type: string
+        minSamplesRequired:
+          type: integer
+          minimum: 1
+          maximum: 100000
+          description: Minimum samples before recommendations
+```
+
+**Example:**
+```yaml
+metricsConfig:
+  provider: prometheus
+  rollingWindow: 7d
+  percentile: P90
+  safetyFactor: 1.2
 ```
 
 ### spec.resourceBounds
+
+**Type:** object
+**Required:** Yes
+
+Minimum and maximum constraints for recommendations.
 
 ```yaml
 resourceBounds:
@@ -190,16 +248,13 @@ resourceBounds:
       properties:
         min:
           type: string
-          pattern: '^[0-9]+m?$'
+          x-kubernetes-int-or-string: true
+          description: Minimum CPU (e.g., "10m", "0.1")
         max:
           type: string
-          pattern: '^[0-9]+m?$'
-        defaultRequest:
-          type: string
-          pattern: '^[0-9]+m?$'
-        defaultLimit:
-          type: string
-          pattern: '^[0-9]+m?$'
+          x-kubernetes-int-or-string: true
+          description: Maximum CPU (e.g., "4000m", "4")
+
     memory:
       type: object
       required:
@@ -208,292 +263,337 @@ resourceBounds:
       properties:
         min:
           type: string
-          pattern: '^[0-9]+(Mi|Gi|M|G)$'
+          x-kubernetes-int-or-string: true
+          description: Minimum memory (e.g., "64Mi", "1Gi")
         max:
           type: string
-          pattern: '^[0-9]+(Mi|Gi|M|G)$'
-        defaultRequest:
-          type: string
-          pattern: '^[0-9]+(Mi|Gi|M|G)$'
-        defaultLimit:
-          type: string
-          pattern: '^[0-9]+(Mi|Gi|M|G)$'
-    containerOverrides:
-      type: array
-      items:
-        type: object
-        required:
-          - name
-        properties:
-          name:
-            type: string
-          cpu:
-            type: object
-            # Same structure as cpu above
-          memory:
-            type: object
-            # Same structure as memory above
+          x-kubernetes-int-or-string: true
+          description: Maximum memory (e.g., "8Gi", "16Gi")
 ```
 
-### spec.safetyConfig
+**Example:**
+```yaml
+resourceBounds:
+  cpu:
+    min: 10m
+    max: 4000m
+  memory:
+    min: 64Mi
+    max: 8Gi
+```
+
+### spec.updateStrategy
+
+**Type:** object
+**Required:** Yes
+
+Defines how resource updates are applied.
 
 ```yaml
-safetyConfig:
+updateStrategy:
   type: object
   properties:
-    confidenceThreshold:
+    strategy:
       type: string
-      enum:
-        - high
-        - medium
-        - low
-      default: high
-    maxChangePercent:
-      type: integer
-      minimum: 1
-      maximum: 100
-      default: 50
-    minUpdateInterval:
+      enum: [ssa, webhook]
+      default: "webhook"
+      description: Update strategy type
+
+    rolloutStrategy:
       type: string
-      pattern: '^[0-9]+(d|h|m)$'
-      default: 24h
-    memoryFloor:
-      type: string
-      pattern: '^[0-9]+(Mi|Gi|M|G)$'
-      default: 64Mi
-    memoryHeadroom:
-      type: integer
-      minimum: 0
-      maximum: 100
-      default: 20
-    enableRollback:
+      enum: [immediate, onNextRestart]
+      default: "onNextRestart"
+      description: When changes take effect (webhook only)
+
+    useServerSideApply:
       type: boolean
       default: true
-    rollbackTriggers:
-      type: array
-      items:
-        type: string
-        enum:
-          - oomKills
-          - crashLoops
-          - highErrorRate
-    cooldownPeriod:
-      type: string
-      pattern: '^[0-9]+(d|h|m)$'
-      default: 168h
-```
+      description: Enable Server-Side Apply
 
-### spec.ssaConfig
+    updateRequestsOnly:
+      type: boolean
+      default: true
+      description: Update only requests, not limits
 
-```yaml
-ssaConfig:
-  type: object
-  properties:
-    fieldManager:
-      type: string
-      default: optipod
-    force:
+    allowInPlaceResize:
+      type: boolean
+      default: true
+      description: Enable in-place pod resize
+
+    allowRecreate:
       type: boolean
       default: false
-    managedFields:
-      type: array
-      items:
-        type: string
-      default:
-        - resources.requests.cpu
-        - resources.requests.memory
-        - resources.limits.cpu
-        - resources.limits.memory
+      description: Allow pod recreation if resize fails
+
+    allowUnsafeMemoryDecrease:
+      type: boolean
+      default: false
+      description: Disable memory safety checks
+
+    limitConfig:
+      type: object
+      description: How limits are calculated from requests
+      properties:
+        cpuLimitMultiplier:
+          type: number
+          default: 1.0
+          minimum: 1.0
+          maximum: 10.0
+          description: CPU limit = request × multiplier
+        memoryLimitMultiplier:
+          type: number
+          default: 1.1
+          minimum: 1.0
+          maximum: 10.0
+          description: Memory limit = request × multiplier
+
+    gradualDecreaseConfig:
+      type: object
+      description: Gradual memory reduction configuration
+      properties:
+        enabled:
+          type: boolean
+          default: false
+          description: Enable gradual decrease
+        memoryDecreasePercentage:
+          type: integer
+          default: 10
+          minimum: 1
+          maximum: 50
+          description: Max decrease per reconciliation (%)
+        minimumDecreaseThreshold:
+          type: string
+          x-kubernetes-int-or-string: true
+          description: Minimum decrease to trigger gradual mode
+        maximumTotalDecrease:
+          type: integer
+          default: 70
+          minimum: 1
+          maximum: 90
+          description: Max total decrease from original (%)
 ```
 
-### spec.webhookConfig
+**Example:**
+```yaml
+updateStrategy:
+  strategy: ssa
+  rolloutStrategy: onNextRestart
+  useServerSideApply: true
+  updateRequestsOnly: true
+  allowUnsafeMemoryDecrease: false
+  limitConfig:
+    cpuLimitMultiplier: 1.0
+    memoryLimitMultiplier: 1.1
+  gradualDecreaseConfig:
+    enabled: true
+    memoryDecreasePercentage: 10
+    minimumDecreaseThreshold: 100Mi
+    maximumTotalDecrease: 70
+```
+
+### spec.reconciliationInterval
+
+**Type:** string (duration)
+**Required:** No
+**Default:** "5m"
+
+How often the policy is evaluated.
 
 ```yaml
-webhookConfig:
-  type: object
-  properties:
-    failurePolicy:
-      type: string
-      enum:
-        - Ignore
-        - Fail
-      default: Ignore
-    timeoutSeconds:
-      type: integer
-      minimum: 1
-      maximum: 30
-      default: 10
-    namespaceSelector:
-      type: object
-      # Same structure as labelSelector
-    objectSelector:
-      type: object
-      # Same structure as labelSelector
+reconciliationInterval: 5m
 ```
 
 ## Status Schema
 
+### status.conditions
+
+**Type:** array
+
+Standard Kubernetes conditions.
+
 ```yaml
-status:
+conditions:
+  type: array
+  items:
+    type: object
+    required:
+      - type
+      - status
+    properties:
+      type:
+        type: string
+      status:
+        type: string
+        enum: [True, False, Unknown]
+      lastTransitionTime:
+        type: string
+        format: date-time
+      reason:
+        type: string
+      message:
+        type: string
+```
+
+### status.workloadsDiscovered
+
+**Type:** integer
+
+Count of workloads matching this policy.
+
+```yaml
+workloadsDiscovered: 5
+```
+
+### status.workloadsProcessed
+
+**Type:** integer
+
+Count of workloads successfully processed.
+
+```yaml
+workloadsProcessed: 5
+```
+
+### status.lastReconciliation
+
+**Type:** string (date-time)
+
+Timestamp of last reconciliation.
+
+```yaml
+lastReconciliation: "2026-01-26T10:30:00Z"
+```
+
+### status.workloadsByType
+
+**Type:** object
+
+Breakdown of workloads by type.
+
+```yaml
+workloadsByType:
   type: object
   properties:
-    phase:
-      type: string
-      enum:
-        - Active
-        - Disabled
-        - Error
-    observedGeneration:
+    deployments:
       type: integer
-    conditions:
-      type: array
-      items:
-        type: object
-        required:
-          - type
-          - status
-        properties:
-          type:
-            type: string
-          status:
-            type: string
-            enum:
-              - "True"
-              - "False"
-              - Unknown
-          lastTransitionTime:
-            type: string
-            format: date-time
-          reason:
-            type: string
-          message:
-            type: string
-    targetedWorkloads:
+    statefulSets:
       type: integer
-      minimum: 0
-    lastUpdate:
-      type: string
-      format: date-time
-    safetyStatus:
-      type: object
-      properties:
-        lastUpdate:
-          type: string
-          format: date-time
-        rollbackCount:
-          type: integer
-          minimum: 0
-        inCooldown:
-          type: boolean
-        cooldownUntil:
-          type: string
-          format: date-time
-        recentIssues:
-          type: array
-          items:
-            type: string
+    daemonSets:
+      type: integer
+```
+
+**Example:**
+```yaml
+workloadsByType:
+  deployments: 3
+  statefulSets: 2
+  daemonSets: 0
+```
+
+## Complete Example
+
+```yaml
+apiVersion: optipod.optipod.io/v1alpha1
+kind: OptimizationPolicy
+metadata:
+  name: production-policy
+  namespace: production
+spec:
+  mode: Auto
+  weight: 150
+
+  selector:
+    workloadSelector:
+      matchLabels:
+        optipod.io/enabled: "true"
+    workloadTypes:
+      include:
+        - Deployment
+        - StatefulSet
+    namespaces:
+      allow:
+        - production
+
+  metricsConfig:
+    provider: prometheus
+    rollingWindow: 7d
+    percentile: P90
+    safetyFactor: 1.2
+
+  resourceBounds:
+    cpu:
+      min: 10m
+      max: 4000m
+    memory:
+      min: 64Mi
+      max: 8Gi
+
+  updateStrategy:
+    strategy: ssa
+    rolloutStrategy: onNextRestart
+    useServerSideApply: true
+    updateRequestsOnly: true
+    allowUnsafeMemoryDecrease: false
+    limitConfig:
+      cpuLimitMultiplier: 1.0
+      memoryLimitMultiplier: 1.1
+    gradualDecreaseConfig:
+      enabled: true
+      memoryDecreasePercentage: 10
+      minimumDecreaseThreshold: 100Mi
+      maximumTotalDecrease: 70
+
+  reconciliationInterval: 5m
+
+status:
+  conditions:
+    - type: Ready
+      status: "True"
+      lastTransitionTime: "2026-01-26T10:30:00Z"
+      reason: PolicyActive
+      message: Policy is active and processing workloads
+  workloadsDiscovered: 5
+  workloadsProcessed: 5
+  lastReconciliation: "2026-01-26T10:30:00Z"
+  workloadsByType:
+    deployments: 3
+    statefulSets: 2
+    daemonSets: 0
 ```
 
 ## Validation Rules
 
-### Cross-Field Validation
+OptiPod performs the following validations:
 
-```yaml
-x-kubernetes-validations:
-  - rule: "self.spec.mode == 'Auto' || !has(self.spec.safetyConfig)"
-    message: "safetyConfig is only valid in Auto mode"
-
-  - rule: "self.spec.updateStrategy == 'ServerSideApply' || !has(self.spec.ssaConfig)"
-    message: "ssaConfig is only valid with ServerSideApply strategy"
-
-  - rule: "self.spec.updateStrategy == 'Webhook' || !has(self.spec.webhookConfig)"
-    message: "webhookConfig is only valid with Webhook strategy"
-
-  - rule: "int(self.spec.resourceBounds.cpu.min) < int(self.spec.resourceBounds.cpu.max)"
-    message: "cpu.min must be less than cpu.max"
-
-  - rule: "int(self.spec.resourceBounds.memory.min) < int(self.spec.resourceBounds.memory.max)"
-    message: "memory.min must be less than memory.max"
-```
-
-## Subresources
-
-### Status Subresource
-
-```yaml
-subresources:
-  status: {}
-```
-
-This allows updating status independently from spec.
-
-### Scale Subresource
-
-Not applicable for OptimizationPolicy.
-
-## Additional Printer Columns
-
-```yaml
-additionalPrinterColumns:
-  - name: Mode
-    type: string
-    jsonPath: .spec.mode
-  - name: Strategy
-    type: string
-    jsonPath: .spec.updateStrategy
-  - name: Workloads
-    type: integer
-    jsonPath: .status.targetedWorkloads
-  - name: Phase
-    type: string
-    jsonPath: .status.phase
-  - name: Age
-    type: date
-    jsonPath: .metadata.creationTimestamp
-```
-
-## Example kubectl Output
-
-```bash
-$ kubectl get optimizationpolicy
-NAME                MODE        STRATEGY           WORKLOADS   PHASE    AGE
-production-policy   Auto        ServerSideApply    15          Active   7d
-dev-policy          Recommend   ServerSideApply    8           Active   3d
-```
+1. **Mode**: Must be one of `Recommend`, `Auto`, or `Disabled`
+2. **Selector**: At least one selector must be specified
+3. **Resource Bounds**: Min must be less than or equal to max
+4. **Safety Factor**: Must be >= 1.0
+5. **Weight**: Must be between 1 and 1000
+6. **Strategy**: Must be `ssa` or `webhook`
+7. **Rollout Strategy**: Must be `immediate` or `onNextRestart`
+8. **Gradual Decrease**: Percentages must be within valid ranges
 
 ## RBAC Requirements
 
-### Cluster Role
+To create and manage OptimizationPolicy resources:
 
 ```yaml
 apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
+kind: Role
 metadata:
-  name: optipod-operator
+  name: optipod-policy-manager
 rules:
-  - apiGroups: ["optipod.io"]
+  - apiGroups: ["optipod.optipod.io"]
     resources: ["optimizationpolicies"]
-    verbs: ["get", "list", "watch"]
-
-  - apiGroups: ["optipod.io"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["optipod.optipod.io"]
     resources: ["optimizationpolicies/status"]
     verbs: ["get", "update", "patch"]
-
-  - apiGroups: ["apps"]
-    resources: ["deployments", "statefulsets", "daemonsets"]
-    verbs: ["get", "list", "watch", "update", "patch"]
-
-  - apiGroups: ["batch"]
-    resources: ["jobs", "cronjobs"]
-    verbs: ["get", "list", "watch", "update", "patch"]
 ```
-
-## Conversion Webhook
-
-Not currently implemented. Future versions may support conversion between API versions.
 
 ## Next Steps
 
+- [Creating Policies Guide](/docs/guides/creating-policies)
 - [API Reference](/docs/reference/api)
 - [Annotations Reference](/docs/reference/annotations)
-- [Creating Policies](/docs/guides/creating-policies)
