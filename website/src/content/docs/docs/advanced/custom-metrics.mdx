@@ -57,50 +57,50 @@ OptiPod expects metrics providers to implement a simple HTTP API that returns re
 ### Basic Configuration
 
 ```yaml
-apiVersion: optipod.io/v1alpha1
+apiVersion: optipod.optipod.io/v1alpha1
 kind: OptimizationPolicy
 metadata:
   name: custom-metrics-policy
 spec:
+  mode: Recommend
+  selector:
+    workloadSelector:
+      matchLabels:
+        optipod.io/enabled: "true"
   metricsConfig:
     provider: custom
-    custom:
-      endpoint: http://custom-metrics.monitoring.svc:8080
-      authSecret: custom-metrics-auth
-      queryTimeout: 30s
-    lookbackWindow: 7d
-    sampleInterval: 5m
+    rollingWindow: 7d
+  resourceBounds:
+    cpu:
+      min: 10m
+      max: 4000m
+    memory:
+      min: 64Mi
+      max: 8Gi
+  updateStrategy:
+    strategy: webhook
 ```
+
+**Note:** Custom metrics provider configuration (endpoint, authentication, etc.) is configured externally via Helm values or environment variables, not in the CRD. See the Implementation Examples section below for how to build a custom metrics provider that OptiPod can query.
 
 ### Authentication
 
-Create a secret with authentication credentials:
+Custom metrics providers should implement their own authentication. OptiPod can be configured to pass authentication credentials via Helm values:
 
 ```yaml
-apiVersion: v1
-kind: Secret
-metadata:
-  name: custom-metrics-auth
-  namespace: default
-type: Opaque
-stringData:
-  token: "your-api-token"  # pragma: allowlist secret
-  # Or for basic auth:
-  username: "user"
-  password: "pass"  # pragma: allowlist secret
+# Helm values for OptiPod with custom metrics provider
+customMetrics:
+  enabled: true
+  endpoint: http://custom-metrics.monitoring.svc:8080
+  auth:
+    type: bearer  # or basic
+    token: "your-api-token"  # pragma: allowlist secret
+    # Or for basic auth:
+    # username: "user"
+    # password: "pass"  # pragma: allowlist secret
 ```
 
-OptiPod will include authentication in requests:
-
-**Bearer Token:**
-```
-Authorization: Bearer <token>
-```
-
-**Basic Auth:**
-```
-Authorization: Basic <base64(username:password)>
-```
+Your custom metrics provider should validate these credentials on each request.
 
 ## Implementation Examples
 
