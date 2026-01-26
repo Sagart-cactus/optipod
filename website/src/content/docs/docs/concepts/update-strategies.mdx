@@ -3,229 +3,312 @@ title: Update Strategies
 description: How OptiPod applies resource recommendations to workloads
 ---
 
-OptiPod supports two strategies for applying resource recommendations: **Webhook-based** and **Server-Side Apply (SSA)**. Each has different characteristics and use cases.
+OptiPod supports two strategies for applying resource recommendations: **Server-Side Apply (SSA)** and **Webhook-based**. Each has different characteristics and use cases.
 
 ## Strategy Comparison
 
-| Feature | Webhook | Server-Side Apply |
-|---------|---------|-------------------|
-| GitOps-safe | ⚠️ Can conflict | ✅ Yes |
-| Requires webhook | ✅ Yes | ❌ No |
-| Field ownership | Opaque | ✅ Clear |
-| Complexity | Higher | Lower |
-| Kubernetes version | 1.19+ | 1.22+ |
+| Feature | SSA | Webhook |
+|---------|-----|---------|
+| GitOps-safe | ✅ Yes | ✅ Yes (with proper config) |
+| Requires webhook | ❌ No | ✅ Yes |
+| Field ownership | ✅ Clear | Annotation-based |
+| Complexity | Lower | Higher |
+| Kubernetes version | 1.22+ | 1.19+ |
 
-## Server-Side Apply (Recommended)
+## Server-Side Apply (SSA)
 
-Server-Side Apply is the recommended strategy for most use cases. It uses Kubernetes' built-in field management to apply changes without conflicts.
+Server-Side Apply is the default strategy. It uses Kubernetes' built-in field management to apply changes directly to workload specs.
 
 ### How It Works
 
 1. OptiPod generates a recommendation
-2. Uses SSA to update only the resource fields it manages
-3. Other controllers (GitOps, HPA) can manage other fields
-4. Kubernetes tracks field ownership automatically
+2. Uses SSA to update resource fields in the workload spec
+3. Kubernetes tracks field ownership automatically
+4. Changes take effect on next pod restart (or immediately with in-place resize)
 
 ### Configuration
 
 ```yaml
-apiVersion: optipod.io/v1alpha1
+apiVersion: optipod.optipod.io/v1alpha1
 kind: OptimizationPolicy
 metadata:
   name: ssa-policy
 spec:
   mode: Auto
-  updateStrategy: ServerSideApply
-  ssaConfig:
-    fieldManager: optipod
-    force: false
+  selector:
+    workloadSelector:
+      matchLabels:
+        app: my-app
+  metricsConfig:
+    provider: prometheus
+  resourceBounds:
+    cpu:
+      min: 10m
+      max: 2000m
+    memory:
+      min: 64Mi
+      max: 4Gi
+  updateStrategy:
+    strategy: ssa
+    useServerSideApply: true
+    allowInPlaceResize: true
+    allowRecreate: false
 ```
 
 ### Advantages
 
-- **GitOps-friendly**: Works alongside ArgoCD, Flux, etc.
 - **No webhook**: Simpler deployment and fewer failure points
 - **Clear ownership**: Kubernetes tracks who manages each field
-- **Conflict resolution**: Automatic handling of competing updates
-
-### GitOps Integration
-
-SSA allows OptiPod and GitOps tools to coexist:
-
-```yaml
-# Git repository (managed by GitOps)
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: my-app
-spec:
-  replicas: 3  # Managed by GitOps
-  template:
-    spec:
-      containers:
-      - name: my-app
-        image: my-app:v1.0  # Managed by GitOps
-        resources:
-          requests:
-            cpu: 100m  # Managed by OptiPod
-            memory: 256Mi  # Managed by OptiPod
-```
-
-OptiPod updates resources, GitOps manages replicas and image. No conflicts!
+- **Direct updates**: Changes applied directly to workload specs
+- **In-place resize**: Can update resources without pod restarts (if supported)
 
 ### When to Use
 
-- **GitOps environments**: ArgoCD, Flux, or similar tools
-- **Multi-controller setups**: HPA, VPA, or other operators
-- **Production workloads**: Safer and more predictable
+- **Most environments**: SSA is the default and recommended strategy
 - **Kubernetes 1.22+**: SSA is stable and well-supported
+- **Direct control**: When you want OptiPod to directly manage resource fields
+- **In-place updates**: When you want to leverage in-place pod resize
 
 ## Webhook Strategy
 
-The webhook strategy intercepts pod creation requests and modifies resource specifications on-the-fly.
+The webhook strategy stores recommendations as annotations on workloads and uses a mutating webhook to inject them at pod creation time.
 
 ### How It Works
 
-1. OptiPod deploys a mutating webhook
-2. When a pod is created, Kubernetes calls the webhook
-3. Webhook injects recommended resource values
-4. Pod is created with updated resources
+1. OptiPod generates recommendations and stores them as annotations on the workload
+2. When a pod is created, Kubernetes calls the OptiPod webhook
+3. Webhook reads annotations from the parent workload
+4. Webhook injects recommended resource values into the pod spec
+5. Pod is created with updated resources
 
 ### Configuration
 
 ```yaml
-apiVersion: optipod.io/v1alpha1
+apiVersion: optipod.optipod.io/v1alpha1
 kind: OptimizationPolicy
 metadata:
   name: webhook-policy
 spec:
   mode: Auto
-  updateStrategy: Webhook
-  webhookConfig:
-    failurePolicy: Ignore
-    timeoutSeconds: 10
+  selector:
+    workloadSelector:
+      matchLabels:
+        app: my-app
+  metricsConfig:
+    provider: prometheus
+  resourceBounds:
+    cpu:
+      min: 10m
+      max: 2000m
+    memory:
+      min: 64Mi
+      max: 4Gi
+  updateStrategy:
+    strategy: webhook
+    rolloutStrategy: onNextRestart  # or immediate
 ```
+
+### Rollout Strategies
+
+The webhook strategy supports two rollout options:
+
+**onNextRestart** (default):
+- Annotations are updated on the workload
+- Changes apply when pods naturally restart
+- No forced restarts
+- GitOps-safe: workload spec unchanged
+
+**immediate**:
+- Annotations are updated on the workload
+- Triggers a rolling restart to apply changes immediately
+- Faster optimization
+- Still GitOps-safe: only annotations change
 
 ### Advantages
 
-- **Immediate effect**: Changes apply on next pod creation
-- **Works with older Kubernetes**: Supports 1.19+
-- **Familiar pattern**: Similar to VPA's approach
-
-### Disadvantages
-
-- **GitOps conflicts**: Can fight with GitOps tools
-- **Webhook complexity**: Additional component to manage
-- **Failure modes**: Webhook downtime affects pod creation
-- **Drift detection**: GitOps tools may see unexpected changes
+- **GitOps-friendly**: Workload specs remain unchanged
+- **Flexible rollout**: Control when changes take effect
+- **ArgoCD compatible**: No conflicts with GitOps tools
+- **Gradual adoption**: Easy to enable/disable per workload
 
 ### When to Use
 
-- **Non-GitOps environments**: Direct kubectl/API usage
-- **Older Kubernetes**: Versions before 1.22
-- **VPA migration**: Familiar pattern for VPA users
-- **Immediate updates**: Need changes on next pod restart
+- **GitOps environments**: ArgoCD, Flux, or similar tools
+- **Controlled rollouts**: When you want to control when changes apply
+- **Older Kubernetes**: Supports 1.19+
+- **Annotation-based workflow**: When you prefer metadata-driven updates
 
 ## Choosing a Strategy
 
-### Use Server-Side Apply if:
+### Use Server-Side Apply (SSA) if:
 
-- ✅ You use GitOps (ArgoCD, Flux, etc.)
+- ✅ You want direct control over resource fields
 - ✅ You run Kubernetes 1.22 or later
 - ✅ You want simpler deployment (no webhook)
-- ✅ You have multiple controllers managing workloads
-- ✅ You prefer explicit field ownership
+- ✅ You want to leverage in-place pod resize
+- ✅ You prefer immediate updates to workload specs
 
 ### Use Webhook if:
 
-- ✅ You don't use GitOps
+- ✅ You use GitOps (ArgoCD, Flux, etc.)
+- ✅ You want workload specs to remain unchanged
+- ✅ You need to control when changes take effect
+- ✅ You want annotation-based recommendations
 - ✅ You need to support Kubernetes 1.19-1.21
-- ✅ You're migrating from VPA
-- ✅ You want immediate updates on pod restart
+
+## GitOps Integration
+
+Both strategies work with GitOps, but in different ways:
+
+### SSA with GitOps
+
+OptiPod directly updates resource fields in workload specs. To avoid conflicts:
+
+1. Configure ArgoCD/Flux to ignore resource fields:
+
+```yaml
+# ArgoCD Application
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: my-app
+spec:
+  ignoreDifferences:
+  - group: apps
+    kind: Deployment
+    jsonPointers:
+    - /spec/template/spec/containers/0/resources
+```
+
+2. Or use SSA in ArgoCD (v2.5+):
+
+```yaml
+syncPolicy:
+  syncOptions:
+  - ServerSideApply=true
+```
+
+### Webhook with GitOps
+
+OptiPod stores recommendations as annotations only. Workload specs remain unchanged:
+
+```yaml
+# In Git (managed by GitOps)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-app
+spec:
+  template:
+    spec:
+      containers:
+      - name: app
+        resources:
+          requests:
+            cpu: 100m  # Original value from Git
+            memory: 256Mi
+
+---
+# OptiPod adds annotations (not in Git)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-app
+  annotations:
+    optipod.io/cpu-request.app: "250m"
+    optipod.io/memory-request.app: "512Mi"
+```
+
+The webhook reads annotations and injects values at pod creation. No Git conflicts!
 
 ## Migration Between Strategies
+
+### SSA → Webhook
+
+1. Deploy webhook component:
+```bash
+helm upgrade optipod optipod/optipod --set webhook.enabled=true
+```
+
+2. Update policy to use webhook:
+```yaml
+spec:
+  updateStrategy:
+    strategy: webhook
+    rolloutStrategy: onNextRestart
+```
+
+3. Recommendations will be stored as annotations on next reconciliation
 
 ### Webhook → SSA
 
 1. Update policy to use SSA:
 ```yaml
 spec:
-  updateStrategy: ServerSideApply
+  updateStrategy:
+    strategy: ssa
+    useServerSideApply: true
 ```
 
-2. Remove webhook configuration:
+2. OptiPod will apply recommendations directly to workload specs
+
+3. Optionally disable webhook if no longer needed:
 ```bash
-kubectl delete mutatingwebhookconfiguration optipod-webhook
+helm upgrade optipod optipod/optipod --set webhook.enabled=false
 ```
-
-3. Restart workloads to apply SSA-managed resources
-
-### SSA → Webhook
-
-1. Deploy webhook:
-```bash
-kubectl apply -f webhook-config.yaml
-```
-
-2. Update policy:
-```yaml
-spec:
-  updateStrategy: Webhook
-```
-
-3. Restart workloads to trigger webhook
 
 ## Advanced Configuration
 
 ### Server-Side Apply Options
 
 ```yaml
-apiVersion: optipod.io/v1alpha1
+apiVersion: optipod.optipod.io/v1alpha1
 kind: OptimizationPolicy
 metadata:
   name: advanced-ssa
 spec:
-  updateStrategy: ServerSideApply
-  ssaConfig:
-    # Field manager name (appears in field ownership)
-    fieldManager: optipod
+  updateStrategy:
+    strategy: ssa
 
-    # Force field ownership (use with caution)
-    force: false
+    # Use Server-Side Apply for field-level ownership
+    useServerSideApply: true
 
-    # Fields to manage
-    managedFields:
-      - resources.requests.cpu
-      - resources.requests.memory
-      - resources.limits.cpu
-      - resources.limits.memory
+    # Enable in-place pod resize (requires Kubernetes 1.27+)
+    allowInPlaceResize: true
+
+    # Allow pod recreation if in-place resize not available
+    allowRecreate: false
+
+    # Update only requests, leave limits unchanged
+    updateRequestsOnly: true
+
+    # Configure limit calculation
+    limitConfig:
+      cpuLimitMultiplier: 1.0
+      memoryLimitMultiplier: 1.1
 ```
 
 ### Webhook Options
 
 ```yaml
-apiVersion: optipod.io/v1alpha1
+apiVersion: optipod.optipod.io/v1alpha1
 kind: OptimizationPolicy
 metadata:
   name: advanced-webhook
 spec:
-  updateStrategy: Webhook
-  webhookConfig:
-    # What to do if webhook fails
-    failurePolicy: Ignore  # or Fail
+  updateStrategy:
+    strategy: webhook
 
-    # Webhook timeout
-    timeoutSeconds: 10
+    # When to apply changes
+    rolloutStrategy: onNextRestart  # or immediate
 
-    # Namespace selector
-    namespaceSelector:
-      matchLabels:
-        optipod.io/webhook: enabled
+    # Update only requests, leave limits unchanged
+    updateRequestsOnly: true
 
-    # Object selector
-    objectSelector:
-      matchLabels:
-        optipod.io/enabled: "true"
+    # Configure limit calculation
+    limitConfig:
+      cpuLimitMultiplier: 1.0
+      memoryLimitMultiplier: 1.1
 ```
 
 ## Troubleshooting
@@ -235,52 +318,71 @@ spec:
 **Problem**: Changes not applying
 
 ```bash
-# Check field ownership
-kubectl get deployment my-app -o yaml | grep -A 20 managedFields
+# Check policy status
+kubectl get optimizationpolicy my-policy -o yaml
 
-# Verify OptiPod has ownership
-kubectl get deployment my-app -o json | \
-  jq '.metadata.managedFields[] | select(.manager=="optipod")'
+# Check workload for OptiPod annotations
+kubectl get deployment my-app -o yaml | grep optipod.io
+
+# Check controller logs
+kubectl logs -n optipod-system -l app=optipod-controller
 ```
 
-**Solution**: Use `force: true` to take ownership (carefully!)
+**Solution**: Verify policy selector matches workload labels
 
 ### Webhook Issues
 
-**Problem**: Pods not starting
+**Problem**: Pods not getting recommendations
 
 ```bash
-# Check webhook status
+# Check webhook is running
+kubectl get pods -n optipod-system -l app=optipod-webhook
+
+# Check webhook configuration
 kubectl get mutatingwebhookconfiguration optipod-webhook
 
 # Check webhook logs
 kubectl logs -n optipod-system -l app=optipod-webhook
 ```
 
-**Solution**: Set `failurePolicy: Ignore` to allow pods to start if webhook fails
+**Solution**: Ensure webhook is deployed and cert-manager is working
+
+**Problem**: Webhook blocking pod creation
+
+```bash
+# Check webhook events
+kubectl get events -A | grep webhook
+
+# Temporarily disable webhook
+kubectl delete mutatingwebhookconfiguration optipod-webhook
+```
+
+**Solution**: Fix webhook issues or use SSA strategy instead
 
 ## Best Practices
 
 ### For SSA
 
-1. Use descriptive field manager names
-2. Don't use `force: true` unless necessary
-3. Document which fields OptiPod manages
-4. Coordinate with GitOps team on field ownership
+1. Use `allowInPlaceResize: true` on Kubernetes 1.27+
+2. Set `allowRecreate: false` for production workloads
+3. Consider `updateRequestsOnly: true` to preserve manual limit settings
+4. Monitor for pod restarts after updates
 
 ### For Webhook
 
-1. Set appropriate timeout values
-2. Use `failurePolicy: Ignore` for non-critical workloads
-3. Monitor webhook availability
-4. Have fallback plan if webhook fails
+1. Use `rolloutStrategy: onNextRestart` for safer updates
+2. Use `rolloutStrategy: immediate` only for non-critical workloads
+3. Ensure webhook is highly available
+4. Monitor webhook latency and errors
+5. Have fallback plan if webhook fails
 
 ### General
 
 1. Test strategy changes in non-production first
 2. Document your chosen strategy
-3. Monitor for conflicts or issues
+3. Monitor for issues after strategy changes
 4. Have rollback plan ready
+5. Consider your GitOps workflow when choosing
 
 ## Next Steps
 
@@ -288,4 +390,4 @@ Learn about OptiPod's safety mechanisms:
 
 - [Safety Model](/docs/concepts/safety-model)
 - [Creating Policies](/docs/guides/creating-policies)
-- [Troubleshooting](/docs/advanced/troubleshooting)
+- [Switching to Auto Mode](/docs/guides/switching-to-auto)

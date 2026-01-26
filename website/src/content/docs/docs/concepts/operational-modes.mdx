@@ -15,18 +15,18 @@ OptiPod supports three operational modes that control how recommendations are ge
 
 ## Recommend Mode
 
-**Default mode.** OptiPod analyzes workloads and stores recommendations as annotations, but doesn't apply them automatically.
+**Default and safest mode.** OptiPod analyzes workloads and stores recommendations as annotations, but doesn't apply them automatically.
 
 ### How It Works
 
-1. OptiPod analyzes metrics for labeled workloads
-2. Generates recommendations based on usage patterns
-3. Stores recommendations as annotations on the workload
-4. You review and decide whether to apply changes
+1. OptiPod analyzes metrics for workloads matching policy selectors
+2. Generates recommendations based on usage patterns and policy configuration
+3. Stores recommendations as annotations on the workload metadata
+4. You review and decide whether to apply changes manually
 
 ### Recommendation Format
 
-Recommendations appear as annotations:
+Recommendations appear as separate annotations for each container and resource type:
 
 ```yaml
 apiVersion: apps/v1
@@ -34,23 +34,21 @@ kind: Deployment
 metadata:
   name: my-app
   annotations:
-    optipod.io/recommendation: |
-      {
-        "containers": {
-          "my-app": {
-            "requests": {"cpu": "250m", "memory": "512Mi"},
-            "limits": {"cpu": "500m", "memory": "1Gi"}
-          }
-        },
-        "confidence": "high",
-        "timestamp": "2026-01-24T10:30:00Z",
-        "estimatedImpact": {
-          "cpuSavings": "50%",
-          "memorySavings": "30%",
-          "riskLevel": "low"
-        }
-      }
-    optipod.io/last-updated: "2026-01-24T10:30:00Z"
+    # Management annotations
+    optipod.io/managed: "true"
+    optipod.io/policy: "production-policy"
+    optipod.io/last-recommendation: "2026-01-26T10:30:00Z"
+
+    # Resource recommendations for 'my-app' container
+    optipod.io/cpu-request.my-app: "250m"
+    optipod.io/memory-request.my-app: "512Mi"
+    optipod.io/cpu-limit.my-app: "500m"
+    optipod.io/memory-limit.my-app: "1Gi"
+
+    # Strategy annotation
+    optipod.io/strategy: "webhook"
+spec:
+  # ... deployment spec unchanged
 ```
 
 ### When to Use
@@ -59,6 +57,19 @@ metadata:
 - **GitOps workflows**: Review and commit changes through Git
 - **Strict change control**: Manual approval required for all changes
 - **Testing**: Validate recommendations before auto-applying
+- **Critical workloads**: Extra caution for production systems
+
+### Viewing Recommendations
+
+```bash
+# Get all OptiPod annotations
+kubectl get deployment my-app -o json | \
+  jq '.metadata.annotations | with_entries(select(.key | startswith("optipod.io/")))'
+
+# Get specific container recommendations
+echo "CPU Request: $(kubectl get deployment my-app -o jsonpath='{.metadata.annotations.optipod\.io/cpu-request\.my-app}')"
+echo "Memory Request: $(kubectl get deployment my-app -o jsonpath='{.metadata.annotations.optipod\.io/memory-request\.my-app}')"
+```
 
 ### Applying Recommendations
 
@@ -67,133 +78,244 @@ You have several options for applying recommendations:
 #### Option 1: Manual kubectl
 
 ```bash
-# Extract recommendation
-kubectl get deployment my-app -o jsonpath='{.metadata.annotations.optipod\.io/recommendation}'
-
-# Update deployment manually
+# Apply recommendations manually
 kubectl set resources deployment my-app \
   --requests=cpu=250m,memory=512Mi \
   --limits=cpu=500m,memory=1Gi
 ```
 
-#### Option 2: GitOps Workflow
+#### Option 2: GitOps Workflow (Recommended)
 
-1. Review recommendation annotation
-2. Update deployment YAML in Git
+1. Review recommendation annotations on workload
+2. Update deployment YAML in Git repository
 3. Commit and push changes
 4. GitOps tool (ArgoCD/Flux) applies changes
+
+**Example:**
+```yaml
+# Update your Git repository
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-app
+spec:
+  template:
+    spec:
+      containers:
+      - name: my-app
+        resources:
+          requests:
+            cpu: 250m      # From optipod.io/cpu-request.my-app
+            memory: 512Mi  # From optipod.io/memory-request.my-app
+          limits:
+            cpu: 500m      # From optipod.io/cpu-limit.my-app
+            memory: 1Gi    # From optipod.io/memory-limit.my-app
+```
 
 #### Option 3: Automation Script
 
 ```bash
 #!/bin/bash
 # apply-recommendations.sh
-kubectl get deployments -l optipod.io/enabled=true -o json | \
-  jq -r '.items[] | select(.metadata.annotations."optipod.io/recommendation" != null) | .metadata.name' | \
-  while read deployment; do
-    echo "Applying recommendation for $deployment"
-    # Extract and apply recommendation
-  done
+
+DEPLOYMENT=$1
+NAMESPACE=${2:-default}
+
+if [ -z "$DEPLOYMENT" ]; then
+  echo "Usage: $0 <deployment-name> [namespace]"
+  exit 1
+fi
+
+# Get container names
+CONTAINERS=$(kubectl get deployment $DEPLOYMENT -n $NAMESPACE -o json | \
+  jq -r '.metadata.annotations | keys[] | select(startswith("optipod.io/cpu-request.")) | sub("optipod.io/cpu-request."; "")')
+
+for CONTAINER in $CONTAINERS; do
+  CPU_REQ=$(kubectl get deployment $DEPLOYMENT -n $NAMESPACE -o jsonpath="{.metadata.annotations.optipod\.io/cpu-request\.$CONTAINER}")
+  MEM_REQ=$(kubectl get deployment $DEPLOYMENT -n $NAMESPACE -o jsonpath="{.metadata.annotations.optipod\.io/memory-request\.$CONTAINER}")
+
+  echo "Applying recommendations for container: $CONTAINER"
+  echo "  CPU Request: $CPU_REQ"
+  echo "  Memory Request: $MEM_REQ"
+
+  kubectl set resources deployment $DEPLOYMENT -n $NAMESPACE \
+    --containers=$CONTAINER \
+    --requests=cpu=$CPU_REQ,memory=$MEM_REQ
+done
 ```
 
 ## Auto Mode
 
-OptiPod automatically applies recommendations with built-in safety guardrails.
+**Automatic application mode.** OptiPod generates recommendations and automatically applies them to workloads.
 
 ### How It Works
 
 1. OptiPod analyzes metrics and generates recommendations
-2. Validates recommendations against safety rules
-3. Automatically applies changes using the configured update strategy
-4. Monitors results and adjusts if needed
+2. Stores recommendations as annotations (same as Recommend mode)
+3. **Automatically applies recommendations** based on update strategy
+4. Monitors workload health after changes
 
-### Safety Guardrails
-
-Auto mode includes multiple safety mechanisms:
-
-- **Confidence threshold**: Only applies high-confidence recommendations
-- **Change limits**: Maximum 50% change per update (configurable)
-- **Rate limiting**: Minimum 24 hours between updates (configurable)
-- **Memory floor**: Never reduces memory below 64Mi (configurable)
-- **Rollback detection**: Monitors for OOM kills or crashes
-
-### Configuration
+### Enabling Auto Mode
 
 ```yaml
-apiVersion: optipod.io/v1alpha1
+apiVersion: optipod.optipod.io/v1alpha1
 kind: OptimizationPolicy
 metadata:
   name: auto-policy
+  namespace: production
 spec:
-  mode: Auto
-  updateStrategy: ServerSideApply
-  safetyConfig:
-    confidenceThreshold: high
-    maxChangePercent: 50
-    minUpdateInterval: 24h
-    memoryFloor: 64Mi
-    enableRollback: true
+  mode: Auto  # Enable automatic application
+
+  selector:
+    workloadSelector:
+      matchLabels:
+        optipod.io/enabled: "true"
+
+  metricsConfig:
+    provider: prometheus
+    rollingWindow: 7d
+    percentile: P90
+    safetyFactor: 1.2
+
+  resourceBounds:
+    cpu:
+      min: 10m
+      max: 4000m
+    memory:
+      min: 64Mi
+      max: 8Gi
+
+  updateStrategy:
+    strategy: ssa  # or "webhook"
+    rolloutStrategy: onNextRestart
+    allowUnsafeMemoryDecrease: false
+    gradualDecreaseConfig:
+      enabled: true
+      memoryDecreasePercentage: 10
 ```
+
+### Update Strategies
+
+OptiPod supports two update strategies in Auto mode:
+
+#### Server-Side Apply (SSA)
+
+Updates workload specs directly using Kubernetes Server-Side Apply:
+
+```yaml
+updateStrategy:
+  strategy: ssa
+  useServerSideApply: true
+  updateRequestsOnly: true
+```
+
+**Pros:**
+- Direct updates to workload specs
+- Field-level ownership tracking
+- Works with all workload types
+
+**Cons:**
+- May conflict with GitOps controllers
+- Changes not reflected in Git
+
+#### Webhook Strategy
+
+Uses mutating webhook to inject resources at pod creation:
+
+```yaml
+updateStrategy:
+  strategy: webhook
+  rolloutStrategy: onNextRestart
+```
+
+**Pros:**
+- GitOps-safe (doesn't modify workload specs)
+- No conflicts with ArgoCD/Flux
+- Changes stored in annotations only
+
+**Cons:**
+- Requires webhook deployment
+- Only applies on pod restart
 
 ### When to Use
 
-- **Production workloads**: After validating in Recommend mode
-- **High confidence**: Stable workloads with predictable patterns
-- **Operational efficiency**: Reduce manual intervention
-- **Dynamic environments**: Workloads with changing resource needs
+- **Stable workloads**: Consistent usage patterns
+- **Non-critical environments**: Development, staging
+- **After validation**: Tested in Recommend mode first
+- **With monitoring**: Active observability in place
+- **Gradual rollout**: Start with a few workloads
+
+### Safety Considerations
+
+Auto mode includes safety features:
+
+1. **Resource bounds**: Min/max limits prevent extreme values
+2. **Safety factor**: Adds headroom above observed usage
+3. **Gradual decrease**: Large memory reductions applied incrementally
+4. **Memory safety**: Blocks unsafe memory decreases by default
+5. **Reconciliation interval**: Limits frequency of changes
 
 ### Monitoring Auto Mode
 
-Track OptiPod's automatic changes:
-
 ```bash
-# View policy status
-kubectl get optimizationpolicy auto-policy -o yaml
+# Check policy status
+kubectl describe optimizationpolicy auto-policy
 
-# Check recent updates
-kubectl get events --field-selector involvedObject.kind=OptimizationPolicy
+# Check workload annotations
+kubectl get deployment my-app -o yaml | grep optipod.io
 
-# Monitor workload changes
-kubectl get deployment my-app -o yaml | grep optipod.io/last-applied
+# Check last applied time
+kubectl get deployment my-app \
+  -o jsonpath='{.metadata.annotations.optipod\.io/last-applied}'
+
+# Monitor resource usage
+kubectl top pod -l app=my-app
 ```
 
 ## Disabled Mode
 
-Temporarily stops OptiPod from analyzing or updating workloads.
+**Paused mode.** OptiPod stops processing workloads under this policy.
 
 ### How It Works
 
-1. OptiPod stops generating new recommendations
-2. Existing recommendations remain but aren't updated
-3. No changes are applied to workloads
-4. Policy remains in the cluster
+1. OptiPod stops analyzing workloads matching this policy
+2. No new recommendations are generated
+3. Existing annotations remain unchanged
+4. No automatic updates are applied
 
-### When to Use
-
-- **Troubleshooting**: Isolate issues
-- **Maintenance windows**: Prevent changes during critical periods
-- **Testing**: Temporarily pause optimization
-- **Incident response**: Stop automated changes during incidents
-
-### Configuration
+### Enabling Disabled Mode
 
 ```yaml
-apiVersion: optipod.io/v1alpha1
+apiVersion: optipod.optipod.io/v1alpha1
 kind: OptimizationPolicy
 metadata:
   name: my-policy
 spec:
-  mode: Disabled
-  # Other settings remain but are not active
+  mode: Disabled  # Pause optimization
+  # ... rest of spec
 ```
+
+### When to Use
+
+- **Troubleshooting**: Isolate OptiPod from issues
+- **Maintenance**: During cluster maintenance windows
+- **Investigation**: When recommendations seem incorrect
+- **Temporary pause**: Stop optimization without deleting policy
+- **Emergency**: Quick way to disable OptiPod
+
+### Behavior
+
+- Existing recommendations remain as annotations
+- No new recommendations generated
+- No automatic updates applied
+- Policy still exists and can be re-enabled
 
 ### Re-enabling
 
-Simply change the mode back to Recommend or Auto:
+Simply change the mode back:
 
 ```bash
-kubectl patch optimizationpolicy my-policy \
-  --type merge \
+kubectl patch optimizationpolicy my-policy --type merge \
   -p '{"spec":{"mode":"Recommend"}}'
 ```
 
@@ -201,78 +323,123 @@ kubectl patch optimizationpolicy my-policy \
 
 ### Recommend → Auto
 
-Recommended progression after building confidence:
+**Recommended progression:**
 
-1. Run in Recommend mode for 2-4 weeks
-2. Review recommendations and verify accuracy
-3. Apply recommendations manually and monitor results
-4. Switch to Auto mode with conservative safety settings
-5. Gradually relax safety settings as confidence grows
+1. Start in Recommend mode
+2. Review recommendations for 1-2 weeks
+3. Validate recommendations are reasonable
+4. Test on non-critical workloads first
+5. Switch to Auto mode gradually
 
 ```bash
-kubectl patch optimizationpolicy my-policy \
-  --type merge \
+# Switch to Auto mode
+kubectl patch optimizationpolicy my-policy --type merge \
   -p '{"spec":{"mode":"Auto"}}'
 ```
 
 ### Auto → Recommend
 
-Revert to manual control if needed:
+**Rollback to manual control:**
 
 ```bash
-kubectl patch optimizationpolicy my-policy \
-  --type merge \
+# Switch back to Recommend mode
+kubectl patch optimizationpolicy my-policy --type merge \
   -p '{"spec":{"mode":"Recommend"}}'
 ```
 
+Existing recommendations remain, but no new automatic updates.
+
 ### Any Mode → Disabled
 
-Temporarily pause optimization:
+**Emergency stop:**
 
 ```bash
-kubectl patch optimizationpolicy my-policy \
-  --type merge \
+# Disable policy
+kubectl patch optimizationpolicy my-policy --type merge \
   -p '{"spec":{"mode":"Disabled"}}'
 ```
 
+## Mode Comparison
+
+### Recommend Mode
+
+**Pros:**
+- ✅ Safest option
+- ✅ Full control over changes
+- ✅ GitOps-friendly
+- ✅ Easy to review before applying
+
+**Cons:**
+- ❌ Manual work required
+- ❌ Slower optimization
+- ❌ Can forget to apply recommendations
+
+### Auto Mode
+
+**Pros:**
+- ✅ Automatic optimization
+- ✅ Continuous adaptation
+- ✅ Reduced manual work
+- ✅ Faster optimization
+
+**Cons:**
+- ❌ Less control
+- ❌ Requires trust in OptiPod
+- ❌ May conflict with GitOps (SSA strategy)
+- ❌ Needs monitoring
+
+### Disabled Mode
+
+**Pros:**
+- ✅ Quick pause
+- ✅ Preserves policy configuration
+- ✅ Easy to re-enable
+
+**Cons:**
+- ❌ No optimization
+- ❌ Workloads may become over/under-provisioned
+
 ## Best Practices
 
-### Start Conservative
+1. **Start with Recommend**: Always begin in Recommend mode
+2. **Test thoroughly**: Validate recommendations before Auto mode
+3. **Gradual rollout**: Enable Auto mode for a few workloads first
+4. **Monitor closely**: Watch for issues after enabling Auto mode
+5. **Use appropriate strategy**: Webhook for GitOps, SSA otherwise
+6. **Set safety bounds**: Configure appropriate resource bounds
+7. **Enable gradual decrease**: Safer memory optimization
+8. **Have rollback plan**: Know how to quickly disable if needed
 
-1. Begin with Recommend mode
-2. Use long lookback windows (14+ days)
-3. Set strict resource bounds
-4. Review recommendations thoroughly
+## Troubleshooting
 
-### Build Confidence
+### No Recommendations in Recommend Mode
 
-1. Apply recommendations to non-critical workloads first
-2. Monitor results for 1-2 weeks
-3. Gradually expand to more workloads
-4. Document any issues or adjustments needed
+Check:
+- Workload has correct labels matching policy selector
+- Sufficient metrics data available (check rolling window)
+- Policy is not in Disabled mode
+- Metrics provider is accessible
 
-### Production Rollout
+### Auto Mode Not Applying Changes
 
-1. Switch to Auto mode for non-critical workloads
-2. Use conservative safety settings
-3. Monitor closely for 2-4 weeks
-4. Expand to critical workloads
-5. Fine-tune safety settings based on experience
+Verify:
+- Mode is set to `Auto`
+- Update strategy is configured
+- Webhook is deployed (if using webhook strategy)
+- No safety checks blocking updates
+- Check policy status for errors
 
-### Emergency Procedures
+### Unexpected Changes in Auto Mode
 
-If OptiPod causes issues:
-
-1. Switch to Disabled mode immediately
-2. Investigate the problem
-3. Adjust policy settings
-4. Test in Recommend mode
-5. Re-enable Auto mode when confident
+Review:
+- Policy configuration (bounds, safety factor)
+- Recent metrics data
+- Safety settings (allowUnsafeMemoryDecrease)
+- Gradual decrease configuration
 
 ## Next Steps
 
-Learn about how OptiPod applies changes:
-
-- [Update Strategies](/docs/concepts/update-strategies)
-- [Safety Model](/docs/concepts/safety-model)
-- [Creating Policies](/docs/guides/creating-policies)
+- [Understand update strategies](/docs/concepts/update-strategies)
+- [Learn about safety model](/docs/concepts/safety-model)
+- [Switch to Auto mode safely](/docs/guides/switching-to-auto)
+- [Create your first policy](/docs/guides/creating-policies)

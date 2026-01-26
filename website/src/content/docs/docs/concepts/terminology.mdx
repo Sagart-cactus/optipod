@@ -21,23 +21,38 @@ A Kubernetes operator is a software extension that uses custom resources to mana
 
 A Custom Resource Definition (CRD) that defines how OptiPod should optimize workloads. Each policy specifies:
 
-- **Target workloads**: Which resources to optimize (by kind, namespace, labels)
+- **Target workloads**: Which resources to optimize (by namespace, labels, workload types)
 - **Operational mode**: Recommend, Auto, or Disabled
-- **Metrics configuration**: Data source and lookback window
+- **Metrics configuration**: Provider, rolling window, percentile, safety factor
 - **Resource bounds**: Min/max limits for CPU and memory
-- **Update strategy**: How to apply recommendations
+- **Update strategy**: How to apply recommendations (SSA or webhook)
 
 **Example:**
 ```yaml
-apiVersion: optipod.io/v1alpha1
+apiVersion: optipod.optipod.io/v1alpha1
 kind: OptimizationPolicy
 metadata:
   name: production-policy
-  namespace: production
 spec:
   mode: Recommend
-  targetWorkloads:
-    kinds: [Deployment, StatefulSet]
+  selector:
+    workloadSelector:
+      matchLabels:
+        env: production
+    workloadTypes:
+      include: [Deployment, StatefulSet]
+  metricsConfig:
+    provider: prometheus
+    rollingWindow: 7d
+  resourceBounds:
+    cpu:
+      min: 10m
+      max: 2000m
+    memory:
+      min: 64Mi
+      max: 4Gi
+  updateStrategy:
+    strategy: webhook
 ```
 
 ### Workload
@@ -47,21 +62,23 @@ A Kubernetes resource that runs containers. OptiPod supports:
 - **Deployments**: Stateless applications
 - **StatefulSets**: Stateful applications
 - **DaemonSets**: Node-level services
-- **Jobs**: Batch workloads
-- **CronJobs**: Scheduled tasks
 
-Workloads must be labeled to opt-in to optimization.
+Note: Jobs and CronJobs are not currently supported.
 
 ### Recommendation
 
-A suggested change to a workload's resource requests and limits, based on actual usage patterns. Recommendations include:
+A suggested change to a workload's resource requests and limits, based on actual usage patterns. Recommendations are calculated using:
 
-- **Resource values**: Suggested CPU and memory requests/limits
-- **Confidence level**: High, medium, or low
-- **Impact estimation**: Expected savings or improvements
-- **Reasoning**: Why the recommendation was made
+- **Percentile-based analysis**: P50, P90, or P99 of historical usage
+- **Safety factor**: Multiplier applied to percentile (default 1.2)
+- **Resource bounds**: Min/max constraints from policy
+- **Weight**: Policy priority when multiple policies match
 
-Recommendations are stored as annotations on the workload.
+Recommendations are stored as per-resource annotations on the workload:
+- `optipod.io/cpu-request.<container-name>`
+- `optipod.io/memory-request.<container-name>`
+- `optipod.io/cpu-limit.<container-name>`
+- `optipod.io/memory-limit.<container-name>`
 
 ## GitOps
 
@@ -70,20 +87,28 @@ Recommendations are stored as annotations on the workload.
 A deployment methodology where Git is the single source of truth for infrastructure and application configuration. Changes are made through Git commits and automatically applied to the cluster.
 
 **OptiPod's GitOps compatibility:**
-- Recommend mode stores suggestions as annotations
-- You review and commit changes to Git
-- Your GitOps tool (ArgoCD, Flux) applies changes
-- No webhook conflicts or unexpected modifications
+
+**With Webhook Strategy:**
+- Recommend mode stores suggestions as annotations only
+- Workload specs in Git remain unchanged
+- You review and commit changes to Git if desired
+- Webhook applies recommendations at pod creation time
+- No conflicts with ArgoCD/Flux
+
+**With SSA Strategy:**
+- OptiPod directly updates resource fields in workload specs
+- May require configuring GitOps tools to ignore resource fields
+- Use ArgoCD's `ignoreDifferences` or SSA sync options
 
 ### Server-Side Apply (SSA)
 
-A Kubernetes feature that allows multiple controllers to manage different fields of the same resource without conflicts. OptiPod can use SSA to apply recommendations while respecting GitOps ownership.
+A Kubernetes feature that allows multiple controllers to manage different fields of the same resource without conflicts. OptiPod can use SSA to apply recommendations directly to workload specs.
 
 **Benefits:**
 - No webhook required
-- Works with GitOps tools
+- Direct field updates
 - Clear field ownership
-- Conflict-free updates
+- In-place pod resize support (Kubernetes 1.27+)
 
 ## Metrics
 
@@ -91,26 +116,53 @@ A Kubernetes feature that allows multiple controllers to manage different fields
 
 The source of resource usage data. OptiPod supports:
 
-- **Prometheus**: Full-featured metrics with historical data
-- **metrics-server**: Basic CPU/memory metrics
-- **Custom providers**: Integrate your own metrics source
+- **Prometheus**: Full-featured metrics with historical data (recommended)
+- **metrics-server**: Basic CPU/memory metrics with sampling
+- **Custom providers**: Integrate your own metrics source (future)
 
-### Lookback Window
+### Rolling Window
 
 The time period OptiPod analyzes to generate recommendations. Longer windows provide more stable recommendations but take longer to react to changes.
 
 **Typical values:**
 - **7 days**: Balanced (default)
 - **14 days**: More stable, slower to adapt
-- **3 days**: Faster adaptation, less stable
+- **24 hours**: Faster adaptation, less stable
+
+**Configuration:**
+```yaml
+metricsConfig:
+  rollingWindow: 7d  # or 24h, 14d, 30d
+```
 
 ### Percentile
 
-The statistical measure used to determine resource recommendations. OptiPod typically uses P95 (95th percentile) to ensure recommendations handle peak usage.
+The statistical measure used to determine resource recommendations. OptiPod supports P50, P90, and P99.
 
 **Example:**
-- P95 CPU = 250m means 95% of the time, CPU usage is below 250m
-- Recommendations include headroom above P95 for safety
+- P90 CPU = 250m means 90% of the time, CPU usage is below 250m
+- P99 provides more headroom for spikes
+- P50 is more aggressive but riskier
+
+**Configuration:**
+```yaml
+metricsConfig:
+  percentile: P90  # or P50, P99
+```
+
+### Safety Factor
+
+A multiplier applied to the selected percentile to add headroom. Default is 1.2 (20% above percentile).
+
+**Example:**
+- P90 = 250m, safety factor = 1.2
+- Recommendation = 250m × 1.2 = 300m
+
+**Configuration:**
+```yaml
+metricsConfig:
+  safetyFactor: 1.2  # 1.0 = no headroom, 1.5 = 50% headroom
+```
 
 ## Resource Management
 
@@ -119,8 +171,8 @@ The statistical measure used to determine resource recommendations. OptiPod typi
 The amount of CPU/memory Kubernetes guarantees for a container. Used for scheduling decisions.
 
 **Impact:**
-- Too low: Pod may be scheduled on overloaded nodes
-- Too high: Wastes cluster capacity
+- Too low: Pod may be scheduled on overloaded nodes, leading to throttling or OOM
+- Too high: Wastes cluster capacity and increases costs
 
 ### Resource Limit
 
@@ -130,46 +182,86 @@ The maximum amount of CPU/memory a container can use.
 - CPU: Container is throttled if exceeded
 - Memory: Container is OOM-killed if exceeded
 
+### Limit Configuration
+
+OptiPod can calculate limits based on requests using multipliers:
+
+```yaml
+updateStrategy:
+  limitConfig:
+    cpuLimitMultiplier: 1.0      # limit = request × 1.0
+    memoryLimitMultiplier: 1.1   # limit = request × 1.1
+```
+
+Or you can update only requests and leave limits unchanged:
+
+```yaml
+updateStrategy:
+  updateRequestsOnly: true
+```
+
 ### Vertical Pod Autoscaler (VPA)
 
 Kubernetes' built-in solution for adjusting resource requests/limits. OptiPod is an alternative designed to be more GitOps-friendly and explainable.
 
 **Key differences:**
-- VPA uses webhooks (can conflict with GitOps)
-- OptiPod offers Recommend mode and SSA
-- OptiPod provides impact estimation
+- VPA uses webhooks that can conflict with GitOps
+- OptiPod offers webhook strategy that's GitOps-safe
+- OptiPod provides explainable recommendations with percentile-based calculations
+- OptiPod supports gradual memory decreases for safety
 
 ## Safety
 
-### Confidence Level
+### Memory Safety
 
-OptiPod's assessment of how reliable a recommendation is, based on:
+OptiPod includes built-in protections to prevent dangerous memory reductions:
 
-- Amount of historical data
-- Stability of usage patterns
-- Variance in metrics
+**Default behavior:**
+- Memory increases are always allowed
+- Memory decreases are blocked if they could cause OOM kills
+- Checks current memory usage before reducing
 
-**Levels:**
-- **High**: Stable patterns, sufficient data
-- **Medium**: Some variance or limited data
-- **Low**: Unstable patterns or insufficient data
+**Override (use with caution):**
+```yaml
+updateStrategy:
+  allowUnsafeMemoryDecrease: true
+```
 
-### Safety Guardrails
+### Gradual Memory Decrease
 
-Built-in protections that prevent dangerous recommendations:
+For safer memory optimization, OptiPod can apply large decreases incrementally:
 
-- **Memory floor**: Never reduce memory below safe thresholds
-- **Change limits**: Maximum percentage change per update
-- **Rate limiting**: Minimum time between updates
-- **Confidence threshold**: Only apply high-confidence recommendations
+```yaml
+updateStrategy:
+  gradualDecreaseConfig:
+    enabled: true
+    memoryDecreasePercentage: 10      # Max 10% per reconciliation
+    minimumDecreaseThreshold: 100Mi   # Apply gradually if decrease > 100Mi
+    maximumTotalDecrease: 70          # Never decrease more than 70% total
+```
 
-### Impact Estimation
+### Resource Bounds
 
-OptiPod's prediction of how a recommendation will affect your workload:
+Min/max constraints that limit recommendations:
 
-- **Resource savings**: Expected reduction in requests
-- **Performance impact**: Potential effects on latency/throughput
-- **Risk level**: Assessment of change safety
+```yaml
+resourceBounds:
+  cpu:
+    min: 10m      # Never recommend less than 10m
+    max: 4000m    # Never recommend more than 4000m
+  memory:
+    min: 64Mi     # Never recommend less than 64Mi
+    max: 8Gi      # Never recommend more than 8Gi
+```
+
+### Policy Weight
+
+When multiple policies match the same workload, the policy with the highest weight takes precedence:
+
+```yaml
+spec:
+  weight: 200  # Higher weight = higher priority (default: 100)
+```
 
 ## Next Steps
 

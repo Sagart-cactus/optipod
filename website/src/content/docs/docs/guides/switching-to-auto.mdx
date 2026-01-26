@@ -3,16 +3,16 @@ title: Switching to Auto Mode
 description: How to safely transition from Recommend to Auto mode
 ---
 
-Auto mode allows OptiPod to automatically apply resource recommendations with safety guardrails. This guide walks you through the transition from manual Recommend mode to automated Auto mode.
+Auto mode allows OptiPod to automatically apply resource recommendations. This guide walks you through the transition from manual Recommend mode to automated Auto mode.
 
 ## Prerequisites
 
 Before switching to Auto mode, ensure:
 
 - ✅ OptiPod has been running in Recommend mode for 2+ weeks
-- ✅ You've reviewed and manually applied several recommendations
-- ✅ Manual applications have been successful
-- ✅ You understand the safety model
+- ✅ You've reviewed recommendations on several workloads
+- ✅ Recommendations appear reasonable and stable
+- ✅ You understand the update strategy (SSA vs webhook)
 - ✅ Monitoring is in place to detect issues
 
 ## Readiness Checklist
@@ -22,20 +22,20 @@ Before switching to Auto mode, ensure:
 Check that recommendations have been accurate:
 
 ```bash
-# Review all recommendations
-kubectl get deployments -l optipod.io/enabled=true -A \
-  -o jsonpath='{range .items[*]}{.metadata.namespace}/{.metadata.name}: {.metadata.annotations.optipod\.io/recommendation}{"\n"}{end}' | \
-  jq -r '. | select(. != null)'
+# Review recommendations on deployments
+kubectl get deployments -A -o json | \
+  jq -r '.items[] | select(.metadata.annotations."optipod.io/managed" == "true") |
+    "\(.metadata.namespace)/\(.metadata.name): CPU=\(.metadata.annotations."optipod.io/cpu-request.app" // "none") Memory=\(.metadata.annotations."optipod.io/memory-request.app" // "none")"'
 ```
 
 **Questions to ask:**
 - Have recommendations been consistently reasonable?
-- Did manually applied recommendations work well?
-- Are confidence levels mostly "high"?
+- Are they stable over time?
+- Do they align with actual usage patterns?
 
-### 2. Verify Safety Configuration
+### 2. Verify Policy Configuration
 
-Ensure your policy has appropriate safety settings:
+Ensure your policy has appropriate settings:
 
 ```bash
 kubectl get optimizationpolicy <policy-name> -o yaml
@@ -43,22 +43,32 @@ kubectl get optimizationpolicy <policy-name> -o yaml
 
 Look for:
 ```yaml
-safetyConfig:
-  confidenceThreshold: high
-  maxChangePercent: 50
-  minUpdateInterval: 24h
-  memoryFloor: 64Mi
-  memoryHeadroom: 20%
-  enableRollback: true
+spec:
+  mode: Recommend  # Will change to Auto
+  metricsConfig:
+    rollingWindow: 7d
+    percentile: P90
+    safetyFactor: 1.2
+  resourceBounds:
+    cpu:
+      min: 10m
+      max: 2000m
+    memory:
+      min: 64Mi
+      max: 4Gi
+  updateStrategy:
+    strategy: webhook  # or ssa
+    rolloutStrategy: onNextRestart
+    updateRequestsOnly: true
 ```
 
 ### 3. Check Monitoring
 
 Verify you can monitor:
-- Pod status and restarts
-- Resource usage (kubectl top)
+- Pod status and restarts: `kubectl get pods -w`
+- Resource usage: `kubectl top pods`
 - Application metrics (latency, errors)
-- OOM kills and crashes
+- OOM kills: `kubectl get events --field-selector reason=OOMKilled`
 
 ### 4. Prepare Rollback Plan
 
@@ -83,25 +93,23 @@ Start with one low-risk workload.
 #### Step 1: Create Test Policy
 
 ```yaml
-apiVersion: optipod.io/v1alpha1
+apiVersion: optipod.optipod.io/v1alpha1
 kind: OptimizationPolicy
 metadata:
   name: auto-test-policy
-  namespace: development
 spec:
   mode: Auto
-  updateStrategy: ServerSideApply
 
-  targetWorkloads:
-    kinds:
-      - Deployment
-    labelSelector:
+  selector:
+    workloadSelector:
       matchLabels:
         optipod.io/auto-test: "true"  # Specific label for testing
 
   metricsConfig:
     provider: prometheus
-    lookbackWindow: 7d
+    rollingWindow: 7d
+    percentile: P90
+    safetyFactor: 1.2
 
   resourceBounds:
     cpu:
@@ -111,13 +119,10 @@ spec:
       min: 64Mi
       max: 4Gi
 
-  safetyConfig:
-    confidenceThreshold: high
-    maxChangePercent: 50
-    minUpdateInterval: 24h
-    memoryFloor: 64Mi
-    memoryHeadroom: 20%
-    enableRollback: true
+  updateStrategy:
+    strategy: webhook
+    rolloutStrategy: onNextRestart
+    updateRequestsOnly: true
 ```
 
 #### Step 2: Label Test Workload
@@ -159,11 +164,10 @@ If Phase 1 succeeded, expand gradually.
 #### Step 1: Update Policy Selector
 
 ```yaml
-targetWorkloads:
-  labelSelector:
+selector:
+  workloadSelector:
     matchLabels:
-      optipod.io/enabled: "true"
-      tier: "non-critical"
+      tier: non-critical
 ```
 
 #### Step 2: Label Additional Workloads
@@ -193,27 +197,26 @@ After 2+ weeks of successful Auto mode on non-critical workloads.
 #### Step 1: Create Production Policy
 
 ```yaml
-apiVersion: optipod.io/v1alpha1
+apiVersion: optipod.optipod.io/v1alpha1
 kind: OptimizationPolicy
 metadata:
   name: production-auto-policy
-  namespace: production
 spec:
   mode: Auto
-  updateStrategy: ServerSideApply
+  weight: 200  # Higher priority
 
-  targetWorkloads:
-    kinds:
-      - Deployment
-      - StatefulSet
-    labelSelector:
+  selector:
+    workloadSelector:
       matchLabels:
-        optipod.io/enabled: "true"
-        tier: "production"
+        tier: production
+    workloadTypes:
+      include: [Deployment, StatefulSet]
 
   metricsConfig:
     provider: prometheus
-    lookbackWindow: 14d  # Longer for production
+    rollingWindow: 14d  # Longer for production
+    percentile: P90
+    safetyFactor: 1.3   # More conservative
 
   resourceBounds:
     cpu:
@@ -223,17 +226,17 @@ spec:
       min: 128Mi
       max: 8Gi
 
-  safetyConfig:
-    confidenceThreshold: high
-    maxChangePercent: 25  # More conservative
-    minUpdateInterval: 48h  # Slower updates
-    memoryFloor: 128Mi
-    memoryHeadroom: 30%  # More headroom
-    enableRollback: true
-    rollbackTriggers:
-      - oomKills
-      - crashLoops
-      - highErrorRate
+  updateStrategy:
+    strategy: webhook
+    rolloutStrategy: onNextRestart  # Safer for production
+    updateRequestsOnly: true
+
+    # Gradual memory decreases for safety
+    gradualDecreaseConfig:
+      enabled: true
+      memoryDecreasePercentage: 10
+      minimumDecreaseThreshold: 100Mi
+      maximumTotalDecrease: 70
 ```
 
 #### Step 2: Gradual Rollout
@@ -260,7 +263,6 @@ Set up alerts for:
 - Pod restarts
 - High error rates
 - Latency increases
-- OptiPod rollbacks
 
 ### Phase 4: Critical Workloads
 
@@ -269,30 +271,44 @@ Only after months of successful Auto mode on production.
 #### Step 1: Extra Conservative Policy
 
 ```yaml
-apiVersion: optipod.io/v1alpha1
+apiVersion: optipod.optipod.io/v1alpha1
 kind: OptimizationPolicy
 metadata:
   name: critical-auto-policy
-  namespace: production
 spec:
   mode: Auto
-  updateStrategy: ServerSideApply
+  weight: 300  # Highest priority
 
-  targetWorkloads:
-    labelSelector:
+  selector:
+    workloadSelector:
       matchLabels:
-        tier: "critical"
+        tier: critical
 
   metricsConfig:
-    lookbackWindow: 30d  # Maximum stability
+    rollingWindow: 30d  # Maximum stability
+    percentile: P99     # Most conservative
+    safetyFactor: 1.5   # Extra headroom
 
-  safetyConfig:
-    confidenceThreshold: high
-    maxChangePercent: 15  # Very conservative
-    minUpdateInterval: 168h  # Weekly updates only
-    memoryFloor: 256Mi
-    memoryHeadroom: 50%  # Extra headroom
-    enableRollback: true
+  resourceBounds:
+    cpu:
+      min: 100m
+      max: 8000m
+    memory:
+      min: 256Mi
+      max: 16Gi
+
+  updateStrategy:
+    strategy: webhook
+    rolloutStrategy: onNextRestart
+    updateRequestsOnly: true
+
+    gradualDecreaseConfig:
+      enabled: true
+      memoryDecreasePercentage: 5   # Very gradual
+      minimumDecreaseThreshold: 200Mi
+      maximumTotalDecrease: 50      # Conservative limit
+
+  reconciliationInterval: 168h  # Weekly updates only
 ```
 
 #### Step 2: One at a Time
@@ -304,31 +320,29 @@ Enable Auto mode for critical workloads one at a time with weeks between each.
 ### Daily Checks
 
 ```bash
-# Check for any rollbacks
-kubectl get optimizationpolicy -A -o json | \
-  jq -r '.items[] | select(.status.rollbackCount > 0) |
-    "\(.metadata.namespace)/\(.metadata.name): \(.status.rollbackCount) rollbacks"'
-
 # Check for recent updates
-kubectl get deployments -A -l optipod.io/enabled=true \
-  -o jsonpath='{range .items[*]}{.metadata.namespace}/{.metadata.name}: {.metadata.annotations.optipod\.io/last-applied}{"\n"}{end}'
+kubectl get deployments -A -o json | \
+  jq -r '.items[] | select(.metadata.annotations."optipod.io/managed" == "true") |
+    "\(.metadata.namespace)/\(.metadata.name): last-applied=\(.metadata.annotations."optipod.io/last-applied" // "never")"'
 
 # Check for OOM kills
 kubectl get events -A --field-selector reason=OOMKilled --sort-by='.lastTimestamp'
+
+# Check policy status
+kubectl get optimizationpolicy -A
 ```
 
 ### Weekly Review
 
 ```bash
-# Generate report of all Auto mode changes
-kubectl get events -A --field-selector involvedObject.kind=OptimizationPolicy | \
-  grep "Applied recommendation"
-
 # Review resource usage trends
-kubectl top pods -A -l optipod.io/enabled=true
+kubectl top pods -A -l optipod.io/managed=true
 
-# Check policy status
+# Check policy status details
 kubectl get optimizationpolicy -A -o yaml
+
+# Review controller logs for any issues
+kubectl logs -n optipod-system -l app=optipod-controller --tail=100
 ```
 
 ## Handling Issues
@@ -343,7 +357,12 @@ kubectl patch optimizationpolicy <policy-name> \
   --type merge \
   -p '{"spec":{"mode":"Disabled"}}'
 
-# Revert problematic workload
+# Or switch to Recommend mode
+kubectl patch optimizationpolicy <policy-name> \
+  --type merge \
+  -p '{"spec":{"mode":"Recommend"}}'
+
+# Revert problematic workload manually if needed
 kubectl set resources deployment <name> \
   --requests=cpu=<previous>,memory=<previous>
 ```
@@ -354,8 +373,8 @@ kubectl set resources deployment <name> \
 # Check what changed
 kubectl get deployment <name> -o yaml | grep optipod.io/
 
-# Review operator logs
-kubectl logs -n optipod-system -l app=optipod-operator --tail=500
+# Review controller logs
+kubectl logs -n optipod-system -l app=optipod-controller --tail=500
 
 # Check policy configuration
 kubectl get optimizationpolicy <policy-name> -o yaml
@@ -374,40 +393,47 @@ kubectl get optimizationpolicy <policy-name> -o yaml
 
 Solution:
 ```yaml
-safetyConfig:
-  memoryFloor: 256Mi  # Increase floor
-  memoryHeadroom: 40%  # Increase headroom
+resourceBounds:
+  memory:
+    min: 256Mi  # Increase minimum
+metricsConfig:
+  safetyFactor: 1.5  # Increase headroom
+updateStrategy:
+  gradualDecreaseConfig:
+    enabled: true
+    memoryDecreasePercentage: 5  # More gradual
 ```
 
 **Issue: Too Many Changes**
 
 Solution:
 ```yaml
-safetyConfig:
-  minUpdateInterval: 72h  # Slow down updates
-  maxChangePercent: 25  # Smaller changes
+reconciliationInterval: 72h  # Slow down updates
+metricsConfig:
+  rollingWindow: 14d  # Longer window for stability
 ```
 
-**Issue: Low Confidence Recommendations**
+**Issue: Recommendations Too Aggressive**
 
 Solution:
 ```yaml
 metricsConfig:
-  lookbackWindow: 21d  # Longer window
-safetyConfig:
-  confidenceThreshold: high  # Stricter threshold
+  percentile: P99      # More conservative
+  safetyFactor: 1.5    # More headroom
 ```
 
 ## Best Practices
 
 1. **Go slow**: Take months, not weeks
 2. **Monitor closely**: Especially in first few weeks
-3. **Start conservative**: Tighten safety settings initially
+3. **Start conservative**: Use higher safety factors and longer rolling windows initially
 4. **Document everything**: Track what works and what doesn't
 5. **Have rollback ready**: Know how to quickly disable
 6. **Communicate**: Inform team about Auto mode rollout
 7. **Review regularly**: Weekly review of Auto mode activity
 8. **Adjust policies**: Fine-tune based on experience
+9. **Use gradual decreases**: Enable gradual memory decrease for production workloads
+10. **Test update strategies**: Understand SSA vs webhook behavior in your environment
 
 ## Success Criteria
 
@@ -424,4 +450,4 @@ You've successfully transitioned to Auto mode when:
 
 - [Understand the safety model](/docs/concepts/safety-model)
 - [Learn about update strategies](/docs/concepts/update-strategies)
-- [Review troubleshooting guide](/docs/advanced/troubleshooting)
+- [Review operational modes](/docs/concepts/operational-modes)
