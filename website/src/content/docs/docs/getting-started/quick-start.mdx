@@ -10,22 +10,23 @@ This guide will walk you through creating your first OptimizationPolicy and gett
 Create a policy that targets deployments in the `default` namespace:
 
 ```yaml
-apiVersion: optipod.io/v1alpha1
+apiVersion: optipod.optipod.io/v1alpha1
 kind: OptimizationPolicy
 metadata:
   name: default-policy
   namespace: default
 spec:
   mode: Recommend
-  targetWorkloads:
-    kinds:
-      - Deployment
-    labelSelector:
+  selector:
+    workloadSelector:
       matchLabels:
         optipod.io/enabled: "true"
+    workloadTypes:
+      include:
+        - Deployment
   metricsConfig:
     provider: prometheus
-    lookbackWindow: 7d
+    rollingWindow: 7d
   resourceBounds:
     cpu:
       min: 10m
@@ -33,6 +34,9 @@ spec:
     memory:
       min: 64Mi
       max: 8Gi
+  updateStrategy:
+    strategy: webhook
+    rolloutStrategy: onNextRestart
 ```
 
 Apply the policy:
@@ -64,39 +68,28 @@ spec:
 
 ## Step 3: Wait for Recommendations
 
-OptiPod will analyze your workload's resource usage over the lookback window (7 days in this example). After sufficient data is collected, recommendations will appear as annotations on your deployment.
+OptiPod will analyze your workload's resource usage over the rolling window (7 days in this example). After sufficient data is collected, recommendations will appear as annotations on your deployment.
 
 Check for recommendations:
 
 ```bash
-kubectl get deployment my-app -o yaml | grep optipod.io/recommendation
+kubectl get deployment my-app -o yaml | grep optipod.io
 ```
 
 You should see annotations like:
 
 ```yaml
 annotations:
-  optipod.io/recommendation: |
-    {
-      "containers": {
-        "my-app": {
-          "requests": {
-            "cpu": "250m",
-            "memory": "512Mi"
-          },
-          "limits": {
-            "cpu": "500m",
-            "memory": "1Gi"
-          }
-        }
-      },
-      "confidence": "high",
-      "estimatedImpact": {
-        "cpuSavings": "50%",
-        "memorySavings": "30%"
-      }
-    }
+  optipod.io/managed: "true"
+  optipod.io/policy: "default-policy"
+  optipod.io/last-recommendation: "2026-01-26T10:30:00Z"
+  optipod.io/cpu-request.my-app: "250m"
+  optipod.io/memory-request.my-app: "512Mi"
+  optipod.io/cpu-limit.my-app: "500m"
+  optipod.io/memory-limit.my-app: "1Gi"
 ```
+
+Each container in your deployment will have separate annotations for CPU and memory requests and limits.
 
 ## Step 4: Review and Apply
 
@@ -132,14 +125,16 @@ Commit to Git and let your GitOps tool apply the changes.
 Once you're confident in OptiPod's recommendations, switch to Auto mode:
 
 ```yaml
-apiVersion: optipod.io/v1alpha1
+apiVersion: optipod.optipod.io/v1alpha1
 kind: OptimizationPolicy
 metadata:
   name: default-policy
   namespace: default
 spec:
   mode: Auto  # Changed from Recommend
-  updateStrategy: ServerSideApply
+  updateStrategy:
+    strategy: ssa  # Use Server-Side Apply for automatic updates
+    rolloutStrategy: onNextRestart
   # ... rest of spec
 ```
 
@@ -173,7 +168,7 @@ Now that you've seen OptiPod in action, explore more features:
 
 ### How long until I see recommendations?
 
-OptiPod needs sufficient metrics data to make confident recommendations. With the default 7-day lookback window, you'll typically see recommendations within 24-48 hours if your workload has consistent traffic.
+OptiPod needs sufficient metrics data to make confident recommendations. With the default 7-day rolling window, you'll typically see recommendations within 24-48 hours if your workload has consistent traffic.
 
 ### Can I use OptiPod with GitOps?
 
@@ -181,7 +176,7 @@ Yes! OptiPod is designed to be GitOps-safe. Use Recommend mode and apply changes
 
 ### What if recommendations seem wrong?
 
-You can adjust the policy's `resourceBounds`, `lookbackWindow`, or `confidenceThreshold` to fine-tune recommendations. See the [Creating Policies guide](/docs/guides/creating-policies) for details.
+You can adjust the policy's `resourceBounds`, `rollingWindow`, `percentile`, or `safetyFactor` to fine-tune recommendations. See the [Creating Policies guide](/docs/guides/creating-policies) for details.
 
 ### Is it safe to use Auto mode?
 

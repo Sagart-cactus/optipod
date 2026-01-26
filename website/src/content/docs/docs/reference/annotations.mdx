@@ -3,122 +3,25 @@ title: Annotations Reference
 description: Complete reference for OptiPod annotations
 ---
 
-OptiPod uses Kubernetes annotations to store recommendations and metadata on workloads. This page provides a complete reference.
+OptiPod uses Kubernetes annotations to store recommendations and metadata on workloads. This page provides a complete reference for all annotations used by OptiPod.
 
-## Recommendation Annotations
+## Management Annotations
 
-### optipod.io/recommendation
+### optipod.io/managed
 
-**Type:** JSON string
-**Applied to:** Workload resources (Deployment, StatefulSet, etc.)
+**Type:** string
+**Values:** `"true"`
+**Applied to:** Workload resources (Deployment, StatefulSet, DaemonSet)
 **Set by:** OptiPod operator
 **Mode:** All modes
 
-Contains the complete recommendation for the workload.
-
-**Format:**
-```json
-{
-  "containers": {
-    "<container-name>": {
-      "current": {
-        "requests": {"cpu": "string", "memory": "string"},
-        "limits": {"cpu": "string", "memory": "string"}
-      },
-      "recommended": {
-        "requests": {"cpu": "string", "memory": "string"},
-        "limits": {"cpu": "string", "memory": "string"}
-      }
-    }
-  },
-  "confidence": "high|medium|low",
-  "timestamp": "RFC3339",
-  "metricsAnalysis": {
-    "cpuP95": "string",
-    "memoryP95": "string",
-    "cpuP99": "string",
-    "memoryP99": "string",
-    "sampleCount": number
-  },
-  "estimatedImpact": {
-    "cpuSavings": "string",
-    "memorySavings": "string",
-    "costSavings": "string",
-    "riskLevel": "low|medium|high"
-  },
-  "reasoning": "string"
-}
-```
+Indicates that this workload is managed by OptiPod.
 
 **Example:**
 ```yaml
 annotations:
-  optipod.io/recommendation: |
-    {
-      "containers": {
-        "nginx": {
-          "current": {
-            "requests": {"cpu": "1000m", "memory": "2Gi"},
-            "limits": {"cpu": "2000m", "memory": "4Gi"}
-          },
-          "recommended": {
-            "requests": {"cpu": "250m", "memory": "512Mi"},
-            "limits": {"cpu": "500m", "memory": "1Gi"}
-          }
-        }
-      },
-      "confidence": "high",
-      "timestamp": "2026-01-24T10:30:00Z",
-      "metricsAnalysis": {
-        "cpuP95": "200m",
-        "memoryP95": "400Mi",
-        "cpuP99": "230m",
-        "memoryP99": "450Mi",
-        "sampleCount": 2016
-      },
-      "estimatedImpact": {
-        "cpuSavings": "75%",
-        "memorySavings": "75%",
-        "costSavings": "$45/month",
-        "riskLevel": "low"
-      },
-      "reasoning": "Workload consistently uses 20-25% of requested resources."
-    }
+  optipod.io/managed: "true"
 ```
-
-## Timestamp Annotations
-
-### optipod.io/last-updated
-
-**Type:** RFC3339 timestamp
-**Applied to:** Workload resources
-**Set by:** OptiPod operator
-**Mode:** All modes
-
-Timestamp when the recommendation was last updated.
-
-**Example:**
-```yaml
-annotations:
-  optipod.io/last-updated: "2026-01-24T10:30:00Z"
-```
-
-### optipod.io/last-applied
-
-**Type:** RFC3339 timestamp
-**Applied to:** Workload resources
-**Set by:** OptiPod operator
-**Mode:** Auto mode only
-
-Timestamp when OptiPod last applied a recommendation to this workload.
-
-**Example:**
-```yaml
-annotations:
-  optipod.io/last-applied: "2026-01-24T10:30:00Z"
-```
-
-## Policy Annotations
 
 ### optipod.io/policy
 
@@ -135,227 +38,332 @@ annotations:
   optipod.io/policy: "production-policy"
 ```
 
-### optipod.io/confidence
+### optipod.io/policy-uid
 
-**Type:** string
-**Values:** `high`, `medium`, `low`
+**Type:** string (UID)
 **Applied to:** Workload resources
 **Set by:** OptiPod operator
 **Mode:** All modes
 
-Confidence level of the current recommendation.
+Unique identifier of the OptimizationPolicy managing this workload.
 
 **Example:**
 ```yaml
 annotations:
-  optipod.io/confidence: "high"
+  optipod.io/policy-uid: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
 ```
 
-## Safety Annotations
+## Timestamp Annotations
 
-### optipod.io/rollback-count
+### optipod.io/last-recommendation
 
-**Type:** integer (as string)
+**Type:** RFC3339 timestamp
 **Applied to:** Workload resources
 **Set by:** OptiPod operator
-**Mode:** Auto mode only
+**Mode:** All modes
 
-Number of times OptiPod has automatically rolled back changes to this workload.
+Timestamp when the recommendation was last updated.
 
 **Example:**
 ```yaml
 annotations:
-  optipod.io/rollback-count: "2"
+  optipod.io/last-recommendation: "2026-01-26T10:30:00Z"
 ```
 
-### optipod.io/cooldown-until
+### optipod.io/last-applied
 
 **Type:** RFC3339 timestamp
 **Applied to:** Workload resources
 **Set by:** OptiPod operator
 **Mode:** Auto mode only
 
-Timestamp when the cooldown period ends after a rollback. OptiPod will not make changes until this time.
+Timestamp when OptiPod last applied a recommendation to this workload.
 
 **Example:**
 ```yaml
 annotations:
-  optipod.io/cooldown-until: "2026-01-31T10:30:00Z"
+  optipod.io/last-applied: "2026-01-26T10:30:00Z"
 ```
 
-### optipod.io/last-rollback
+## Resource Recommendation Annotations
 
-**Type:** RFC3339 timestamp
+OptiPod stores resource recommendations as separate annotations for each container and resource type.
+
+### optipod.io/cpu-request.<container-name>
+
+**Type:** Kubernetes resource quantity
 **Applied to:** Workload resources
 **Set by:** OptiPod operator
-**Mode:** Auto mode only
+**Mode:** All modes
 
-Timestamp of the most recent rollback.
+Recommended CPU request for the specified container.
 
 **Example:**
 ```yaml
 annotations:
-  optipod.io/last-rollback: "2026-01-24T10:30:00Z"
+  optipod.io/cpu-request.nginx: "250m"
+  optipod.io/cpu-request.sidecar: "50m"
 ```
 
-### optipod.io/rollback-reason
+### optipod.io/memory-request.<container-name>
 
-**Type:** string
+**Type:** Kubernetes resource quantity
 **Applied to:** Workload resources
 **Set by:** OptiPod operator
-**Mode:** Auto mode only
+**Mode:** All modes
 
-Reason for the most recent rollback.
+Recommended memory request for the specified container.
 
 **Example:**
 ```yaml
 annotations:
-  optipod.io/rollback-reason: "OOM kills detected after resource reduction"
+  optipod.io/memory-request.nginx: "512Mi"
+  optipod.io/memory-request.sidecar: "128Mi"
 ```
 
-## User Annotations
+### optipod.io/cpu-limit.<container-name>
 
-These annotations can be set by users to control OptiPod behavior.
+**Type:** Kubernetes resource quantity
+**Applied to:** Workload resources
+**Set by:** OptiPod operator
+**Mode:** All modes
 
-### optipod.io/exclude
+Recommended CPU limit for the specified container.
+
+**Example:**
+```yaml
+annotations:
+  optipod.io/cpu-limit.nginx: "500m"
+  optipod.io/cpu-limit.sidecar: "100m"
+```
+
+### optipod.io/memory-limit.<container-name>
+
+**Type:** Kubernetes resource quantity
+**Applied to:** Workload resources
+**Set by:** OptiPod operator
+**Mode:** All modes
+
+Recommended memory limit for the specified container.
+
+**Example:**
+```yaml
+annotations:
+  optipod.io/memory-limit.nginx: "1Gi"
+  optipod.io/memory-limit.sidecar: "256Mi"
+```
+
+## Webhook Strategy Annotations
+
+### optipod.io/webhook-enabled
 
 **Type:** string
-**Values:** `"true"`, `"false"`
+**Values:** `"true"`
 **Applied to:** Workload resources
-**Set by:** User
-**Mode:** All modes
+**Set by:** OptiPod operator
+**Mode:** Auto mode with webhook strategy
 
-Exclude this workload from optimization even if it matches policy selectors.
+Indicates that the webhook should process pods from this workload.
 
 **Example:**
 ```yaml
 annotations:
-  optipod.io/exclude: "true"
+  optipod.io/webhook-enabled: "true"
 ```
 
-### optipod.io/min-cpu
+### optipod.io/strategy
 
-**Type:** Kubernetes resource quantity
+**Type:** string
+**Values:** `"webhook"`, `"ssa"`
 **Applied to:** Workload resources
-**Set by:** User
+**Set by:** OptiPod operator
 **Mode:** All modes
 
-Override minimum CPU for this specific workload.
+Indicates which update strategy is used for this workload.
 
 **Example:**
 ```yaml
 annotations:
-  optipod.io/min-cpu: "100m"
+  optipod.io/strategy: "webhook"
 ```
 
-### optipod.io/max-cpu
+## Complete Example
 
-**Type:** Kubernetes resource quantity
-**Applied to:** Workload resources
-**Set by:** User
-**Mode:** All modes
+Here's what a fully annotated deployment looks like:
 
-Override maximum CPU for this specific workload.
-
-**Example:**
 ```yaml
-annotations:
-  optipod.io/max-cpu: "2000m"
-```
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-app
+  namespace: production
+  annotations:
+    # Management annotations
+    optipod.io/managed: "true"
+    optipod.io/policy: "production-policy"
+    optipod.io/policy-uid: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
 
-### optipod.io/min-memory
+    # Timestamp annotations
+    optipod.io/last-recommendation: "2026-01-26T10:30:00Z"
+    optipod.io/last-applied: "2026-01-26T10:35:00Z"
 
-**Type:** Kubernetes resource quantity
-**Applied to:** Workload resources
-**Set by:** User
-**Mode:** All modes
+    # Resource recommendations for 'nginx' container
+    optipod.io/cpu-request.nginx: "250m"
+    optipod.io/memory-request.nginx: "512Mi"
+    optipod.io/cpu-limit.nginx: "500m"
+    optipod.io/memory-limit.nginx: "1Gi"
 
-Override minimum memory for this specific workload.
+    # Resource recommendations for 'sidecar' container
+    optipod.io/cpu-request.sidecar: "50m"
+    optipod.io/memory-request.sidecar: "128Mi"
+    optipod.io/cpu-limit.sidecar: "100m"
+    optipod.io/memory-limit.sidecar: "256Mi"
 
-**Example:**
-```yaml
-annotations:
-  optipod.io/min-memory: "256Mi"
-```
-
-### optipod.io/max-memory
-
-**Type:** Kubernetes resource quantity
-**Applied to:** Workload resources
-**Set by:** User
-**Mode:** All modes
-
-Override maximum memory for this specific workload.
-
-**Example:**
-```yaml
-annotations:
-  optipod.io/max-memory: "4Gi"
+    # Strategy annotations
+    optipod.io/webhook-enabled: "true"
+    optipod.io/strategy: "webhook"
+spec:
+  # ... deployment spec
 ```
 
 ## Querying Annotations
 
-### Get Recommendation
-
-```bash
-kubectl get deployment my-app \
-  -o jsonpath='{.metadata.annotations.optipod\.io/recommendation}' | jq .
-```
-
-### Get Confidence Level
-
-```bash
-kubectl get deployment my-app \
-  -o jsonpath='{.metadata.annotations.optipod\.io/confidence}'
-```
-
-### Get Last Update Time
-
-```bash
-kubectl get deployment my-app \
-  -o jsonpath='{.metadata.annotations.optipod\.io/last-updated}'
-```
-
-### Check Cooldown Status
-
-```bash
-kubectl get deployment my-app \
-  -o jsonpath='{.metadata.annotations.optipod\.io/cooldown-until}'
-```
-
-### List All OptiPod Annotations
+### Get All OptiPod Annotations
 
 ```bash
 kubectl get deployment my-app -o json | \
   jq '.metadata.annotations | with_entries(select(.key | startswith("optipod.io/")))'
 ```
 
-## Setting User Annotations
-
-### Exclude Workload
+### Get Recommendations for Specific Container
 
 ```bash
-kubectl annotate deployment my-app optipod.io/exclude=true
+# CPU request
+kubectl get deployment my-app \
+  -o jsonpath='{.metadata.annotations.optipod\.io/cpu-request\.nginx}'
+
+# Memory request
+kubectl get deployment my-app \
+  -o jsonpath='{.metadata.annotations.optipod\.io/memory-request\.nginx}'
 ```
 
-### Set Resource Overrides
+### Get Last Recommendation Time
 
 ```bash
+kubectl get deployment my-app \
+  -o jsonpath='{.metadata.annotations.optipod\.io/last-recommendation}'
+```
+
+### Get Managing Policy
+
+```bash
+kubectl get deployment my-app \
+  -o jsonpath='{.metadata.annotations.optipod\.io/policy}'
+```
+
+### List All Containers with Recommendations
+
+```bash
+kubectl get deployment my-app -o json | \
+  jq -r '.metadata.annotations | keys[] | select(startswith("optipod.io/cpu-request.")) | sub("optipod.io/cpu-request."; "")'
+```
+
+## Annotation Lifecycle
+
+### Recommend Mode
+
+In Recommend mode, OptiPod sets:
+1. `optipod.io/managed: "true"`
+2. `optipod.io/policy: "<policy-name>"`
+3. `optipod.io/policy-uid: "<policy-uid>"`
+4. `optipod.io/last-recommendation: "<timestamp>"`
+5. Resource recommendation annotations for each container
+6. `optipod.io/strategy: "webhook"` or `"ssa"`
+
+### Auto Mode with Webhook Strategy
+
+In Auto mode with webhook strategy, OptiPod additionally sets:
+1. `optipod.io/webhook-enabled: "true"`
+2. `optipod.io/last-applied: "<timestamp>"` (after applying)
+
+The webhook reads these annotations and applies them to pods at creation time.
+
+### Auto Mode with SSA Strategy
+
+In Auto mode with SSA strategy, OptiPod:
+1. Sets all recommendation annotations
+2. Uses Server-Side Apply to update the workload spec directly
+3. Sets `optipod.io/last-applied: "<timestamp>"`
+4. Sets `optipod.io/strategy: "ssa"`
+
+## GitOps Compatibility
+
+OptiPod's annotation strategy is designed to be GitOps-safe:
+
+- **Annotations are stored on workload metadata**, not in pod templates
+- **ArgoCD and Flux ignore metadata annotations** by default
+- **Webhook applies resources at runtime**, so pod templates remain unchanged
+- **No conflicts with GitOps controllers**
+
+This means you can:
+1. Store your deployment YAMLs in Git without resource requests/limits
+2. Let OptiPod manage resources via annotations
+3. Let your GitOps tool manage everything else
+4. No fighting between OptiPod and GitOps
+
+## Annotation Cleanup
+
+When a policy is deleted or a workload no longer matches any policy:
+- OptiPod **does not** automatically remove annotations
+- Existing recommendations remain on the workload
+- You can manually remove annotations if desired
+
+To manually remove all OptiPod annotations:
+
+```bash
+# Remove all optipod.io/* annotations
 kubectl annotate deployment my-app \
-  optipod.io/min-cpu=100m \
-  optipod.io/max-cpu=2000m \
-  optipod.io/min-memory=256Mi \
-  optipod.io/max-memory=4Gi
+  $(kubectl get deployment my-app -o json | \
+    jq -r '.metadata.annotations | keys[] | select(startswith("optipod.io/")) | . + "-"' | \
+    tr '\n' ' ')
 ```
 
-### Remove Annotations
+## Best Practices
 
-```bash
-kubectl annotate deployment my-app optipod.io/exclude-
-```
+1. **Don't manually edit recommendation annotations** - Let OptiPod manage them
+2. **Use `kubectl describe`** to view annotations in human-readable format
+3. **Monitor `last-recommendation` timestamps** to ensure policies are active
+4. **Check `policy` annotation** to understand which policy is managing a workload
+5. **Use labels for opt-in**, not annotations (labels are for selection, annotations for metadata)
+
+## Troubleshooting
+
+### No Annotations Appearing
+
+Check:
+- Workload matches policy selector (labels, namespace, workload type)
+- Policy is in correct namespace
+- Sufficient metrics data available
+- Policy status: `kubectl describe optimizationpolicy <name>`
+
+### Annotations Not Being Applied by Webhook
+
+Verify:
+- `optipod.io/webhook-enabled: "true"` is set
+- Webhook is deployed and running
+- Webhook has valid TLS certificates
+- Check webhook logs for errors
+
+### Stale Recommendations
+
+Check:
+- `last-recommendation` timestamp
+- Policy reconciliation interval
+- Metrics provider connectivity
 
 ## Next Steps
 
 - [API Reference](/docs/reference/api)
 - [CRD Specification](/docs/reference/crd-spec)
 - [Reviewing Recommendations](/docs/guides/reviewing-recommendations)
+- [Update Strategies](/docs/concepts/update-strategies)
