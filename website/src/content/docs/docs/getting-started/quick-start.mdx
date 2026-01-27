@@ -159,10 +159,10 @@ kubectl get optimizationpolicy default-policy -o yaml
 
 Now that you've seen OptiPod in action, explore more features:
 
-- [Learn about operational modes](/docs/concepts/operational-modes)
-- [Understand update strategies](/docs/concepts/update-strategies)
-- [Configure advanced policies](/docs/guides/creating-policies)
-- [Review the safety model](/docs/concepts/safety-model)
+- [Learn about operational modes](/optipod/docs/concepts/operational-modes)
+- [Understand update strategies](/optipod/docs/concepts/update-strategies)
+- [Configure advanced policies](/optipod/docs/guides/creating-policies)
+- [Review the safety model](/optipod/docs/concepts/safety-model)
 
 ## Common Questions
 
@@ -176,8 +176,8 @@ Yes! OptiPod is designed to be GitOps-safe. Use Recommend mode and apply changes
 
 ### What if recommendations seem wrong?
 
-You can adjust the policy's `resourceBounds`, `rollingWindow`, `percentile`, or `safetyFactor` to fine-tune recommendations. See the [Creating Policies guide](/docs/guides/creating-policies) for details.
+You can adjust the policy's `resourceBounds`, `rollingWindow`, `percentile`, or `safetyFactor` to fine-tune recommendations. See the [Creating Policies guide](/optipod/docs/guides/creating-policies) for details.
 
 ### Is it safe to use Auto mode?
 
-Auto mode includes safety guardrails, but we recommend starting with Recommend mode to build confidence. See the [Safety Model](/docs/concepts/safety-model) for details.
+Auto mode includes safety guardrails, but we recommend starting with Recommend mode to build confidence. See the [Safety Model](/optipod/docs/concepts/safety-model) for details.
