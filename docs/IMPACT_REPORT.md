@@ -23,13 +23,13 @@ This repository includes an **impact report** script that reads OptiPod’s per-
 From a clone of this repo:
 
 ```bash
-./optipod-recommendation-report.sh -o html -f optipod-impact.html
+./scripts/optipod-recommendation-report.sh -o html -f optipod-impact.html
 ```
 
 Or run the script directly from GitHub:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Sagart-cactus/optipod/main/optipod-recommendation-report.sh -o optipod-recommendation-report.sh
+curl -fsSL https://raw.githubusercontent.com/Sagart-cactus/optipod/main/scripts/optipod-recommendation-report.sh -o optipod-recommendation-report.sh
 chmod +x optipod-recommendation-report.sh
 ./optipod-recommendation-report.sh -o html -f optipod-impact.html
 ```

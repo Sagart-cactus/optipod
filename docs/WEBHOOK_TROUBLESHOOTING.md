@@ -145,8 +145,8 @@ kubectl get optimizationpolicy -A
    metadata:
      annotations:
        optipod.io/webhook-enabled: "true"
-       optipod.io/cpu-request.container-name: "200m"
-       optipod.io/memory-request.container-name: "256Mi"
+       optipod.io/recommendation.container-name.cpu-request: "200m"
+       optipod.io/recommendation.container-name.memory-request: "256Mi"
    ```
 
 2. **Check Policy Selector Matching**:
@@ -343,7 +343,7 @@ cat <<EOF > test-admission.json
         "namespace": "default",
         "annotations": {
           "optipod.io/webhook-enabled": "true",
-          "optipod.io/cpu-request.app": "200m"
+          "optipod.io/recommendation.app.cpu-request": "200m"
         }
       },
       "spec": {

@@ -40,10 +40,10 @@ metadata:
     optipod.io/last-recommendation: "2026-01-26T10:30:00Z"
 
     # Resource recommendations for 'my-app' container
-    optipod.io/cpu-request.my-app: "250m"
-    optipod.io/memory-request.my-app: "512Mi"
-    optipod.io/cpu-limit.my-app: "500m"
-    optipod.io/memory-limit.my-app: "1Gi"
+    optipod.io/recommendation.my-app.cpu-request: "250m"
+    optipod.io/recommendation.my-app.memory-request: "512Mi"
+    optipod.io/recommendation.my-app.cpu-limit: "500m"
+    optipod.io/recommendation.my-app.memory-limit: "1Gi"
 
     # Strategy annotation
     optipod.io/strategy: "webhook"
@@ -105,10 +105,10 @@ spec:
       - name: my-app
         resources:
           requests:
-            cpu: 250m      # From optipod.io/cpu-request.my-app
-            memory: 512Mi  # From optipod.io/memory-request.my-app
+            cpu: 250m      # From optipod.io/recommendation.my-app.cpu-request
+            memory: 512Mi  # From optipod.io/recommendation.my-app.memory-request
           limits:
-            cpu: 500m      # From optipod.io/cpu-limit.my-app
+            cpu: 500m      # From optipod.io/recommendation.my-app.cpu-limit
             memory: 1Gi    # From optipod.io/memory-limit.my-app
 ```
 
@@ -128,7 +128,7 @@ fi
 
 # Get container names
 CONTAINERS=$(kubectl get deployment $DEPLOYMENT -n $NAMESPACE -o json | \
-  jq -r '.metadata.annotations | keys[] | select(startswith("optipod.io/cpu-request.")) | sub("optipod.io/cpu-request."; "")')
+  jq -r '.metadata.annotations | keys[] | select(startswith("optipod.io/recommendation.")) | select(contains(".cpu-request")) | split(".")[1]' | sort -u)
 
 for CONTAINER in $CONTAINERS; do
   CPU_REQ=$(kubectl get deployment $DEPLOYMENT -n $NAMESPACE -o jsonpath="{.metadata.annotations.optipod\.io/cpu-request\.$CONTAINER}")

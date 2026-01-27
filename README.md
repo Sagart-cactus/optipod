@@ -84,7 +84,7 @@ spec:
   selector:
     workloadSelector:
       matchLabels:
-        optimize: "true"
+        optipod.io/enabled: "true"
 
   metricsConfig:
     provider: metrics-server
@@ -115,7 +115,7 @@ kubectl apply -f optipod-policy.yaml
 ### 3) Label a workload and review recommendations
 
 ```bash
-kubectl label deployment my-app optimize=true
+kubectl label deployment my-app optipod.io/enabled=true
 kubectl describe optimizationpolicy safe-recommendations -n default
 # View individual workload recommendations:
 kubectl get deployment my-app -o yaml | grep -A5 -B5 "optipod.io/recommendation"
@@ -265,7 +265,7 @@ This is especially useful to answer: “If I opt in to Auto, what will change, a
 Generate an HTML report:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Sagart-cactus/optipod/main/optipod-recommendation-report.sh -o optipod-recommendation-report.sh
+curl -fsSL https://raw.githubusercontent.com/Sagart-cactus/optipod/main/scripts/optipod-recommendation-report.sh -o optipod-recommendation-report.sh
 chmod +x optipod-recommendation-report.sh
 ./optipod-recommendation-report.sh -o html -f optipod-impact.html
 ```
