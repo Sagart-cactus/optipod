@@ -28,7 +28,7 @@ OptiPod solves these problems by providing **safe, explainable, and GitOps-frien
 | Recommend-only mode | ✅ Yes | ✅ Yes |
 | Auto-apply mode | ✅ With safeguards | ✅ Yes |
 | Update strategy options | ✅ Webhook or SSA | ⚠️ Webhook only |
-| Impact estimation | ✅ Yes | ❌ No |
+| Memory safety guardrails | ✅ Yes | ⚠️ Basic |
 
 ## How It Works
 
@@ -65,8 +65,8 @@ OptiPod is designed with safety as a top priority:
 - **Conservative defaults**: Never reduce memory below safe thresholds
 - **Policy-driven controls**: You define bounds and change limits
 - **Memory safeguards**: Prevents OOM kills from aggressive reductions
-- **Change-rate limits**: Prevents rapid oscillation
-- **Impact estimation**: Shows expected impact before changes
+- **Gradual decrease options**: Incremental memory reduction for safety
+- **Configurable safety factors**: Apply multipliers to recommendations
 
 ## Next Steps
 

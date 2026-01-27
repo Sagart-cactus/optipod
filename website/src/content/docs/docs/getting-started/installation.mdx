@@ -40,20 +40,23 @@ You can customize the installation with a values file:
 
 ```yaml
 # values.yaml
-replicaCount: 2
+controller:
+  replicaCount: 2
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
 
-resources:
-  limits:
-    cpu: 500m
-    memory: 512Mi
-  requests:
-    cpu: 100m
-    memory: 128Mi
-
-metricsProvider:
-  type: prometheus
-  prometheus:
-    address: http://prometheus-server.monitoring.svc:9090
+# Prometheus configuration (if using Prometheus)
+prometheus:
+  address: http://prometheus-server.monitoring.svc:9090
+  # Optional: Configure authentication
+  # auth:
+  #   type: bearer
+  #   token: "your-token"
 ```
 
 Install with custom values:
@@ -74,13 +77,15 @@ You can also install OptiPod directly using kubectl:
 
 ```bash
 # Install CRDs
-kubectl apply -f https://raw.githubusercontent.com/Sagart-cactus/optipod/main/deploy/crds/optimizationpolicy.yaml
+kubectl apply -f https://raw.githubusercontent.com/Sagart-cactus/optipod/main/config/crd/bases/optipod.optipod.io_optimizationpolicies.yaml
 
-# Install OptiPod operator
-kubectl apply -f https://raw.githubusercontent.com/Sagart-cactus/optipod/main/deploy/operator.yaml
+# Install OptiPod operator (use Helm for production)
+kubectl apply -k https://github.com/Sagart-cactus/optipod/config/default
 ```
 
-This will create the `optipod-system` namespace, install the OptimizationPolicy CRD, deploy the OptiPod operator, and create necessary RBAC resources.
+:::note
+For production deployments, we recommend using Helm for easier configuration and upgrades.
+:::
 
   </TabItem>
   <TabItem label="Automated Script">
@@ -121,51 +126,57 @@ kubectl logs -n optipod-system -l app=optipod-operator
 
 ## Configure Metrics Provider
 
-OptiPod needs access to metrics to make recommendations. Configure your metrics provider:
+OptiPod needs access to metrics to make recommendations. Configure your metrics provider via Helm values:
 
 <Tabs>
   <TabItem label="Prometheus">
 
 ### Prometheus Configuration
 
-If using Prometheus, create a ConfigMap with the Prometheus address:
+Configure Prometheus in your Helm values:
 
 ```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: optipod-config
-  namespace: optipod-system
-data:
-  metrics-provider: prometheus
-  prometheus-address: http://prometheus-server.monitoring.svc:9090
+# values.yaml
+prometheus:
+  address: http://prometheus-server.monitoring.svc:9090
+
+  # Optional: Configure authentication
+  auth:
+    type: bearer  # or "basic"
+    token: "your-prometheus-token"  # pragma: allowlist secret
+    # For basic auth:
+    # username: "user"
+    # password: "pass"  # pragma: allowlist secret
 ```
 
-Apply the configuration:
+Install with Prometheus configuration:
 
 ```bash
-kubectl apply -f prometheus-config.yaml
+helm install optipod optipod/optipod \
+  --namespace optipod-system \
+  --create-namespace \
+  -f values.yaml
 ```
+
+See the [Prometheus Setup Guide](/docs/prometheus-setup) for detailed configuration options.
 
   </TabItem>
   <TabItem label="metrics-server">
 
 ### metrics-server Configuration
 
-If using metrics-server, OptiPod will auto-detect it:
+OptiPod can use metrics-server for basic CPU and memory metrics:
 
 ```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: optipod-config
-  namespace: optipod-system
-data:
-  metrics-provider: metrics-server
+# values.yaml
+metricsServer:
+  enabled: true
+  # Optional: Configure sampling
+  minSamplesRequired: 10
 ```
 
 :::note
-metrics-server provides basic CPU and memory metrics. For more detailed recommendations, consider using Prometheus.
+metrics-server provides basic CPU and memory metrics. For more detailed recommendations and historical data, consider using Prometheus.
 :::
 
   </TabItem>
@@ -204,8 +215,9 @@ kubectl delete namespace optipod-system
   <TabItem label="kubectl">
 
 ```bash
-kubectl delete -f https://raw.githubusercontent.com/Sagart-cactus/optipod/main/deploy/operator.yaml
-kubectl delete -f https://raw.githubusercontent.com/Sagart-cactus/optipod/main/deploy/crds/optimizationpolicy.yaml
+# Delete CRDs and resources
+kubectl delete -k https://github.com/Sagart-cactus/optipod/config/default
+kubectl delete -f https://raw.githubusercontent.com/Sagart-cactus/optipod/main/config/crd/bases/optipod.optipod.io_optimizationpolicies.yaml
 ```
 
   </TabItem>
