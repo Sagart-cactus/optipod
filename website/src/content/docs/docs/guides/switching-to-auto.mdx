@@ -25,7 +25,7 @@ Check that recommendations have been accurate:
 # Review recommendations on deployments
 kubectl get deployments -A -o json | \
   jq -r '.items[] | select(.metadata.annotations."optipod.io/managed" == "true") |
-    "\(.metadata.namespace)/\(.metadata.name): CPU=\(.metadata.annotations."optipod.io/cpu-request.app" // "none") Memory=\(.metadata.annotations."optipod.io/memory-request.app" // "none")"'
+    "\(.metadata.namespace)/\(.metadata.name): CPU=\(.metadata.annotations."optipod.io/recommendation.app.cpu-request" // "none") Memory=\(.metadata.annotations."optipod.io/recommendation.app.memory-request" // "none")"'
 ```
 
 **Questions to ask:**

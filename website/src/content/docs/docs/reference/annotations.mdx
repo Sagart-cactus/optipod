@@ -89,7 +89,15 @@ annotations:
 
 OptiPod stores resource recommendations as separate annotations for each container and resource type.
 
-### optipod.io/cpu-request.&lt;container-name&gt;
+### Format
+
+The annotation format is: `optipod.io/recommendation.<container-name>.<resource-type>`
+
+Where:
+- `<container-name>` is the name of the container
+- `<resource-type>` is one of: `cpu-request`, `memory-request`, `cpu-limit`, `memory-limit`
+
+### optipod.io/recommendation.&lt;container-name&gt;.cpu-request
 
 **Type:** Kubernetes resource quantity
 **Applied to:** Workload resources
@@ -101,11 +109,11 @@ Recommended CPU request for the specified container.
 **Example:**
 ```yaml
 annotations:
-  optipod.io/cpu-request.nginx: "250m"
-  optipod.io/cpu-request.sidecar: "50m"
+  optipod.io/recommendation.nginx.cpu-request: "250m"
+  optipod.io/recommendation.sidecar.cpu-request: "50m"
 ```
 
-### optipod.io/memory-request.&lt;container-name&gt;
+### optipod.io/recommendation.&lt;container-name&gt;.memory-request
 
 **Type:** Kubernetes resource quantity
 **Applied to:** Workload resources
@@ -117,11 +125,11 @@ Recommended memory request for the specified container.
 **Example:**
 ```yaml
 annotations:
-  optipod.io/memory-request.nginx: "512Mi"
-  optipod.io/memory-request.sidecar: "128Mi"
+  optipod.io/recommendation.nginx.memory-request: "512Mi"
+  optipod.io/recommendation.sidecar.memory-request: "128Mi"
 ```
 
-### optipod.io/cpu-limit.&lt;container-name&gt;
+### optipod.io/recommendation.&lt;container-name&gt;.cpu-limit
 
 **Type:** Kubernetes resource quantity
 **Applied to:** Workload resources
@@ -133,11 +141,11 @@ Recommended CPU limit for the specified container.
 **Example:**
 ```yaml
 annotations:
-  optipod.io/cpu-limit.nginx: "500m"
-  optipod.io/cpu-limit.sidecar: "100m"
+  optipod.io/recommendation.nginx.cpu-limit: "500m"
+  optipod.io/recommendation.sidecar.cpu-limit: "100m"
 ```
 
-### optipod.io/memory-limit.&lt;container-name&gt;
+### optipod.io/recommendation.&lt;container-name&gt;.memory-limit
 
 **Type:** Kubernetes resource quantity
 **Applied to:** Workload resources
@@ -149,8 +157,8 @@ Recommended memory limit for the specified container.
 **Example:**
 ```yaml
 annotations:
-  optipod.io/memory-limit.nginx: "1Gi"
-  optipod.io/memory-limit.sidecar: "256Mi"
+  optipod.io/recommendation.nginx.memory-limit: "1Gi"
+  optipod.io/recommendation.sidecar.memory-limit: "256Mi"
 ```
 
 ## Webhook Strategy Annotations
@@ -208,16 +216,16 @@ metadata:
     optipod.io/last-applied: "2026-01-26T10:35:00Z"
 
     # Resource recommendations for 'nginx' container
-    optipod.io/cpu-request.nginx: "250m"
-    optipod.io/memory-request.nginx: "512Mi"
-    optipod.io/cpu-limit.nginx: "500m"
-    optipod.io/memory-limit.nginx: "1Gi"
+    optipod.io/recommendation.nginx.cpu-request: "250m"
+    optipod.io/recommendation.nginx.memory-request: "512Mi"
+    optipod.io/recommendation.nginx.cpu-limit: "500m"
+    optipod.io/recommendation.nginx.memory-limit: "1Gi"
 
     # Resource recommendations for 'sidecar' container
-    optipod.io/cpu-request.sidecar: "50m"
-    optipod.io/memory-request.sidecar: "128Mi"
-    optipod.io/cpu-limit.sidecar: "100m"
-    optipod.io/memory-limit.sidecar: "256Mi"
+    optipod.io/recommendation.sidecar.cpu-request: "50m"
+    optipod.io/recommendation.sidecar.memory-request: "128Mi"
+    optipod.io/recommendation.sidecar.cpu-limit: "100m"
+    optipod.io/recommendation.sidecar.memory-limit: "256Mi"
 
     # Strategy annotations
     optipod.io/webhook-enabled: "true"
@@ -240,11 +248,11 @@ kubectl get deployment my-app -o json | \
 ```bash
 # CPU request
 kubectl get deployment my-app \
-  -o jsonpath='{.metadata.annotations.optipod\.io/cpu-request\.nginx}'
+  -o jsonpath='{.metadata.annotations.optipod\.io/recommendation\.nginx\.cpu-request}'
 
 # Memory request
 kubectl get deployment my-app \
-  -o jsonpath='{.metadata.annotations.optipod\.io/memory-request\.nginx}'
+  -o jsonpath='{.metadata.annotations.optipod\.io/recommendation\.nginx\.memory-request}'
 ```
 
 ### Get Last Recommendation Time
@@ -265,7 +273,7 @@ kubectl get deployment my-app \
 
 ```bash
 kubectl get deployment my-app -o json | \
-  jq -r '.metadata.annotations | keys[] | select(startswith("optipod.io/cpu-request.")) | sub("optipod.io/cpu-request."; "")'
+  jq -r '.metadata.annotations | keys[] | select(startswith("optipod.io/recommendation.")) | select(contains(".cpu-request")) | split(".")[1]' | sort -u
 ```
 
 ## Annotation Lifecycle

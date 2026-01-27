@@ -38,16 +38,16 @@ annotations:
   optipod.io/last-recommendation: "2026-01-26T10:30:00Z"
 
   # Recommendations for 'nginx' container
-  optipod.io/cpu-request.nginx: "250m"
-  optipod.io/memory-request.nginx: "512Mi"
-  optipod.io/cpu-limit.nginx: "500m"
-  optipod.io/memory-limit.nginx: "1Gi"
+  optipod.io/recommendation.nginx.cpu-request: "250m"
+  optipod.io/recommendation.nginx.memory-request: "512Mi"
+  optipod.io/recommendation.nginx.cpu-limit: "500m"
+  optipod.io/recommendation.nginx.memory-limit: "1Gi"
 
   # Recommendations for 'sidecar' container
-  optipod.io/cpu-request.sidecar: "50m"
-  optipod.io/memory-request.sidecar: "128Mi"
-  optipod.io/cpu-limit.sidecar: "100m"
-  optipod.io/memory-limit.sidecar: "256Mi"
+  optipod.io/recommendation.sidecar.cpu-request: "50m"
+  optipod.io/recommendation.sidecar.memory-request: "128Mi"
+  optipod.io/recommendation.sidecar.cpu-limit: "100m"
+  optipod.io/recommendation.sidecar.memory-limit: "256Mi"
 ```
 
 ## Reviewing Recommendations
@@ -65,17 +65,17 @@ kubectl get deployment my-app \
 
 ```bash
 kubectl get deployment my-app -o json | \
-  jq -r '.metadata.annotations | keys[] | select(startswith("optipod.io/cpu-request.")) | sub("optipod.io/cpu-request."; "")'
+  jq -r '.metadata.annotations | keys[] | select(startswith("optipod.io/recommendation.")) | select(contains(".cpu-request")) | split(".")[1]' | sort -u
 ```
 
 ### Step 3: View Recommendations for Each Container
 
 ```bash
 # For a specific container (e.g., 'nginx')
-echo "CPU Request: $(kubectl get deployment my-app -o jsonpath='{.metadata.annotations.optipod\.io/cpu-request\.nginx}')"
-echo "Memory Request: $(kubectl get deployment my-app -o jsonpath='{.metadata.annotations.optipod\.io/memory-request\.nginx}')"
-echo "CPU Limit: $(kubectl get deployment my-app -o jsonpath='{.metadata.annotations.optipod\.io/cpu-limit\.nginx}')"
-echo "Memory Limit: $(kubectl get deployment my-app -o jsonpath='{.metadata.annotations.optipod\.io/memory-limit\.nginx}')"
+echo "CPU Request: $(kubectl get deployment my-app -o jsonpath='{.metadata.annotations.optipod\.io/recommendation\.nginx\.cpu-request}')"
+echo "Memory Request: $(kubectl get deployment my-app -o jsonpath='{.metadata.annotations.optipod\.io/recommendation\.nginx\.memory-request}')"
+echo "CPU Limit: $(kubectl get deployment my-app -o jsonpath='{.metadata.annotations.optipod\.io/recommendation\.nginx\.cpu-limit}')"
+echo "Memory Limit: $(kubectl get deployment my-app -o jsonpath='{.metadata.annotations.optipod\.io/recommendation\.nginx\.memory-limit}')"
 ```
 
 ### Step 4: Compare with Current Resources
@@ -88,9 +88,9 @@ kubectl get deployment my-app -o json | \
 # Get recommended resources
 kubectl get deployment my-app -o json | \
   jq -r '.metadata.annotations | to_entries |
-    map(select(.key | startswith("optipod.io/cpu-request.") or startswith("optipod.io/memory-request."))) |
+    map(select(.key | startswith("optipod.io/recommendation."))) |
     group_by(.key | split(".")[1]) |
-    map({container: .[0].key | split(".")[1], recommendations: map({(.key | split(".")[0] | split("/")[1]): .value}) | add})'
+    map({container: .[0].key | split(".")[1], recommendations: map({(.key | split(".")[2]): .value}) | add})'
 ```
 
 ## Understanding Recommendations
@@ -177,11 +177,11 @@ spec:
       - name: nginx
         resources:
           requests:
-            cpu: 250m      # From optipod.io/cpu-request.nginx
-            memory: 512Mi  # From optipod.io/memory-request.nginx
+            cpu: 250m      # From optipod.io/recommendation.nginx.cpu-request
+            memory: 512Mi  # From optipod.io/recommendation.nginx.memory-request
           limits:
-            cpu: 500m      # From optipod.io/cpu-limit.nginx
-            memory: 1Gi    # From optipod.io/memory-limit.nginx
+            cpu: 500m      # From optipod.io/recommendation.nginx.cpu-limit
+            memory: 1Gi    # From optipod.io/recommendation.nginx.memory-limit
 ```
 
 Commit to Git and let your GitOps tool apply the changes.
@@ -250,11 +250,52 @@ kubectl logs -l app=my-app --tail=100 --all-containers
 
 ## Bulk Review
 
-### Script to Review All Recommendations
+### Using the OptiPod Recommendation Report Script
+
+OptiPod provides a comprehensive script to generate HTML or JSON reports of all recommendations across your cluster.
+
+**Download and run the script:**
+
+```bash
+# Download the script
+curl -fsSL https://raw.githubusercontent.com/Sagart-cactus/optipod/main/scripts/optipod-recommendation-report.sh -o optipod-recommendation-report.sh
+chmod +x optipod-recommendation-report.sh
+
+# Generate HTML report
+./optipod-recommendation-report.sh -o html -f optipod-recommendations.html
+
+# Open in browser
+open optipod-recommendations.html
+```
+
+**Generate JSON for automation:**
+
+```bash
+./optipod-recommendation-report.sh -o json -f optipod-recommendations.json
+```
+
+**Filter by namespace:**
+
+```bash
+./optipod-recommendation-report.sh -o html -f report.html --namespace production
+```
+
+The report includes:
+- Current vs recommended resources for all containers
+- Replica-weighted impact calculations
+- Warnings for potential issues
+- Sortable and filterable table
+- Visual summary cards
+
+![OptiPod Recommendation Report](/report-html.png)
+
+### Quick Review Script (Example)
+
+If you need a simple command-line summary, here's an example script:
 
 ```bash
 #!/bin/bash
-# review-recommendations.sh
+# This is an example script - save as review-recommendations.sh
 
 echo "Reviewing all OptiPod recommendations..."
 echo "========================================"
@@ -270,18 +311,21 @@ kubectl get deployments -A -o json | \
       lastRecommendation: .metadata.annotations."optipod.io/last-recommendation",
       containers: [
         .metadata.annotations | to_entries |
-        map(select(.key | startswith("optipod.io/cpu-request."))) |
+        map(select(.key | startswith("optipod.io/recommendation.") and (.key | contains(".cpu-request")))) |
         map(.key | split(".")[1])
       ] | flatten | unique
     } |
     "\(.namespace)/\(.name):\n  Policy: \(.policy)\n  Last Updated: \(.lastRecommendation)\n  Containers: \(.containers | join(", "))\n"'
 ```
 
-### Export Recommendations to YAML
+### Export Recommendations to YAML (Example Script)
+
+Here's an example script to export recommendations in YAML format:
 
 ```bash
 #!/bin/bash
-# export-recommendations.sh
+# Example: export-recommendations.sh
+# Save this script and make it executable: chmod +x export-recommendations.sh
 
 DEPLOYMENT=$1
 NAMESPACE=${2:-default}
@@ -299,26 +343,27 @@ kubectl get deployment $DEPLOYMENT -n $NAMESPACE -o json | \
   jq -r '
     .metadata.annotations |
     to_entries |
-    map(select(.key | startswith("optipod.io/cpu-request.") or
-                      startswith("optipod.io/memory-request.") or
-                      startswith("optipod.io/cpu-limit.") or
-                      startswith("optipod.io/memory-limit."))) |
+    map(select(.key | startswith("optipod.io/recommendation."))) |
     group_by(.key | split(".")[1]) |
     map({
       container: .[0].key | split(".")[1],
       resources: (
         map({
-          key: (.key | split(".")[0] | split("/")[1] | gsub("-"; "_")),
+          key: (.key | split(".")[2] | gsub("-"; "_")),
           value: .value
         }) | from_entries
       )
     }) |
-    map("      - name: \(.container)\n        resources:\n          requests:\n            cpu: \(.resources.cpu_request)\n            memory: \(.resources.memory_request)\n          limits:\n            cpu: \(.resources.cpu_limit)\n            memory: \(.resources.memory_limit)")[]
+    map("      - name: \(.container)\n        resources:\n          requests:\n            cpu: \(.resources.cpu_request // "N/A")\n            memory: \(.resources.memory_request // "N/A")\n          limits:\n            cpu: \(.resources.cpu_limit // "N/A")\n            memory: \(.resources.memory_limit // "N/A")")[]
   '
 ```
 
-Usage:
+**Usage:**
 ```bash
+# Save the script above as export-recommendations.sh
+chmod +x export-recommendations.sh
+
+# Export recommendations
 ./export-recommendations.sh my-app production > recommended-resources.yaml
 ```
 

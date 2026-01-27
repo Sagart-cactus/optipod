@@ -75,10 +75,10 @@ A suggested change to a workload's resource requests and limits, based on actual
 - **Weight**: Policy priority when multiple policies match
 
 Recommendations are stored as per-resource annotations on the workload:
-- `optipod.io/cpu-request.<container-name>`
-- `optipod.io/memory-request.<container-name>`
-- `optipod.io/cpu-limit.<container-name>`
-- `optipod.io/memory-limit.<container-name>`
+- `optipod.io/recommendation.<container-name>.cpu-request`
+- `optipod.io/recommendation.<container-name>.memory-request`
+- `optipod.io/recommendation.<container-name>.cpu-limit`
+- `optipod.io/recommendation.<container-name>.memory-limit`
 
 ## GitOps
 

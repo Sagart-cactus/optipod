@@ -83,10 +83,10 @@ annotations:
   optipod.io/managed: "true"
   optipod.io/policy: "default-policy"
   optipod.io/last-recommendation: "2026-01-26T10:30:00Z"
-  optipod.io/cpu-request.my-app: "250m"
-  optipod.io/memory-request.my-app: "512Mi"
-  optipod.io/cpu-limit.my-app: "500m"
-  optipod.io/memory-limit.my-app: "1Gi"
+  optipod.io/recommendation.my-app.cpu-request: "250m"
+  optipod.io/recommendation.my-app.memory-request: "512Mi"
+  optipod.io/recommendation.my-app.cpu-limit: "500m"
+  optipod.io/recommendation.my-app.memory-limit: "1Gi"
 ```
 
 Each container in your deployment will have separate annotations for CPU and memory requests and limits.
