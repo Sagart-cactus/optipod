@@ -22,6 +22,10 @@ export const headerData = {
       text: 'Documentation',
       href: getPermalink('/docs'),
     },
+    {
+      text: 'Blog',
+      href: getPermalink('/blog'),
+    },
   ],
   actions: [
     {
@@ -49,6 +53,7 @@ export const footerData = {
       links: [
         { text: 'GitHub Repository', href: 'https://github.com/Sagart-cactus/optipod', target: '_blank' },
         { text: 'Documentation', href: getPermalink('/docs') },
+        { text: 'Blog', href: getPermalink('/blog') },
         { text: 'Design Principles', href: 'https://github.com/Sagart-cactus/optipod/blob/main/DESIGN.md', target: '_blank' },
         { text: 'Roadmap', href: 'https://github.com/Sagart-cactus/optipod/blob/main/ROADMAP.md', target: '_blank' },
       ],
