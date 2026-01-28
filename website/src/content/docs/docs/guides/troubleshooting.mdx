@@ -515,7 +515,10 @@ kubectl patch optimizationpolicy <policy-name> -n optipod-system \
   --patch '{"spec":{"metricsConfig":{"rollingWindow":"48h"}}}'
 ```
 
-**Enable Gradual Memory Decrease:**
+**Enable Gradual Memory Decrease (Not Yet Implemented):**
+
+> **⚠️ Note**: This configuration is accepted but not yet implemented.
+
 ```bash
 kubectl patch optimizationpolicy <policy-name> -n optipod-system \
   --type merge \

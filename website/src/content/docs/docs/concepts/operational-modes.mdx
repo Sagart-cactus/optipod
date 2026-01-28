@@ -189,9 +189,7 @@ spec:
     strategy: ssa  # or "webhook"
     rolloutStrategy: onNextRestart
     allowUnsafeMemoryDecrease: false
-    gradualDecreaseConfig:
-      enabled: true
-      memoryDecreasePercentage: 10
+    # Note: gradualDecreaseConfig not yet implemented
 ```
 
 ### Update Strategies
@@ -251,9 +249,8 @@ Auto mode includes safety features:
 
 1. **Resource bounds**: Min/max limits prevent extreme values
 2. **Safety factor**: Adds headroom above observed usage
-3. **Gradual decrease**: Large memory reductions applied incrementally
-4. **Memory safety**: Blocks unsafe memory decreases by default
-5. **Reconciliation interval**: Limits frequency of changes
+3. **Memory safety**: Blocks unsafe memory decreases by default
+4. **Reconciliation interval**: Limits frequency of changes
 
 ### Monitoring Auto Mode
 
@@ -407,8 +404,7 @@ kubectl patch optimizationpolicy my-policy --type merge \
 4. **Monitor closely**: Watch for issues after enabling Auto mode
 5. **Use appropriate strategy**: Webhook for GitOps, SSA otherwise
 6. **Set safety bounds**: Configure appropriate resource bounds
-7. **Enable gradual decrease**: Safer memory optimization
-8. **Have rollback plan**: Know how to quickly disable if needed
+7. **Have rollback plan**: Know how to quickly disable if needed
 
 ## Troubleshooting
 

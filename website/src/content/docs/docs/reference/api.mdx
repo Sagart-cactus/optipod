@@ -384,11 +384,7 @@ spec:
     limitConfig:
       cpuLimitMultiplier: float
       memoryLimitMultiplier: float
-    gradualDecreaseConfig:
-      enabled: boolean
-      memoryDecreasePercentage: integer
-      minimumDecreaseThreshold: quantity
-      maximumTotalDecrease: integer
+    # gradualDecreaseConfig: Not yet implemented
 ```
 
 **Example:**
@@ -403,11 +399,7 @@ spec:
     limitConfig:
       cpuLimitMultiplier: 1.0
       memoryLimitMultiplier: 1.1
-    gradualDecreaseConfig:
-      enabled: true
-      memoryDecreasePercentage: 10
-      minimumDecreaseThreshold: 100Mi
-      maximumTotalDecrease: 70
+    # Note: gradualDecreaseConfig not yet implemented
 ```
 
 #### spec.updateStrategy.strategy
@@ -501,13 +493,15 @@ limitConfig:
 
 #### spec.updateStrategy.gradualDecreaseConfig
 
+> **⚠️ Implementation Status**: Not yet implemented. Configuration is accepted but has no effect.
+
 | Property | Value |
 |----------|-------|
 | **Type** | object |
 | **Required** | No |
 | **Fields** | `enabled`, `memoryDecreasePercentage`, `minimumDecreaseThreshold`, `maximumTotalDecrease` |
 
-Gradual memory reduction configuration for safer optimization.
+Gradual memory reduction configuration for safer optimization (planned feature).
 
 **Example:**
 ```yaml
@@ -517,6 +511,8 @@ gradualDecreaseConfig:
   minimumDecreaseThreshold: 100Mi
   maximumTotalDecrease: 70
 ```
+
+**Current Behavior**: Memory decreases are applied immediately in full.
 
 ### spec.reconciliationInterval
 
@@ -651,11 +647,7 @@ spec:
     limitConfig:
       cpuLimitMultiplier: 1.0
       memoryLimitMultiplier: 1.1
-    gradualDecreaseConfig:
-      enabled: true
-      memoryDecreasePercentage: 10
-      minimumDecreaseThreshold: 100Mi
-      maximumTotalDecrease: 70
+    # Note: gradualDecreaseConfig not yet implemented
 
   reconciliationInterval: 5m
 

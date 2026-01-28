@@ -208,7 +208,6 @@ Kubernetes' built-in solution for adjusting resource requests/limits. OptiPod is
 - VPA uses webhooks that can conflict with GitOps
 - OptiPod offers webhook strategy that's GitOps-safe
 - OptiPod provides explainable recommendations with percentile-based calculations
-- OptiPod supports gradual memory decreases for safety
 
 ## Safety
 
@@ -227,9 +226,11 @@ updateStrategy:
   allowUnsafeMemoryDecrease: true
 ```
 
-### Gradual Memory Decrease
+### Gradual Memory Decrease (Not Yet Implemented)
 
-For safer memory optimization, OptiPod can apply large decreases incrementally:
+> **⚠️ Status**: This feature is not yet implemented. The configuration is accepted but has no effect.
+
+For safer memory optimization, OptiPod plans to support applying large decreases incrementally:
 
 ```yaml
 updateStrategy:
@@ -239,6 +240,8 @@ updateStrategy:
     minimumDecreaseThreshold: 100Mi   # Apply gradually if decrease > 100Mi
     maximumTotalDecrease: 70          # Never decrease more than 70% total
 ```
+
+**Current behavior**: Memory decreases are applied immediately in full, subject to safety checks.
 
 ### Resource Bounds
 

@@ -470,7 +470,9 @@ updateStrategy:
 
 #### updateStrategy.gradualDecreaseConfig (optional)
 
-Configures gradual memory reduction for safer optimization. When enabled, large memory decreases are applied incrementally over multiple reconciliations.
+> **⚠️ Implementation Status**: This field is defined in the CRD schema and validated, but **not currently implemented** in the controller. Setting this configuration has no effect on actual behavior.
+
+Configures gradual memory reduction for safer optimization. When implemented, large memory decreases would be applied incrementally over multiple reconciliations.
 
 **Type**: `object`  
 **Required**: No
@@ -479,19 +481,23 @@ Configures gradual memory reduction for safer optimization. When enabled, large 
 
 - `enabled` (boolean) - Activates gradual decrease functionality
   - **Default**: `false`
+  - **Note**: Currently has no effect
 
 - `memoryDecreasePercentage` (integer) - Maximum percentage to decrease memory per reconciliation
   - **Default**: `10` (10% per reconciliation)
   - **Range**: `1` to `50`
+  - **Note**: Currently has no effect
 
 - `minimumDecreaseThreshold` (Quantity) - Minimum decrease amount to trigger gradual reduction
   - **Default**: `100Mi`
   - Decreases smaller than this threshold are applied immediately
+  - **Note**: Currently has no effect
 
 - `maximumTotalDecrease` (integer) - Maximum total percentage decrease from original value
   - **Default**: `70` (70% maximum total decrease)
   - **Range**: `1` to `90`
   - Prevents excessive optimization that could destabilize workloads
+  - **Note**: Currently has no effect
 
 **Example**:
 ```yaml
@@ -502,6 +508,8 @@ updateStrategy:
     minimumDecreaseThreshold: 100Mi   # Threshold to trigger
     maximumTotalDecrease: 70          # Max 70% total decrease
 ```
+
+**Current Behavior**: Memory decreases are applied immediately in full, subject to other safety checks.
 
 ### reconciliationInterval (optional)
 
