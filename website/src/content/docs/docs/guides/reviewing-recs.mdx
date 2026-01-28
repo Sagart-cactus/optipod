@@ -1,0 +1,626 @@
+---
+title: Reviewing Recommendations
+description: Learn how to view and interpret OptiPod resource recommendations before enabling automatic optimization
+---
+
+# Reviewing Recommendations
+
+This guide explains how to view and interpret OptiPod's resource recommendations before enabling automatic optimization.
+
+## Overview
+
+OptiPod stores recommendations as annotations on workload resources. You can review these recommendations using:
+- kubectl commands to view annotations
+- The optipod-recommendation-report.sh script for formatted reports
+- Kubernetes events for optimization activity
+
+## Quick Check
+
+View recommendations for a specific workload:
+
+```bash
+kubectl get deployment my-app -o yaml | grep "optipod.io"
+```
+
+## Annotation Format
+
+OptiPod uses these annotations to store recommendations:
+
+### Management Annotations
+
+```yaml
+metadata:
+  annotations:
+    # Indicates OptiPod manages this workload
+    optipod.io/managed: "true"
+
+    # Policy name managing this workload
+    optipod.io/policy: "production-policy"
+
+    # Policy UID for tracking
+    optipod.io/policy-uid: "abc123..."
+
+    # Timestamp of last recommendation
+    optipod.io/last-recommendation: "2025-01-28T10:30:00Z"
+
+    # Timestamp of last applied change (Auto mode only)
+    optipod.io/last-applied: "2025-01-28T10:35:00Z"
+
+    # Strategy used (ssa or webhook)
+    optipod.io/strategy: "webhook"
+```
+
+### Resource Recommendations (Per Container)
+
+```yaml
+metadata:
+  annotations:
+    # CPU request recommendation
+    optipod.io/cpu-request.app: "500m"
+
+    # Memory request recommendation
+    optipod.io/memory-request.app: "1Gi"
+
+    # CPU limit recommendation (if updateRequestsOnly=false)
+    optipod.io/cpu-limit.app: "750m"
+
+    # Memory limit recommendation (if updateRequestsOnly=false)
+    optipod.io/memory-limit.app: "1.1Gi"
+```
+
+**Format:** `optipod.io/<resource>.<container-name>`
+
+## Viewing Recommendations
+
+### Method 1: kubectl get
+
+View all annotations:
+
+```bash
+kubectl get deployment my-app -o jsonpath='{.metadata.annotations}' | jq
+```
+
+View specific recommendation:
+
+```bash
+# CPU request for container "app"
+kubectl get deployment my-app \
+  -o jsonpath='{.metadata.annotations.optipod\.io/cpu-request\.app}'
+
+# Memory request for container "app"
+kubectl get deployment my-app \
+  -o jsonpath='{.metadata.annotations.optipod\.io/memory-request\.app}'
+```
+
+### Method 2: kubectl describe
+
+```bash
+kubectl describe deployment my-app
+```
+
+Look for the Annotations section:
+
+```
+Annotations:  optipod.io/cpu-request.app: 500m
+              optipod.io/memory-request.app: 1Gi
+              optipod.io/managed: true
+              optipod.io/policy: production-policy
+```
+
+### Method 3: Recommendation Report Script
+
+OptiPod provides a script to generate formatted reports:
+
+```bash
+./scripts/optipod-recommendation-report.sh
+```
+
+**JSON output (default):**
+```bash
+./scripts/optipod-recommendation-report.sh --output json
+```
+
+**HTML output:**
+```bash
+./scripts/optipod-recommendation-report.sh --output html --file report.html
+```
+
+**Filter by namespace:**
+```bash
+./scripts/optipod-recommendation-report.sh --namespace production
+```
+
+**Filter by workload types:**
+```bash
+./scripts/optipod-recommendation-report.sh --kinds deploy,sts
+```
+
+### Method 4: All Workloads with Recommendations
+
+List all managed workloads:
+
+```bash
+# Deployments
+kubectl get deployments -A \
+  -o jsonpath='{range .items[?(@.metadata.annotations.optipod\.io/managed=="true")]}{.metadata.namespace}{"\t"}{.metadata.name}{"\n"}{end}'
+
+# StatefulSets
+kubectl get statefulsets -A \
+  -o jsonpath='{range .items[?(@.metadata.annotations.optipod\.io/managed=="true")]}{.metadata.namespace}{"\t"}{.metadata.name}{"\n"}{end}'
+
+# DaemonSets
+kubectl get daemonsets -A \
+  -o jsonpath='{range .items[?(@.metadata.annotations.optipod\.io/managed=="true")]}{.metadata.namespace}{"\t"}{.metadata.name}{"\n"}{end}'
+```
+
+## Interpreting Recommendations
+
+### Comparing Current vs Recommended
+
+View current resources:
+
+```bash
+kubectl get deployment my-app \
+  -o jsonpath='{.spec.template.spec.containers[0].resources}' | jq
+```
+
+Output:
+```json
+{
+  "requests": {
+    "cpu": "1000m",
+    "memory": "2Gi"
+  },
+  "limits": {
+    "cpu": "2000m",
+    "memory": "4Gi"
+  }
+}
+```
+
+View recommendations:
+
+```bash
+kubectl get deployment my-app -o yaml | grep "optipod.io/.*-request\|optipod.io/.*-limit"
+```
+
+Output:
+```yaml
+optipod.io/cpu-request.app: 500m
+optipod.io/memory-request.app: 1Gi
+optipod.io/cpu-limit.app: 750m
+optipod.io/memory-limit.app: 1.1Gi
+```
+
+**Analysis:**
+- Current CPU request: 1000m → Recommended: 500m (50% reduction)
+- Current memory request: 2Gi → Recommended: 1Gi (50% reduction)
+- Potential savings: ~50% resource reduction
+
+### Understanding the Calculation
+
+Recommendations are calculated as:
+
+```
+Recommendation = Percentile(Usage) × SafetyFactor
+```
+
+Clamped to resource bounds:
+
+```
+If recommendation < min → Use min
+If recommendation > max → Use max
+Otherwise → Use recommendation
+```
+
+**Example:**
+- P90 CPU usage: 400m
+- Safety factor: 1.2
+- Raw recommendation: 400m × 1.2 = 480m
+- Bounds: min=100m, max=4000m
+- Final recommendation: 480m (within bounds)
+
+### Checking Policy Configuration
+
+View the policy that generated recommendations:
+
+```bash
+# Get policy name from annotation
+POLICY=$(kubectl get deployment my-app \
+  -o jsonpath='{.metadata.annotations.optipod\.io/policy}')
+
+# View policy details
+kubectl get optimizationpolicy $POLICY -o yaml
+```
+
+Key fields to check:
+- `spec.mode`: Recommend or Auto
+- `spec.metricsConfig.percentile`: P50, P90, or P99
+- `spec.metricsConfig.safetyFactor`: Buffer multiplier
+- `spec.resourceBounds`: Min/max constraints
+- `spec.updateStrategy.updateRequestsOnly`: Requests only or requests+limits
+
+## Recommendation Report
+
+### Using the Report Script
+
+The recommendation report script provides a comprehensive view of all recommendations:
+
+**Basic usage:**
+```bash
+./scripts/optipod-recommendation-report.sh
+```
+
+**JSON output example:**
+```json
+{
+  "timestamp": "2025-01-28T10:30:00Z",
+  "summary": {
+    "total_workloads": 10,
+    "with_recommendations": 8,
+    "potential_savings": {
+      "cpu": "4500m",
+      "memory": "12Gi"
+    }
+  },
+  "workloads": [
+    {
+      "namespace": "production",
+      "name": "my-app",
+      "kind": "Deployment",
+      "policy": "production-policy",
+      "containers": [
+        {
+          "name": "app",
+          "current": {
+            "cpu_request": "1000m",
+            "memory_request": "2Gi",
+            "cpu_limit": "2000m",
+            "memory_limit": "4Gi"
+          },
+          "recommended": {
+            "cpu_request": "500m",
+            "memory_request": "1Gi",
+            "cpu_limit": "750m",
+            "memory_limit": "1.1Gi"
+          },
+          "savings": {
+            "cpu_request": "500m (50%)",
+            "memory_request": "1Gi (50%)"
+          }
+        }
+      ]
+    }
+  ]
+}
+```
+
+**HTML output:**
+
+The HTML report provides a visual comparison with:
+- Color-coded savings (green = savings, red = increase)
+- Sortable tables
+- Summary statistics
+- Per-workload breakdown
+
+```bash
+./scripts/optipod-recommendation-report.sh --output html --file report.html
+open report.html  # macOS
+xdg-open report.html  # Linux
+```
+
+### Report Sections
+
+**Summary:**
+- Total workloads scanned
+- Workloads with recommendations
+- Potential resource savings
+- Average savings percentage
+
+**Per-Workload Details:**
+- Namespace and name
+- Workload kind (Deployment, StatefulSet, DaemonSet)
+- Managing policy
+- Per-container current vs recommended resources
+- Savings calculations
+
+**Warnings:**
+- Recommendations exceeding current limits (when updateRequestsOnly=true)
+- Missing recommendations
+- Validation issues
+
+## Monitoring Recommendations
+
+### Kubernetes Events
+
+OptiPod emits events for optimization activity:
+
+```bash
+# View all OptiPod events
+kubectl get events -A --field-selector source=optipod
+
+# View events for specific workload
+kubectl get events --field-selector involvedObject.name=my-app
+
+# View recommendation events
+kubectl get events --field-selector reason=RecommendationGenerated
+```
+
+**Event types:**
+- `RecommendationGenerated`: New recommendation created
+- `OptimizationApplied`: Recommendation applied (Auto mode)
+- `OptimizationSkipped`: Recommendation not applied (Recommend mode)
+- `ValidationFailed`: Policy validation error
+- `OptimizationFailed`: Failed to apply recommendation
+
+### Policy Status
+
+Check policy status for workload counts:
+
+```bash
+kubectl get optimizationpolicy production-policy -o yaml
+```
+
+Status fields:
+```yaml
+status:
+  workloadsDiscovered: 10
+  workloadsProcessed: 8
+  lastReconciliation: "2025-01-28T10:30:00Z"
+  workloadsByType:
+    deployments: 6
+    statefulSets: 2
+    daemonSets: 0
+```
+
+### Prometheus Metrics
+
+If Prometheus is configured, query OptiPod metrics:
+
+```promql
+# Recommendations generated
+optipod_recommendations_generated_total
+
+# Optimizations applied
+optipod_optimizations_applied_total
+
+# Resource change magnitude
+optipod_resource_change_magnitude_percent
+```
+
+## Common Scenarios
+
+### Scenario 1: Over-Provisioned Workload
+
+**Current:**
+```yaml
+resources:
+  requests:
+    cpu: "2000m"
+    memory: "4Gi"
+```
+
+**Recommended:**
+```yaml
+optipod.io/cpu-request.app: 500m
+optipod.io/memory-request.app: 1Gi
+```
+
+**Analysis:**
+- 75% CPU reduction (1500m savings)
+- 75% memory reduction (3Gi savings)
+- Workload is significantly over-provisioned
+- Safe to apply recommendations
+
+**Action:** Switch policy to Auto mode for this workload.
+
+### Scenario 2: Under-Provisioned Workload
+
+**Current:**
+```yaml
+resources:
+  requests:
+    cpu: "100m"
+    memory: "256Mi"
+```
+
+**Recommended:**
+```yaml
+optipod.io/cpu-request.app: 500m
+optipod.io/memory-request.app: 1Gi
+```
+
+**Analysis:**
+- 400m CPU increase needed
+- 768Mi memory increase needed
+- Workload is under-provisioned
+- May be experiencing throttling or OOM
+
+**Action:** Apply recommendations to improve performance.
+
+### Scenario 3: Well-Sized Workload
+
+**Current:**
+```yaml
+resources:
+  requests:
+    cpu: "500m"
+    memory: "1Gi"
+```
+
+**Recommended:**
+```yaml
+optipod.io/cpu-request.app: 520m
+optipod.io/memory-request.app: 1050Mi
+```
+
+**Analysis:**
+- Minimal changes (4% increase)
+- Workload is well-sized
+- Recommendations account for safety factor
+
+**Action:** No immediate action needed, continue monitoring.
+
+### Scenario 4: Recommendation Exceeds Limit
+
+**Current:**
+```yaml
+resources:
+  requests:
+    cpu: "100m"
+    memory: "256Mi"
+  limits:
+    cpu: "200m"
+    memory: "512Mi"
+```
+
+**Recommended (updateRequestsOnly=true):**
+```yaml
+optipod.io/cpu-request.app: 500m
+optipod.io/memory-request.app: 1Gi
+```
+
+**Analysis:**
+- Recommended request exceeds current limit
+- Will cause validation error if applied
+- Need to update limits or change policy
+
+**Action:**
+1. Set `updateRequestsOnly: false` in policy, or
+2. Manually update limits before applying, or
+3. Adjust resource bounds in policy
+
+## Validation Before Applying
+
+### Check 1: Recommendations Within Bounds
+
+Verify recommendations respect policy bounds:
+
+```bash
+# Get policy bounds
+kubectl get optimizationpolicy production-policy \
+  -o jsonpath='{.spec.resourceBounds}' | jq
+
+# Compare with recommendations
+kubectl get deployment my-app -o yaml | grep "optipod.io/.*-request"
+```
+
+### Check 2: No Limit Conflicts
+
+If `updateRequestsOnly: true`, ensure recommendations don't exceed limits:
+
+```bash
+# Get current limits
+kubectl get deployment my-app \
+  -o jsonpath='{.spec.template.spec.containers[0].resources.limits}' | jq
+
+# Compare with recommended requests
+kubectl get deployment my-app -o yaml | grep "optipod.io/.*-request"
+```
+
+### Check 3: Safety Factor Applied
+
+Verify safety factor is appropriate:
+
+```bash
+kubectl get optimizationpolicy production-policy \
+  -o jsonpath='{.spec.metricsConfig.safetyFactor}'
+```
+
+Recommended values:
+- Stable workloads: 1.1 - 1.2
+- Variable traffic: 1.2 - 1.5
+- Critical services: 1.5 - 2.0
+
+### Check 4: Recent Metrics
+
+Ensure recommendations are based on recent data:
+
+```bash
+# Check last recommendation timestamp
+kubectl get deployment my-app \
+  -o jsonpath='{.metadata.annotations.optipod\.io/last-recommendation}'
+```
+
+If timestamp is old, recommendations may be stale.
+
+## Troubleshooting
+
+### No Recommendations
+
+**Possible causes:**
+1. Workload doesn't match policy selector
+2. Policy is in Disabled mode
+3. Insufficient metrics data
+4. Policy validation failed
+
+**Check:**
+```bash
+# Verify policy mode
+kubectl get optimizationpolicy my-policy -o jsonpath='{.spec.mode}'
+
+# Check policy status
+kubectl describe optimizationpolicy my-policy
+
+# View events
+kubectl get events --field-selector reason=ValidationFailed
+```
+
+### Stale Recommendations
+
+**Possible causes:**
+1. Policy reconciliation interval too long
+2. Controller not running
+3. Metrics provider unavailable
+
+**Check:**
+```bash
+# Check reconciliation interval
+kubectl get optimizationpolicy my-policy \
+  -o jsonpath='{.spec.reconciliationInterval}'
+
+# Check controller logs
+kubectl logs -n optipod-system deployment/optipod-controller
+
+# Verify metrics provider
+kubectl get --raw /apis/metrics.k8s.io/v1beta1/nodes
+```
+
+### Unexpected Recommendations
+
+**Possible causes:**
+1. Incorrect safety factor
+2. Wrong percentile selection
+3. Insufficient metrics window
+4. Workload behavior changed
+
+**Check:**
+```bash
+# Review policy configuration
+kubectl get optimizationpolicy my-policy -o yaml
+
+# Check metrics configuration
+kubectl get optimizationpolicy my-policy \
+  -o jsonpath='{.spec.metricsConfig}' | jq
+```
+
+## Best Practices
+
+1. **Review regularly** - Check recommendations weekly
+2. **Start with Recommend mode** - Validate before enabling Auto
+3. **Use the report script** - Get comprehensive view of all recommendations
+4. **Monitor events** - Watch for optimization activity
+5. **Check policy status** - Verify workloads are being processed
+6. **Validate bounds** - Ensure recommendations are within acceptable ranges
+7. **Test in non-production** - Validate recommendations in staging first
+8. **Document decisions** - Record why recommendations were accepted/rejected
+9. **Monitor after applying** - Watch for performance issues
+10. **Adjust policies** - Refine based on observed behavior
+
+## Next Steps
+
+- [Switching to Auto Mode](/docs/guides/switching-to-auto) - Enable automatic optimization
+- [Creating Policies](/docs/guides/creating-policies) - Configure optimization policies
+- [Troubleshooting](/docs/guides/troubleshooting) - Common issues and solutions
+- [Safety Model](/docs/concepts/safety-model) - Understanding safety guarantees
+- [Annotations Reference](/docs/reference/annotations) - Complete annotation documentation

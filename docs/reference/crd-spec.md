@@ -1,8 +1,3 @@
----
-title: OptimizationPolicy CRD Specification
-description: Complete field reference for the OptimizationPolicy Custom Resource Definition
----
-
 # OptimizationPolicy CRD Specification
 
 Complete field reference for the OptimizationPolicy Custom Resource Definition.
@@ -43,9 +38,9 @@ metadata:
 
 Defines the operational behavior of the policy.
 
-**Type**: `string`
-**Required**: Yes
-**Enum**: `Auto`, `Recommend`, `Disabled`
+**Type**: `string`  
+**Required**: Yes  
+**Enum**: `Auto`, `Recommend`, `Disabled`  
 **Default**: None (must be specified)
 
 **Values**:
@@ -63,9 +58,9 @@ spec:
 
 Defines the priority of this policy when multiple policies match the same workload. Higher weight policies take precedence.
 
-**Type**: `integer`
-**Required**: No
-**Default**: `100`
+**Type**: `integer`  
+**Required**: No  
+**Default**: `100`  
 **Range**: `1` to `1000`
 
 **Example**:
@@ -78,14 +73,14 @@ spec:
 
 Defines which workloads this policy applies to. At least one selector type must be specified.
 
-**Type**: `object`
+**Type**: `object`  
 **Required**: Yes
 
 #### selector.namespaceSelector (optional)
 
 Selects namespaces by labels using Kubernetes label selector syntax.
 
-**Type**: `LabelSelector`
+**Type**: `LabelSelector`  
 **Required**: No
 
 **Example**:
@@ -119,7 +114,7 @@ selector:
 
 Selects workloads by labels using Kubernetes label selector syntax.
 
-**Type**: `LabelSelector`
+**Type**: `LabelSelector`  
 **Required**: No
 
 **Example**:
@@ -135,7 +130,7 @@ selector:
 
 Defines allow and deny lists for namespace filtering.
 
-**Type**: `object`
+**Type**: `object`  
 **Required**: No
 
 **Fields**:
@@ -158,7 +153,7 @@ selector:
 
 Defines include/exclude filters for workload types.
 
-**Type**: `object`
+**Type**: `object`  
 **Required**: No
 
 **Fields**:
@@ -188,15 +183,15 @@ selector:
 
 Defines metrics collection and processing configuration.
 
-**Type**: `object`
+**Type**: `object`  
 **Required**: Yes
 
 #### metricsConfig.provider (required)
 
 Specifies the metrics backend.
 
-**Type**: `string`
-**Required**: Yes
+**Type**: `string`  
+**Required**: Yes  
 **Enum**: `prometheus`, `metrics-server`, `custom`
 
 **Example**:
@@ -209,7 +204,7 @@ metricsConfig:
 
 Configures metrics-server specific behavior. Only applicable when `provider: metrics-server`.
 
-**Type**: `object`
+**Type**: `object`  
 **Required**: No
 
 **Fields**:
@@ -229,9 +224,9 @@ metricsConfig:
 
 Defines the time period over which metrics are aggregated.
 
-**Type**: `duration`
-**Required**: No
-**Default**: `24h`
+**Type**: `duration`  
+**Required**: No  
+**Default**: `24h`  
 **Format**: Kubernetes duration (e.g., `12h`, `24h`, `48h`)
 
 **Example**:
@@ -244,9 +239,9 @@ metricsConfig:
 
 Defines which percentile to use for recommendations.
 
-**Type**: `string`
-**Required**: No
-**Default**: `P90`
+**Type**: `string`  
+**Required**: No  
+**Default**: `P90`  
 **Enum**: `P50`, `P90`, `P99`
 
 **Example**:
@@ -259,9 +254,9 @@ metricsConfig:
 
 Multiplier applied to the selected percentile value. Provides a buffer above observed usage.
 
-**Type**: `float64`
-**Required**: No
-**Default**: `1.2`
+**Type**: `float64`  
+**Required**: No  
+**Default**: `1.2`  
 **Minimum**: `1.0`
 
 **Example**:
@@ -279,14 +274,14 @@ Recommendation = Percentile(Usage) × SafetyFactor
 
 Defines min/max constraints for CPU and memory recommendations.
 
-**Type**: `object`
+**Type**: `object`  
 **Required**: Yes
 
 #### resourceBounds.cpu (required)
 
 Defines CPU resource bounds.
 
-**Type**: `object`
+**Type**: `object`  
 **Required**: Yes
 
 **Fields**:
@@ -307,7 +302,7 @@ resourceBounds:
 
 Defines memory resource bounds.
 
-**Type**: `object`
+**Type**: `object`  
 **Required**: Yes
 
 **Fields**:
@@ -328,16 +323,16 @@ resourceBounds:
 
 Defines how resource updates are applied to workloads.
 
-**Type**: `object`
+**Type**: `object`  
 **Required**: Yes
 
 #### updateStrategy.strategy (optional)
 
 Defines how resource updates are applied.
 
-**Type**: `string`
-**Required**: No
-**Default**: `webhook`
+**Type**: `string`  
+**Required**: No  
+**Default**: `webhook`  
 **Enum**: `ssa`, `webhook`
 
 **Values**:
@@ -354,9 +349,9 @@ updateStrategy:
 
 Defines when resource changes take effect. Only applicable for webhook strategy.
 
-**Type**: `string`
-**Required**: No
-**Default**: `onNextRestart`
+**Type**: `string`  
+**Required**: No  
+**Default**: `onNextRestart`  
 **Enum**: `immediate`, `onNextRestart`
 
 **Values**:
@@ -373,8 +368,8 @@ updateStrategy:
 
 Enables in-place pod resize when supported by Kubernetes (1.27+).
 
-**Type**: `boolean`
-**Required**: No
+**Type**: `boolean`  
+**Required**: No  
 **Default**: `true`
 
 **Example**:
@@ -387,8 +382,8 @@ updateStrategy:
 
 Enables pod recreation when in-place resize is not available.
 
-**Type**: `boolean`
-**Required**: No
+**Type**: `boolean`  
+**Required**: No  
 **Default**: `false`
 
 **Example**:
@@ -401,8 +396,8 @@ updateStrategy:
 
 Controls whether to update only requests or both requests and limits.
 
-**Type**: `boolean`
-**Required**: No
+**Type**: `boolean`  
+**Required**: No  
 **Default**: `true`
 
 **Example**:
@@ -415,8 +410,8 @@ updateStrategy:
 
 Enables Server-Side Apply for field-level ownership. Only applicable for SSA strategy.
 
-**Type**: `boolean`
-**Required**: No
+**Type**: `boolean`  
+**Required**: No  
 **Default**: `true`
 
 **Example**:
@@ -430,7 +425,7 @@ updateStrategy:
 
 Defines how resource limits are calculated from recommendations. Only applicable when `updateRequestsOnly: false`.
 
-**Type**: `object`
+**Type**: `object`  
 **Required**: No
 
 **Fields**:
@@ -457,8 +452,8 @@ updateStrategy:
 
 Disables memory safety checks when true. Use with caution.
 
-**Type**: `boolean`
-**Required**: No
+**Type**: `boolean`  
+**Required**: No  
 **Default**: `false`
 
 **Behavior**:
@@ -477,7 +472,7 @@ updateStrategy:
 
 Configures gradual memory reduction for safer optimization. When enabled, large memory decreases are applied incrementally over multiple reconciliations.
 
-**Type**: `object`
+**Type**: `object`  
 **Required**: No
 
 **Fields**:
@@ -512,9 +507,9 @@ updateStrategy:
 
 Defines how often the policy is evaluated.
 
-**Type**: `duration`
-**Required**: No
-**Default**: `5m`
+**Type**: `duration`  
+**Required**: No  
+**Default**: `5m`  
 **Format**: Kubernetes duration (e.g., `5m`, `10m`, `1h`)
 
 **Example**:
@@ -531,7 +526,7 @@ The status subresource provides information about the policy's current state.
 
 Represents the current state of the OptimizationPolicy resource using standard Kubernetes conditions.
 
-**Type**: `[]Condition`
+**Type**: `[]Condition`  
 **List Type**: `map` (keyed by `type`)
 
 **Example**:
@@ -615,7 +610,7 @@ spec:
   # Operational mode
   mode: Auto
   weight: 200
-
+  
   # Workload selection
   selector:
     namespaceSelector:
@@ -631,14 +626,14 @@ spec:
       include:
         - Deployment
         - StatefulSet
-
+  
   # Metrics configuration
   metricsConfig:
     provider: prometheus
     rollingWindow: 24h
     percentile: P90
     safetyFactor: 1.2
-
+  
   # Resource constraints
   resourceBounds:
     cpu:
@@ -647,7 +642,7 @@ spec:
     memory:
       min: "256Mi"
       max: "8Gi"
-
+  
   # Update strategy
   updateStrategy:
     strategy: webhook
@@ -660,7 +655,7 @@ spec:
       memoryDecreasePercentage: 10
       minimumDecreaseThreshold: 100Mi
       maximumTotalDecrease: 70
-
+  
   # Reconciliation
   reconciliationInterval: 5m
 
@@ -697,8 +692,8 @@ The OptimizationPolicy CRD enforces the following validation rules:
 - `spec.weight` - Must be between 1 and 1000
 - `spec.metricsConfig.safetyFactor` - Must be >= 1.0
 - `spec.metricsConfig.metricsServer.minSamplesRequired` - Must be >= 1
-- `spec.resourceBounds.cpu.min` - Must be &lt;= `spec.resourceBounds.cpu.max`
-- `spec.resourceBounds.memory.min` - Must be &lt;= `spec.resourceBounds.memory.max`
+- `spec.resourceBounds.cpu.min` - Must be <= `spec.resourceBounds.cpu.max`
+- `spec.resourceBounds.memory.min` - Must be <= `spec.resourceBounds.memory.max`
 - `spec.updateStrategy.limitConfig.cpuLimitMultiplier` - Must be between 1.0 and 10.0
 - `spec.updateStrategy.limitConfig.memoryLimitMultiplier` - Must be between 1.0 and 10.0
 - `spec.updateStrategy.gradualDecreaseConfig.memoryDecreasePercentage` - Must be between 1 and 50
@@ -749,8 +744,8 @@ kubectl get optimizationpolicies --watch
 
 ## Related Documentation
 
-- [Creating Policies](/docs/guides/creating-policies) - Policy configuration guide
-- [Annotations Reference](/docs/reference/annotations) - Workload annotation format
-- [Operational Modes](/docs/concepts/modes) - Understanding Auto, Recommend, and Disabled modes
-- [Update Strategies](/docs/concepts/update-strategies) - SSA vs Webhook strategies
-- [Safety Model](/docs/concepts/safety-model) - Understanding safety guarantees
+- [Creating Policies](../guides/creating-policies.md) - Policy configuration guide
+- [Annotations Reference](annotations.md) - Workload annotation format
+- [Operational Modes](../concepts/modes.md) - Understanding Auto, Recommend, and Disabled modes
+- [Update Strategies](../concepts/update-strategies.md) - SSA vs Webhook strategies
+- [Safety Model](../concepts/safety-model.md) - Understanding safety guarantees

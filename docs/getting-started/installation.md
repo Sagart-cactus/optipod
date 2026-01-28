@@ -1,7 +1,4 @@
----
-title: Installation Guide
-description: How to install OptiPod in your Kubernetes cluster using Helm or kubectl
----
+# Installation Guide
 
 OptiPod is a Kubernetes operator that provides explainable recommendations for CPU and memory requests/limits. This guide covers installation methods and verification steps.
 
@@ -469,10 +466,10 @@ kubectl rollout restart deployment -n optipod-system -l app.kubernetes.io/compon
 
 ## Next Steps
 
-- [Quick Start Guide](quick-start) - Create your first optimization policy
-- [Creating Your First Policy](first-policy) - Detailed policy creation guide
-- [Architecture Overview](../../concepts/architecture) - Understand how OptiPod works
+- [Quick Start Guide](quick-start.md) - Create your first optimization policy
+- [Creating Your First Policy](first-policy.md) - Detailed policy creation guide
+- [Architecture Overview](../concepts/architecture.md) - Understand how OptiPod works
 
 ---
 
-*For more detailed configuration options, see the [Helm Values Reference](../../reference/helm-values).*
+*For more detailed configuration options, see the [Helm Values Reference](../reference/helm-values.md).*

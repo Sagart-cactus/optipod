@@ -1,7 +1,4 @@
----
-title: Switching to Auto Mode
-description: Learn how to safely transition from Recommend mode to Auto mode, enabling OptiPod to automatically apply resource optimizations.
----
+# Switching to Auto Mode
 
 This guide explains how to safely transition from Recommend mode to Auto mode, enabling OptiPod to automatically apply resource optimizations.
 
@@ -53,18 +50,18 @@ metadata:
   name: pilot-workload
 spec:
   mode: Auto  # Enable Auto mode
-
+  
   selector:
     workloadSelector:
       matchLabels:
         app: pilot-app  # Single workload
-
+  
   metricsConfig:
     provider: prometheus
     rollingWindow: 24h
     percentile: P90
     safetyFactor: 1.5  # Conservative
-
+  
   resourceBounds:
     cpu:
       min: "100m"
@@ -72,7 +69,7 @@ spec:
     memory:
       min: "256Mi"
       max: "4Gi"
-
+  
   updateStrategy:
     strategy: webhook
     rolloutStrategy: onNextRestart  # Safer
@@ -101,7 +98,7 @@ metadata:
   name: non-critical-workloads
 spec:
   mode: Auto
-
+  
   selector:
     namespaceSelector:
       matchLabels:
@@ -109,13 +106,13 @@ spec:
     workloadTypes:
       include:
         - Deployment  # Start with Deployments only
-
+  
   metricsConfig:
     provider: prometheus
     rollingWindow: 24h
     percentile: P90
     safetyFactor: 1.3
-
+  
   resourceBounds:
     cpu:
       min: "100m"
@@ -123,7 +120,7 @@ spec:
     memory:
       min: "256Mi"
       max: "8Gi"
-
+  
   updateStrategy:
     strategy: webhook
     rolloutStrategy: onNextRestart
@@ -151,7 +148,7 @@ metadata:
   name: production-workloads
 spec:
   mode: Auto
-
+  
   selector:
     namespaceSelector:
       matchLabels:
@@ -159,13 +156,13 @@ spec:
     workloadSelector:
       matchLabels:
         optimize: "true"  # Explicit opt-in
-
+  
   metricsConfig:
     provider: prometheus
     rollingWindow: 48h  # Longer window for production
     percentile: P90
     safetyFactor: 1.2
-
+  
   resourceBounds:
     cpu:
       min: "100m"
@@ -173,7 +170,7 @@ spec:
     memory:
       min: "256Mi"
       max: "8Gi"
-
+  
   updateStrategy:
     strategy: webhook
     rolloutStrategy: onNextRestart
@@ -203,18 +200,18 @@ metadata:
 spec:
   mode: Recommend  # Keep in Recommend mode longer
   # Or use Auto with very conservative settings
-
+  
   selector:
     workloadTypes:
       include:
         - StatefulSet
-
+  
   metricsConfig:
     provider: prometheus
     rollingWindow: 72h  # Very long window
     percentile: P95     # Higher percentile
     safetyFactor: 1.5   # Large buffer
-
+  
   resourceBounds:
     cpu:
       min: "500m"
@@ -222,7 +219,7 @@ spec:
     memory:
       min: "1Gi"
       max: "16Gi"
-
+  
   updateStrategy:
     strategy: webhook
     rolloutStrategy: onNextRestart
@@ -629,8 +626,8 @@ Measure success after switching to Auto mode:
 
 ## Next Steps
 
-- [Reviewing Recommendations](/docs/guides/reviewing-recs) - Monitor ongoing recommendations
-- [Troubleshooting](/docs/guides/troubleshooting) - Common issues and solutions
-- [Safety Model](/docs/concepts/safety-model) - Understanding safety guarantees
-- [Modes](/docs/concepts/modes) - Operational modes explained
-- [GitOps Integration](/docs/guides/gitops-integration) - Using OptiPod with ArgoCD/Flux
+- [Reviewing Recommendations](reviewing-recs.md) - Monitor ongoing recommendations
+- [Troubleshooting](troubleshooting.md) - Common issues and solutions
+- [Safety Model](../concepts/safety-model.md) - Understanding safety guarantees
+- [Modes](../concepts/modes.md) - Operational modes explained
+- [GitOps Integration](gitops-integration.md) - Using OptiPod with ArgoCD/Flux
