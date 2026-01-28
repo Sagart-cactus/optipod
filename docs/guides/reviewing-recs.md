@@ -304,6 +304,10 @@ open report.html  # macOS
 xdg-open report.html  # Linux
 ```
 
+**Example HTML Report:**
+
+![OptiPod Recommendation Report](../../scripts/report-html.png)
+
 ### Report Sections
 
 **Summary:**

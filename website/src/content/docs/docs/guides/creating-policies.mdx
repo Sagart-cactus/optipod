@@ -486,7 +486,10 @@ updateStrategy:
 
 Configure memory safety features:
 
-**Gradual Memory Decrease:**
+**Gradual Memory Decrease (Not Yet Implemented):**
+
+> **⚠️ Note**: This configuration is accepted but not yet implemented. It has no effect on actual behavior.
+
 ```yaml
 updateStrategy:
   gradualDecreaseConfig:
@@ -640,9 +643,7 @@ spec:
     allowInPlaceResize: true
     allowRecreate: false
     updateRequestsOnly: true
-    gradualDecreaseConfig:
-      enabled: true
-      memoryDecreasePercentage: 10
+    # Note: gradualDecreaseConfig not yet implemented
 ```
 
 ### Pattern 4: Multiple Policies by Workload Type
@@ -833,7 +834,7 @@ Fix validation errors and reapply policy.
 2. **Use conservative bounds** initially
 3. **Test in non-production** before enabling Auto mode
 4. **Use webhook strategy** for GitOps environments
-5. **Enable gradual memory decrease** for safety
+5. ~~**Enable gradual memory decrease**~~ for safety (Not yet implemented)
 6. **Monitor metrics** for optimization success/failure
 7. **Document your policies** for team awareness
 8. **Use workload type filtering** for gradual adoption

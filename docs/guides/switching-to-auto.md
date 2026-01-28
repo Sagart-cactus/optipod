@@ -32,7 +32,7 @@ Complete this checklist before enabling Auto mode:
 - [ ] Safety factor is appropriate (1.2-1.5)
 - [ ] Update strategy configured (webhook recommended)
 - [ ] Rollout strategy set (onNextRestart recommended)
-- [ ] Gradual memory decrease enabled
+- [ ] ~~Gradual memory decrease enabled~~ (Not yet implemented)
 - [ ] Monitoring and alerts configured
 - [ ] Rollback procedure documented
 - [ ] Team notified of changes
@@ -76,9 +76,7 @@ spec:
     allowInPlaceResize: true
     allowRecreate: false
     updateRequestsOnly: true
-    gradualDecreaseConfig:
-      enabled: true
-      memoryDecreasePercentage: 10
+    # gradualDecreaseConfig not yet implemented
 ```
 
 **Monitor for 1-2 weeks:**
@@ -127,8 +125,7 @@ spec:
     allowInPlaceResize: true
     allowRecreate: false
     updateRequestsOnly: true
-    gradualDecreaseConfig:
-      enabled: true
+    # Note: gradualDecreaseConfig not yet implemented
 ```
 
 **Monitor for 2-4 weeks:**
@@ -177,9 +174,7 @@ spec:
     allowInPlaceResize: true
     allowRecreate: false
     updateRequestsOnly: true
-    gradualDecreaseConfig:
-      enabled: true
-      memoryDecreasePercentage: 10
+    # Note: gradualDecreaseConfig not yet implemented
 ```
 
 **Monitor continuously:**
@@ -226,9 +221,7 @@ spec:
     allowInPlaceResize: true
     allowRecreate: false  # Never recreate StatefulSet pods
     updateRequestsOnly: true
-    gradualDecreaseConfig:
-      enabled: true
-      memoryDecreasePercentage: 5  # Very gradual
+    # Note: gradualDecreaseConfig not yet implemented
 ```
 
 ## Switching a Policy to Auto Mode
@@ -539,7 +532,7 @@ kubectl rollout restart deployment my-app
 1. **Start small** - Begin with single workload
 2. **Test thoroughly** - Validate in non-production first
 3. **Use conservative settings** - Higher safety factors initially
-4. **Enable gradual decrease** - Especially for memory
+4. ~~**Enable gradual decrease**~~ - Not yet implemented
 5. **Use webhook strategy** - Safer for GitOps environments
 6. **Set onNextRestart** - Avoid forced disruptions
 7. **Monitor closely** - Watch for issues after switch
@@ -564,9 +557,7 @@ spec:
     allowInPlaceResize: true
     allowRecreate: false
     updateRequestsOnly: true
-    gradualDecreaseConfig:
-      enabled: true
-      memoryDecreasePercentage: 10
+    # Note: gradualDecreaseConfig not yet implemented
 ```
 
 ### Balanced (After Validation)
@@ -584,8 +575,7 @@ spec:
     allowInPlaceResize: true
     allowRecreate: false
     updateRequestsOnly: true
-    gradualDecreaseConfig:
-      enabled: true
+    # Note: gradualDecreaseConfig not yet implemented
 ```
 
 ### Aggressive (Development Only)

@@ -372,16 +372,16 @@ updateStrategy:
   allowUnsafeMemoryDecrease: true  # Use with caution!
 ```
 
-2. **Gradual decrease in progress**
+2. **Gradual decrease not yet implemented**
 
-If gradual decrease is enabled, large memory reductions happen incrementally.
+> **⚠️ Note**: The `gradualDecreaseConfig` feature is not yet implemented. Memory decreases are applied immediately in full, subject to safety checks.
 
-**Solution:** Wait for gradual decrease to complete or adjust:
+If you need to slow down memory optimization, use more conservative settings:
+
 ```yaml
-updateStrategy:
-  gradualDecreaseConfig:
-    enabled: true
-    memoryDecreasePercentage: 20  # Faster decreases (default: 10)
+metricsConfig:
+  safetyFactor: 1.5  # Higher safety factor
+  percentile: P95    # Higher percentile
 ```
 
 ### OOM Kills After OptiPod Changes
@@ -425,11 +425,8 @@ resourceBounds:
   memory:
     min: 256Mi           # Higher floor
 
-updateStrategy:
-  gradualDecreaseConfig:
-    enabled: true
-    memoryDecreasePercentage: 10
-    minimumDecreaseThreshold: 100Mi
+# Note: gradualDecreaseConfig not yet implemented
+# Use higher safety factors and percentiles instead
 ```
 
 ## Metrics Issues

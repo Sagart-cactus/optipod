@@ -193,9 +193,11 @@ spec:
     allowUnsafeMemoryDecrease: false  # Default: block unsafe decreases
 ```
 
-**2. Gradual Memory Decrease**
+**2. Gradual Memory Decrease (Not Yet Implemented)**
 
-Large memory reductions are applied incrementally:
+> **⚠️ Status**: The `gradualDecreaseConfig` field is defined in the CRD schema and validated, but **not currently implemented** in the controller. Setting this configuration has no effect on actual behavior.
+
+The planned feature would apply large memory reductions incrementally:
 
 ```yaml
 spec:
@@ -207,7 +209,7 @@ spec:
       maximumTotalDecrease: 70          # Max 70% total decrease from original
 ```
 
-**How it works:**
+**Planned behavior:**
 - Current memory: 2Gi
 - Recommendation: 1Gi (50% decrease)
 - With gradual decrease (10% per cycle):
@@ -218,6 +220,8 @@ spec:
   - Cycle 5: 1.31Gi → 1.18Gi (10% decrease)
   - Cycle 6: 1.18Gi → 1.06Gi (10% decrease)
   - Cycle 7: 1.06Gi → 1Gi (final)
+
+**Current behavior**: Memory decreases are applied immediately in full, subject to safety checks.
 
 **3. Memory Limit Multipliers**
 
@@ -245,7 +249,10 @@ metricsConfig:
   safetyFactor: 1.5  # Larger buffer for memory
 ```
 
-**2. Enable Gradual Decrease:**
+**2. Enable Gradual Decrease (Not Yet Implemented):**
+
+> **⚠️ Note**: This feature is not yet implemented. The configuration is accepted but has no effect.
+
 ```yaml
 updateStrategy:
   gradualDecreaseConfig:
@@ -515,7 +522,7 @@ Before enabling Auto mode:
 - [ ] Validate recommendations in Recommend mode
 - [ ] Set conservative resource bounds
 - [ ] Configure appropriate safety factor (1.2-1.5)
-- [ ] Enable gradual memory decrease
+- [ ] ~~Enable gradual memory decrease~~ (Not yet implemented)
 - [ ] Choose appropriate update strategy
 - [ ] Test on non-critical workloads first
 - [ ] Set up monitoring and alerts

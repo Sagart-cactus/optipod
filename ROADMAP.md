@@ -127,7 +127,7 @@ development approach with comprehensive testing.
 
 ## 📋 Planned Features
 
-### Q1 2025
+### Q1 2026
 
 - **Configuration System Enhancements**
   - ConfigMap integration and dynamic loading
@@ -146,7 +146,7 @@ development approach with comprehensive testing.
   - Recommendation confidence scoring
   - Export Prometheus metrics for recommended CPU/memory requests/limits (per workload/container) to enable dashboards showing current vs recommended values (with careful cardinality controls)
 
-### Q2 2025
+### Q2 2026
 
 - **Enterprise Features**
   - Multi-cluster support and management
@@ -158,7 +158,7 @@ development approach with comprehensive testing.
   - Operator Lifecycle Manager (OLM) support
   - Integration with popular monitoring stacks (Grafana, Datadog)
 
-### Q3 2025
+### Q3 2026
 
 - **Machine Learning Enhancements**
   - Predictive scaling based on historical patterns
@@ -220,8 +220,8 @@ Have suggestions for the roadmap? We'd love to hear from you:
 
 ---
 
-**Last Updated**: December 2024  
-**Next Review**: March 2025
+**Last Updated**: January 2026  
+**Next Review**: April 2026
 
 > This roadmap is a living document and may be updated based on community feedback, technical discoveries, and changing
 > requirements.
