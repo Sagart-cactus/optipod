@@ -1,7 +1,4 @@
----
-title: Safety Model
-description: Understanding OptiPod's safety guarantees, constraints, and mechanisms that protect your workloads during optimization
----
+# Safety Model
 
 OptiPod is designed with safety as a core principle. This document explains the safety guarantees, constraints, and mechanisms that protect your workloads during optimization.
 
@@ -571,7 +568,7 @@ kubectl logs -n optipod-system deployment/optipod-webhook
 
 ## Related Documentation
 
-- [Modes](/docs/concepts/modes) - Operational modes and transitions
-- [Update Strategies](/docs/concepts/update-strategies) - SSA vs Webhook strategies
-- [Architecture](/docs/concepts/architecture) - System design and components
-- [Troubleshooting](/docs/guides/troubleshooting) - Common issues and solutions
+- [Modes](modes.md) - Operational modes and transitions
+- [Update Strategies](update-strategies.md) - SSA vs Webhook strategies
+- [Architecture](architecture.md) - System design and components
+- [Troubleshooting](../guides/troubleshooting.md) - Common issues and solutions

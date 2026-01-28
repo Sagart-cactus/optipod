@@ -1,7 +1,4 @@
----
-title: Quick Start Guide
-description: Get started with OptiPod in minutes with this step-by-step guide
----
+# Quick Start Guide
 
 Get started with OptiPod in minutes. This guide walks you through installing OptiPod and creating your first optimization policy in safe Recommend mode.
 
@@ -200,19 +197,20 @@ OptiPod includes multiple safety mechanisms:
 
 ### Learn More About OptiPod
 
-- [Creating Your First Policy](first-policy) - Detailed policy configuration guide
-- [Architecture Overview](../../concepts/architecture) - Understand how OptiPod works
-- [Operational Modes](../../concepts/modes) - Learn about Auto, Recommend, and Disabled modes
+- [Creating Your First Policy](first-policy.md) - Detailed policy configuration guide
+- [Architecture Overview](../concepts/architecture.md) - Understand how OptiPod works
+- [Operational Modes](../concepts/modes.md) - Learn about Auto, Recommend, and Disabled modes
 
 ### Configure Advanced Features
 
-- [Update Strategies](../../concepts/update-strategies) - SSA vs Webhook strategies
-- [Safety Model](../../concepts/safety-model) - Understand safety guarantees
-- [GitOps Integration](../../guides/gitops-integration) - Use OptiPod with ArgoCD/Flux
+- [Update Strategies](../concepts/update-strategies.md) - SSA vs Webhook strategies
+- [Safety Model](../concepts/safety-model.md) - Understand safety guarantees
+- [GitOps Integration](../guides/gitops-integration.md) - Use OptiPod with ArgoCD/Flux
 
 ### Troubleshooting
 
-- [Troubleshooting Guide](../../guides/troubleshooting) - Common issues and solutions
+- [Troubleshooting Guide](../guides/troubleshooting.md) - Common issues and solutions
+- [Webhook Troubleshooting](../guides/webhook-troubleshooting.md) - Webhook-specific issues
 
 ## Common Questions
 
@@ -240,7 +238,7 @@ Yes! OptiPod is designed to be GitOps-safe:
 - Recommendations are stored in workload metadata (not spec)
 - No sync conflicts with GitOps tools
 
-See the [GitOps Integration Guide](../../guides/gitops-integration) for details.
+See the [GitOps Integration Guide](../guides/gitops-integration.md) for details.
 
 ### What happens if I delete a policy?
 
@@ -261,4 +259,4 @@ OptiPod is now monitoring your workloads and providing recommendations. When you
 
 ---
 
-*For production deployments, see the [Installation Guide](installation) for advanced configuration options.*
+*For production deployments, see the [Installation Guide](installation.md) for advanced configuration options.*

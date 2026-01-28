@@ -1,8 +1,3 @@
----
-title: Creating Optimization Policies
-description: Learn how to create and configure OptimizationPolicy resources to optimize your Kubernetes workloads
----
-
 # Creating Optimization Policies
 
 This guide explains how to create and configure OptimizationPolicy resources to optimize your Kubernetes workloads.
@@ -28,18 +23,18 @@ metadata:
   namespace: default
 spec:
   mode: Recommend  # Start in safe mode
-
+  
   selector:
     namespaceSelector:
       matchLabels:
         optimize: "true"
-
+  
   metricsConfig:
     provider: prometheus
     rollingWindow: 24h
     percentile: P90
     safetyFactor: 1.2
-
+  
   resourceBounds:
     cpu:
       min: "100m"
@@ -47,7 +42,7 @@ spec:
     memory:
       min: "128Mi"
       max: "8Gi"
-
+  
   updateStrategy:
     strategy: webhook
     rolloutStrategy: onNextRestart
@@ -87,12 +82,12 @@ spec:
     namespaceSelector:
       matchLabels:
         environment: production
-
+    
     # Option 2: Select by workload labels
     workloadSelector:
       matchLabels:
         optimize: "true"
-
+    
     # Option 3: Select by namespace names
     namespaces:
       allow:
@@ -239,17 +234,17 @@ selector:
   namespaceSelector:
     matchLabels:
       environment: production
-
+  
   # Workloads with label optimize=true
   workloadSelector:
     matchLabels:
       optimize: "true"
-
+  
   # But not in kube-system
   namespaces:
     deny:
       - kube-system
-
+  
   # Only Deployments
   workloadTypes:
     include:
@@ -429,7 +424,7 @@ updateStrategy:
   useServerSideApply: true
 ```
 
-See [Update Strategies](/docs/concepts/update-strategies) for detailed comparison.
+See [Update Strategies](../concepts/update-strategies.md) for detailed comparison.
 
 ### Rollout Strategy
 
@@ -535,7 +530,7 @@ metadata:
   name: production-gitops
 spec:
   mode: Auto
-
+  
   selector:
     namespaceSelector:
       matchLabels:
@@ -543,13 +538,13 @@ spec:
     workloadSelector:
       matchLabels:
         optimize: "true"
-
+  
   metricsConfig:
     provider: prometheus
     rollingWindow: 24h
     percentile: P90
     safetyFactor: 1.2
-
+  
   resourceBounds:
     cpu:
       min: "100m"
@@ -557,7 +552,7 @@ spec:
     memory:
       min: "256Mi"
       max: "8Gi"
-
+  
   updateStrategy:
     strategy: webhook
     rolloutStrategy: onNextRestart
@@ -575,18 +570,18 @@ metadata:
   name: development-aggressive
 spec:
   mode: Auto
-
+  
   selector:
     namespaceSelector:
       matchLabels:
         environment: development
-
+  
   metricsConfig:
     provider: prometheus
     rollingWindow: 12h
     percentile: P90
     safetyFactor: 1.1
-
+  
   resourceBounds:
     cpu:
       min: "50m"
@@ -594,7 +589,7 @@ spec:
     memory:
       min: "64Mi"
       max: "4Gi"
-
+  
   updateStrategy:
     strategy: ssa
     allowInPlaceResize: true
@@ -614,18 +609,18 @@ metadata:
   name: stateful-conservative
 spec:
   mode: Recommend  # Only recommend for stateful
-
+  
   selector:
     workloadTypes:
       include:
         - StatefulSet
-
+  
   metricsConfig:
     provider: prometheus
     rollingWindow: 48h  # Longer window
     percentile: P95     # Higher percentile
     safetyFactor: 1.5   # Larger buffer
-
+  
   resourceBounds:
     cpu:
       min: "100m"
@@ -633,7 +628,7 @@ spec:
     memory:
       min: "512Mi"
       max: "16Gi"
-
+  
   updateStrategy:
     strategy: webhook
     rolloutStrategy: onNextRestart
@@ -656,7 +651,7 @@ metadata:
 spec:
   mode: Auto
   weight: 100
-
+  
   selector:
     namespaceSelector:
       matchLabels:
@@ -664,13 +659,13 @@ spec:
     workloadTypes:
       include:
         - Deployment
-
+  
   metricsConfig:
     provider: prometheus
     rollingWindow: 24h
     percentile: P90
     safetyFactor: 1.1
-
+  
   resourceBounds:
     cpu:
       min: "50m"
@@ -678,7 +673,7 @@ spec:
     memory:
       min: "64Mi"
       max: "8Gi"
-
+  
   updateStrategy:
     strategy: webhook
     rolloutStrategy: onNextRestart
@@ -695,7 +690,7 @@ metadata:
 spec:
   mode: Recommend
   weight: 100
-
+  
   selector:
     namespaceSelector:
       matchLabels:
@@ -703,13 +698,13 @@ spec:
     workloadTypes:
       include:
         - StatefulSet
-
+  
   metricsConfig:
     provider: prometheus
     rollingWindow: 48h
     percentile: P95
     safetyFactor: 1.3
-
+  
   resourceBounds:
     cpu:
       min: "100m"
@@ -717,7 +712,7 @@ spec:
     memory:
       min: "256Mi"
       max: "16Gi"
-
+  
   updateStrategy:
     strategy: webhook
     rolloutStrategy: onNextRestart
@@ -842,8 +837,8 @@ Fix validation errors and reapply policy.
 
 ## Next Steps
 
-- [Reviewing Recommendations](/docs/guides/reviewing-recs) - How to review recommendations
-- [Switching to Auto Mode](/docs/guides/switching-to-auto) - Safely enable automatic optimization
-- [Update Strategies](/docs/concepts/update-strategies) - SSA vs Webhook strategies
-- [Safety Model](/docs/concepts/safety-model) - Understanding safety guarantees
-- [CRD Reference](/docs/reference/crd-spec) - Complete field documentation
+- [Reviewing Recommendations](reviewing-recs.md) - How to review recommendations
+- [Switching to Auto Mode](switching-to-auto.md) - Safely enable automatic optimization
+- [Update Strategies](../concepts/update-strategies.md) - SSA vs Webhook strategies
+- [Safety Model](../concepts/safety-model.md) - Understanding safety guarantees
+- [CRD Reference](../reference/crd-spec.md) - Complete field documentation

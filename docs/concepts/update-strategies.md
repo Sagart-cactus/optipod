@@ -1,7 +1,4 @@
----
-title: Update Strategies
-description: Understanding OptiPod's two strategies for applying resource recommendations - Server-Side Apply (SSA) and Webhook
----
+# Update Strategies
 
 OptiPod supports two strategies for applying resource recommendations to workloads: **Server-Side Apply (SSA)** and **Webhook**. Each strategy has different characteristics, trade-offs, and use cases.
 
@@ -215,13 +212,13 @@ metadata:
     optipod.io/policy: "webhook-policy"
     optipod.io/strategy: "webhook"
     optipod.io/webhook-enabled: "true"
-
+    
     # Per-container recommendations
     optipod.io/cpu-request.app: "500m"
     optipod.io/memory-request.app: "1Gi"
     optipod.io/cpu-limit.app: "750m"
     optipod.io/memory-limit.app: "1.1Gi"
-
+    
     # Metadata
     optipod.io/last-recommendation: "2025-01-28T10:30:00Z"
 ```
@@ -577,8 +574,8 @@ Annotations updated but pods not restarted
 
 ## Related Documentation
 
-- [Modes](/docs/concepts/modes) - Operational modes (Recommend/Auto/Disabled)
-- [Safety Model](/docs/concepts/safety-model) - Safety guarantees and constraints
-- [Architecture](/docs/concepts/architecture) - System design and components
-- [GitOps Integration](/docs/guides/gitops-integration) - ArgoCD and Flux setup
-- [Troubleshooting](/docs/guides/troubleshooting) - Common issues and solutions
+- [Modes](modes.md) - Operational modes (Recommend/Auto/Disabled)
+- [Safety Model](safety-model.md) - Safety guarantees and constraints
+- [Architecture](architecture.md) - System design and components
+- [GitOps Integration](../guides/gitops-integration.md) - ArgoCD and Flux setup
+- [Troubleshooting](../guides/troubleshooting.md) - Common issues and solutions

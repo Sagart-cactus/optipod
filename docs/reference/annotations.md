@@ -1,8 +1,3 @@
----
-title: OptiPod Annotations Reference
-description: Complete reference for all annotations used by OptiPod to store recommendations and manage workloads
----
-
 # OptiPod Annotations Reference
 
 Complete reference for all annotations used by OptiPod to store recommendations and manage workloads.
@@ -26,9 +21,9 @@ These annotations identify and track OptiPod-managed workloads.
 
 Indicates the workload is managed by OptiPod.
 
-**Value**: `"true"` or `"false"`
-**Applied to**: Deployment, StatefulSet, DaemonSet
-**Set by**: Controller
+**Value**: `"true"` or `"false"`  
+**Applied to**: Deployment, StatefulSet, DaemonSet  
+**Set by**: Controller  
 **Required**: Yes (for managed workloads)
 
 **Example**:
@@ -47,9 +42,9 @@ metadata:
 
 Indicates which policy manages this workload.
 
-**Value**: Policy name (string)
-**Applied to**: Deployment, StatefulSet, DaemonSet
-**Set by**: Controller
+**Value**: Policy name (string)  
+**Applied to**: Deployment, StatefulSet, DaemonSet  
+**Set by**: Controller  
 **Required**: Yes (for managed workloads)
 
 **Example**:
@@ -68,9 +63,9 @@ metadata:
 
 Stores the unique identifier of the acting optimization policy.
 
-**Value**: Policy UID (string)
-**Applied to**: Deployment, StatefulSet, DaemonSet
-**Set by**: Controller
+**Value**: Policy UID (string)  
+**Applied to**: Deployment, StatefulSet, DaemonSet  
+**Set by**: Controller  
 **Required**: Yes (for managed workloads)
 
 **Example**:
@@ -89,9 +84,9 @@ metadata:
 
 Timestamp of the last recommendation generation.
 
-**Value**: RFC3339 timestamp (string)
-**Applied to**: Deployment, StatefulSet, DaemonSet
-**Set by**: Controller
+**Value**: RFC3339 timestamp (string)  
+**Applied to**: Deployment, StatefulSet, DaemonSet  
+**Set by**: Controller  
 **Required**: No
 
 **Example**:
@@ -110,9 +105,9 @@ metadata:
 
 Timestamp of the last applied change (Auto mode only).
 
-**Value**: RFC3339 timestamp (string)
-**Applied to**: Deployment, StatefulSet, DaemonSet
-**Set by**: Controller (Auto mode) or Webhook
+**Value**: RFC3339 timestamp (string)  
+**Applied to**: Deployment, StatefulSet, DaemonSet  
+**Set by**: Controller (Auto mode) or Webhook  
 **Required**: No
 
 **Example**:
@@ -131,9 +126,9 @@ metadata:
 
 Indicates which strategy is used for this workload.
 
-**Value**: `"ssa"` or `"webhook"`
-**Applied to**: Deployment, StatefulSet, DaemonSet
-**Set by**: Controller
+**Value**: `"ssa"` or `"webhook"`  
+**Applied to**: Deployment, StatefulSet, DaemonSet  
+**Set by**: Controller  
 **Required**: No
 
 **Example**:
@@ -167,9 +162,9 @@ Where:
 
 ### CPU Request Recommendation
 
-**Format**: `optipod.io/recommendation.<container-name>.cpu-request`
-**Value**: Kubernetes quantity (e.g., `500m`, `1000m`, `2`)
-**Applied to**: Deployment, StatefulSet, DaemonSet
+**Format**: `optipod.io/recommendation.<container-name>.cpu-request`  
+**Value**: Kubernetes quantity (e.g., `500m`, `1000m`, `2`)  
+**Applied to**: Deployment, StatefulSet, DaemonSet  
 **Set by**: Controller
 
 **Example**:
@@ -187,9 +182,9 @@ metadata:
 
 ### Memory Request Recommendation
 
-**Format**: `optipod.io/recommendation.<container-name>.memory-request`
-**Value**: Kubernetes quantity (e.g., `512Mi`, `1Gi`, `2Gi`)
-**Applied to**: Deployment, StatefulSet, DaemonSet
+**Format**: `optipod.io/recommendation.<container-name>.memory-request`  
+**Value**: Kubernetes quantity (e.g., `512Mi`, `1Gi`, `2Gi`)  
+**Applied to**: Deployment, StatefulSet, DaemonSet  
 **Set by**: Controller
 
 **Example**:
@@ -207,9 +202,9 @@ metadata:
 
 ### CPU Limit Recommendation
 
-**Format**: `optipod.io/recommendation.<container-name>.cpu-limit`
-**Value**: Kubernetes quantity (e.g., `750m`, `1500m`, `3`)
-**Applied to**: Deployment, StatefulSet, DaemonSet
+**Format**: `optipod.io/recommendation.<container-name>.cpu-limit`  
+**Value**: Kubernetes quantity (e.g., `750m`, `1500m`, `3`)  
+**Applied to**: Deployment, StatefulSet, DaemonSet  
 **Set by**: Controller (when `updateRequestsOnly: false`)
 
 **Example**:
@@ -228,9 +223,9 @@ metadata:
 
 ### Memory Limit Recommendation
 
-**Format**: `optipod.io/recommendation.<container-name>.memory-limit`
-**Value**: Kubernetes quantity (e.g., `1.1Gi`, `2Gi`, `4Gi`)
-**Applied to**: Deployment, StatefulSet, DaemonSet
+**Format**: `optipod.io/recommendation.<container-name>.memory-limit`  
+**Value**: Kubernetes quantity (e.g., `1.1Gi`, `2Gi`, `4Gi`)  
+**Applied to**: Deployment, StatefulSet, DaemonSet  
 **Set by**: Controller (when `updateRequestsOnly: false`)
 
 **Example**:
@@ -255,9 +250,9 @@ These annotations control webhook behavior.
 
 Indicates the workload should be processed by webhook.
 
-**Value**: `"true"` or `"false"`
-**Applied to**: Deployment, StatefulSet, DaemonSet
-**Set by**: Controller (when using webhook strategy)
+**Value**: `"true"` or `"false"`  
+**Applied to**: Deployment, StatefulSet, DaemonSet  
+**Set by**: Controller (when using webhook strategy)  
 **Required**: No
 
 **Example**:
@@ -290,13 +285,13 @@ metadata:
     optipod.io/last-recommendation: "2025-01-28T10:30:00Z"
     optipod.io/last-applied: "2025-01-28T10:35:00Z"
     optipod.io/strategy: "webhook"
-
+    
     # Recommendation annotations (requests only)
     optipod.io/recommendation.app.cpu-request: "500m"
     optipod.io/recommendation.app.memory-request: "1Gi"
     optipod.io/recommendation.sidecar.cpu-request: "100m"
     optipod.io/recommendation.sidecar.memory-request: "256Mi"
-
+    
     # Webhook annotation
     optipod.io/webhook-enabled: "true"
 spec:
@@ -337,13 +332,13 @@ metadata:
     optipod.io/policy-uid: "abc123-def456-ghi789"
     optipod.io/last-recommendation: "2025-01-28T10:30:00Z"
     optipod.io/strategy: "webhook"
-
+    
     # Recommendation annotations (requests and limits)
     optipod.io/recommendation.app.cpu-request: "500m"
     optipod.io/recommendation.app.memory-request: "1Gi"
     optipod.io/recommendation.app.cpu-limit: "750m"      # Limit = Request × 1.5
     optipod.io/recommendation.app.memory-limit: "1.1Gi"  # Limit = Request × 1.1
-
+    
     # Webhook annotation
     optipod.io/webhook-enabled: "true"
 ```
@@ -532,8 +527,8 @@ If webhook fails to parse annotations:
 
 ## Related Documentation
 
-- [CRD Specification](/docs/reference/crd-spec) - Complete OptimizationPolicy field reference
-- [Reviewing Recommendations](/docs/guides/reviewing-recs) - How to review recommendations
-- [Creating Policies](/docs/guides/creating-policies) - Policy configuration guide
-- [Troubleshooting](/docs/guides/troubleshooting) - Common issues and solutions
-- [CLI Tools](/docs/reference/cli-tools) - Recommendation report script reference
+- [CRD Specification](crd-spec.md) - Complete OptimizationPolicy field reference
+- [Reviewing Recommendations](../guides/reviewing-recs.md) - How to review recommendations
+- [Creating Policies](../guides/creating-policies.md) - Policy configuration guide
+- [Troubleshooting](../guides/troubleshooting.md) - Common issues and solutions
+- [CLI Tools](cli-tools.md) - Recommendation report script reference
