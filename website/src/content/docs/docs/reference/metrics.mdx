@@ -38,7 +38,7 @@ Number of workloads currently monitored by OptiPod.
 - `policy` - Policy name managing the workload
 
 **Example**:
-```promql
+```text
 optipod_workloads_monitored{namespace="production",policy="prod-policy"}
 ```
 
@@ -57,7 +57,7 @@ Number of workloads updated in the last reconciliation cycle.
 - `policy` - Policy name
 
 **Example**:
-```promql
+```text
 optipod_workloads_updated{namespace="production",policy="prod-policy"}
 ```
 
@@ -77,7 +77,7 @@ Number of workloads skipped in the last reconciliation cycle.
 - `reason` - Skip reason (e.g., "no_metrics", "validation_failed")
 
 **Example**:
-```promql
+```text
 optipod_workloads_skipped{namespace="production",policy="prod-policy",reason="no_metrics"}
 ```
 
@@ -99,7 +99,7 @@ Duration of reconciliation cycles in seconds.
 **Buckets**: Default Prometheus buckets (0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10)
 
 **Example**:
-```promql
+```text
 # Average reconciliation duration
 rate(optipod_reconciliation_duration_seconds_sum[5m]) / rate(optipod_reconciliation_duration_seconds_count[5m])
 
@@ -122,7 +122,7 @@ Total number of reconciliation errors.
 - `error_type` - Error category (e.g., "metrics_fetch", "validation", "apply")
 
 **Example**:
-```promql
+```text
 # Error rate
 rate(optipod_reconciliation_errors_total[5m])
 
@@ -148,7 +148,7 @@ Duration of metrics collection operations in seconds.
 **Buckets**: Default Prometheus buckets
 
 **Example**:
-```promql
+```text
 # Average collection duration by provider
 rate(optipod_metrics_collection_duration_seconds_sum[5m]) / rate(optipod_metrics_collection_duration_seconds_count[5m])
 ```
@@ -169,7 +169,7 @@ Total number of recommendations generated.
 - `policy` - Policy name
 
 **Example**:
-```promql
+```text
 # Recommendation rate
 rate(optipod_recommendations_total[5m])
 
@@ -194,7 +194,7 @@ Total number of resource updates applied.
 - `method` - Application method ("ssa" or "webhook")
 
 **Example**:
-```promql
+```text
 # Application rate
 rate(optipod_applications_total[5m])
 
@@ -221,7 +221,7 @@ Total number of Server-Side Apply patch operations.
 - `patch_type` - Type of patch ("strategic" or "merge")
 
 **Example**:
-```promql
+```text
 # SSA success rate
 sum(rate(optipod_ssa_patch_total{status="success"}[5m])) / sum(rate(optipod_ssa_patch_total[5m]))
 
@@ -249,7 +249,7 @@ Total number of successful optimizations.
 - `method` - Optimization method ("ssa" or "webhook")
 
 **Example**:
-```promql
+```text
 # Success rate
 rate(optipod_optimization_success_total[5m])
 
@@ -276,7 +276,7 @@ Total number of failed optimizations.
 - `reason` - Failure reason
 
 **Example**:
-```promql
+```text
 # Failure rate
 rate(optipod_optimization_failure_total[5m])
 
@@ -303,7 +303,7 @@ Magnitude of resource changes in percentage.
 **Buckets**: -90, -75, -50, -25, -10, -5, 0, 5, 10, 25, 50, 75, 100, 200, 500
 
 **Example**:
-```promql
+```text
 # Average change magnitude
 rate(optipod_resource_changes_magnitude_sum[5m]) / rate(optipod_resource_changes_magnitude_count[5m])
 
@@ -327,7 +327,7 @@ Total number of times default multipliers were used.
 - `multiplier_value` - Multiplier value used
 
 **Example**:
-```promql
+```text
 # Default multiplier usage rate
 rate(optipod_default_multiplier_usage_total[5m])
 ```
@@ -348,7 +348,7 @@ Duration of optimization decision making in seconds.
 **Buckets**: Default Prometheus buckets
 
 **Example**:
-```promql
+```text
 # Average decision duration
 rate(optipod_optimization_decision_duration_seconds_sum[5m]) / rate(optipod_optimization_decision_duration_seconds_count[5m])
 ```
@@ -372,7 +372,7 @@ Total number of webhook admission requests received.
 - `dry_run` - Dry run flag ("true" or "false")
 
 **Example**:
-```promql
+```text
 # Request rate
 rate(optipod_webhook_admission_requests_total[5m])
 
@@ -396,7 +396,7 @@ Total number of successful webhook admissions.
 - `patches_applied` - Whether patches were applied ("0" or "1+")
 
 **Example**:
-```promql
+```text
 # Success rate
 sum(rate(optipod_webhook_admission_success_total[5m])) / sum(rate(optipod_webhook_admission_requests_total[5m]))
 ```
@@ -415,7 +415,7 @@ Total number of failed webhook admissions.
 - `failure_reason` - Failure reason
 
 **Example**:
-```promql
+```text
 # Failure rate
 rate(optipod_webhook_admission_failures_total[5m])
 
@@ -442,7 +442,7 @@ Duration of webhook mutation operations in seconds.
 **Buckets**: 0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0
 
 **Example**:
-```promql
+```text
 # Average mutation duration
 rate(optipod_webhook_mutation_duration_seconds_sum[5m]) / rate(optipod_webhook_mutation_duration_seconds_count[5m])
 
@@ -467,7 +467,7 @@ Total number of patches applied by the webhook.
 - `resource_type` - Resource type ("cpu" or "memory")
 
 **Example**:
-```promql
+```text
 # Patch rate
 rate(optipod_webhook_patches_applied_total[5m])
 
@@ -494,7 +494,7 @@ Total number of annotation parsing errors in webhook.
 - `error_type` - Error type
 
 **Example**:
-```promql
+```text
 # Parsing error rate
 rate(optipod_webhook_annotation_parsing_errors_total[5m])
 
@@ -520,7 +520,7 @@ Webhook server health status.
 - `0` - Unhealthy
 
 **Example**:
-```promql
+```text
 # Check health status
 optipod_webhook_server_health_status{endpoint="/healthz"}
 ```
@@ -539,7 +539,7 @@ Webhook certificate expiry time as Unix timestamp.
 - `cert_type` - Certificate type ("server" or "ca")
 
 **Example**:
-```promql
+```text
 # Days until expiry
 (optipod_webhook_certificate_expiry_timestamp_seconds - time()) / 86400
 
@@ -566,7 +566,7 @@ Duration of policy matching operations in webhook.
 **Buckets**: 0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5
 
 **Example**:
-```promql
+```text
 # Average matching duration
 rate(optipod_webhook_policy_matching_duration_seconds_sum[5m]) / rate(optipod_webhook_policy_matching_duration_seconds_count[5m])
 ```
@@ -581,7 +581,7 @@ rate(optipod_webhook_policy_matching_duration_seconds_sum[5m]) / rate(optipod_we
 ### Controller Health
 
 **Reconciliation success rate**:
-```promql
+```text
 1 - (
   rate(optipod_reconciliation_errors_total[5m]) /
   rate(optipod_reconciliation_duration_seconds_count[5m])
@@ -589,29 +589,29 @@ rate(optipod_webhook_policy_matching_duration_seconds_sum[5m]) / rate(optipod_we
 ```
 
 **Workloads per policy**:
-```promql
+```text
 sum by (policy) (optipod_workloads_monitored)
 ```
 
 **Recommendation generation rate**:
-```promql
+```text
 rate(optipod_recommendations_total[5m])
 ```
 
 ### Optimization Impact
 
 **Total resource savings (CPU)**:
-```promql
+```text
 sum(optipod_resource_changes_magnitude{resource_type="cpu"} < 0)
 ```
 
 **Average optimization magnitude**:
-```promql
+```text
 avg(optipod_resource_changes_magnitude)
 ```
 
 **Optimization success rate**:
-```promql
+```text
 sum(rate(optipod_optimization_success_total[5m])) /
 (sum(rate(optipod_optimization_success_total[5m])) + sum(rate(optipod_optimization_failure_total[5m])))
 ```
@@ -619,35 +619,35 @@ sum(rate(optipod_optimization_success_total[5m])) /
 ### Webhook Performance
 
 **Webhook latency (p95)**:
-```promql
+```text
 histogram_quantile(0.95, rate(optipod_webhook_mutation_duration_seconds_bucket[5m]))
 ```
 
 **Webhook success rate**:
-```promql
+```text
 sum(rate(optipod_webhook_admission_success_total[5m])) /
 sum(rate(optipod_webhook_admission_requests_total[5m]))
 ```
 
 **Patches per second**:
-```promql
+```text
 sum(rate(optipod_webhook_patches_applied_total[5m]))
 ```
 
 ### Error Monitoring
 
 **Error rate by type**:
-```promql
+```text
 sum by (error_type) (rate(optipod_reconciliation_errors_total[5m]))
 ```
 
 **Webhook failure rate**:
-```promql
+```text
 sum by (failure_reason) (rate(optipod_webhook_admission_failures_total[5m]))
 ```
 
 **Annotation parsing errors**:
-```promql
+```text
 sum by (annotation_key) (rate(optipod_webhook_annotation_parsing_errors_total[5m]))
 ```
 
@@ -679,19 +679,19 @@ sum by (annotation_key) (rate(optipod_webhook_annotation_parsing_errors_total[5m
 ### Example Panel Queries
 
 **Workloads Monitored (Gauge)**:
-```promql
+```text
 sum(optipod_workloads_monitored)
 ```
 
 **Reconciliation Duration (Graph)**:
-```promql
+```text
 histogram_quantile(0.50, rate(optipod_reconciliation_duration_seconds_bucket[5m]))
 histogram_quantile(0.95, rate(optipod_reconciliation_duration_seconds_bucket[5m]))
 histogram_quantile(0.99, rate(optipod_reconciliation_duration_seconds_bucket[5m]))
 ```
 
 **Optimization Success Rate (Gauge)**:
-```promql
+```text
 sum(rate(optipod_optimization_success_total[5m])) /
 (sum(rate(optipod_optimization_success_total[5m])) + sum(rate(optipod_optimization_failure_total[5m])))
 ```

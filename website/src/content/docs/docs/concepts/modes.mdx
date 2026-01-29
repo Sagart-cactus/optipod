@@ -208,7 +208,7 @@ kubectl get events --field-selector involvedObject.name=auto-optimization
 ```
 
 **Monitor Prometheus metrics:**
-```promql
+```text
 # Optimization success rate
 rate(optipod_optimization_success_total[5m])
 
