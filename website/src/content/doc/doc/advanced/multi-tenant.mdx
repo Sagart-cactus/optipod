@@ -338,7 +338,7 @@ envsubst < policy-template.yaml | kubectl apply -f -
 
 Track OptiPod activity per tenant:
 
-```promql
+```text
 # Recommendations generated per namespace
 sum by (namespace) (optipod_recommendations_total)
 
@@ -381,7 +381,7 @@ data:
 
 ### Track Savings Per Tenant
 
-```promql
+```text
 # CPU cost savings per tenant (assuming $0.05 per core-hour)
 sum by (namespace) (
   optipod_cpu_savings_cores * 0.05 * 24 * 30

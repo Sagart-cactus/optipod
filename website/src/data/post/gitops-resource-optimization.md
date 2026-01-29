@@ -1,7 +1,7 @@
 ---
 publishDate: 2025-01-28T00:00:00Z
-title: 'GitOps and Resource Optimization: Why They Should Work Together'
-excerpt: 'Explore how OptiPod bridges the gap between GitOps workflows and dynamic resource optimization in Kubernetes.'
+title: 'GitOps and Resource Optimization: Why They Often Clash — and How to Make Them Work Together'
+excerpt: 'GitOps and optimization can coexist, but only if the workflow respects ownership, review, and rollout safety.'
 image: https://images.unsplash.com/photo-1618401471353-b98afee0b2eb?q=80&w=2788&auto=format&fit=crop
 category: 'Best Practices'
 tags:
@@ -14,183 +14,88 @@ metadata:
   canonical: https://sagart-cactus.github.io/optipod/blog/gitops-resource-optimization
 ---
 
-GitOps has become the gold standard for managing Kubernetes applications. But when it comes to resource optimization, many teams face a dilemma: how do you dynamically adjust resources without breaking GitOps principles?
+## GitOps and Resource Optimization
 
-## The GitOps Dilemma
+**Why They Often Clash — and How to Make Them Work Together**
 
-GitOps tools like ArgoCD and Flux treat Git as the single source of truth. When something changes in the cluster that doesn't match Git, they detect drift and revert it. This is great for security and consistency, but it creates challenges for dynamic resource optimization.
+GitOps promises safety, repeatability, and control.
 
-Traditional tools like VPA (Vertical Pod Autoscaler) directly mutate pod specs, causing constant drift detection and sync conflicts. Teams are forced to choose between GitOps and optimization.
+Resource optimization promises efficiency and cost reduction.
 
-## The OptiPod Solution
+In practice, these two ideas often collide.
 
-OptiPod was designed from the ground up to work with GitOps, not against it.
+## Where the tension starts
 
-### Strategy 1: Metadata-Only Recommendations
+GitOps enforces a simple rule: Git is the source of truth.
 
-In **Recommend mode**, OptiPod only writes to workload metadata (annotations), never to pod templates:
+Any change applied directly to the cluster is eventually reverted. Drift is detected, flagged, and corrected. This is exactly what makes GitOps powerful.
 
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: my-app
-  annotations:
-    optipod.io/recommendation: |
-      cpu: 200m
-      memory: 512Mi
-spec:
-  template:
-    spec:
-      containers:
-      - name: app
-        resources:
-          requests:
-            cpu: 500m      # Original value from Git
-            memory: 1Gi    # Original value from Git
-```
+But resource optimization tools often assume the opposite. They expect to mutate live workloads, adjust requests dynamically, and let the cluster converge on a better state.
 
-ArgoCD sees no drift because the pod template hasn't changed. You can review recommendations and update Git when ready.
+When these worlds meet, friction is inevitable.
 
-### Strategy 2: Webhook-Based Application
+## What actually happens in GitOps environments
 
-When you're ready for automatic optimization, OptiPod's webhook strategy keeps GitOps happy:
+A typical flow looks like this:
 
-1. **Git remains the source of truth** for pod templates
-2. **OptiPod stores recommendations** in workload annotations
-3. **Webhook injects resources** at pod creation time
-4. **ArgoCD/Flux never see drift** because pod templates don't change
+- An optimization tool detects overprovisioning
+- It applies a resource change
+- ArgoCD or Flux detects drift
+- The change is reverted
+- Engineers lose confidence in automation
 
-```yaml
-# In Git (managed by ArgoCD)
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: my-app
-  annotations:
-    optipod.io/recommendation: |
-      cpu: 200m
-      memory: 512Mi
-spec:
-  template:
-    spec:
-      containers:
-      - name: app
-        # No resources specified - webhook will inject
-```
+From the optimizer's perspective, the change was correct. From GitOps' perspective, the change was unauthorized.
 
-The webhook reads the annotation and injects the recommended resources when pods are created. ArgoCD never sees a difference between Git and the cluster.
+Both systems are behaving as designed.
 
-## Best Practices
+## Where recommendations fall short
 
-### 1. Start with Recommend Mode
+Most cost tools stop at recommendations.
 
-Begin by deploying OptiPod in Recommend mode across your cluster:
+Implementing those changes means editing requests and limits across many workloads. In a GitOps setup, that translates to coordinated PRs, reviews, and rollouts—exactly the kind of overhead that slows optimization to a crawl.
 
-```yaml
-apiVersion: optipod.io/v1alpha1
-kind: OptimizationPolicy
-metadata:
-  name: cluster-wide-recommendations
-spec:
-  mode: Recommend
-  targetWorkloads:
-    labelSelector:
-      matchExpressions:
-      - key: optipod.io/enabled
-        operator: In
-        values: ["true"]
-```
+## Drift isn't a failure — it's a signal
 
-Review recommendations for a few weeks to build confidence.
+Drift tells you something important: ownership matters.
 
-### 2. Enable Auto Mode Gradually
+In GitOps environments, ownership lives in Git. Any optimization strategy that ignores this will eventually be rejected—either by tooling or by humans.
 
-Start with non-critical workloads:
+Effective optimization must:
 
-```yaml
-apiVersion: optipod.io/v1alpha1
-kind: OptimizationPolicy
-metadata:
-  name: optimize-dev
-spec:
-  mode: Auto
-  targetWorkloads:
-    labelSelector:
-      matchLabels:
-        environment: dev
-```
+- generate changes that flow through Git
+- respect deployment workflows
+- avoid surprise mutations
 
-Monitor the impact before expanding to staging and production.
+This shifts the problem from "how do we apply recommendations?" to "how do we integrate optimization into GitOps safely?"
 
-### 3. Configure ArgoCD Properly
+## Making optimization GitOps-friendly
 
-Tell ArgoCD to ignore OptiPod annotations:
+To work with GitOps instead of against it, optimization needs to be:
 
-```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: argocd-cm
-data:
-  resource.customizations.ignoreDifferences.apps_Deployment: |
-    jsonPointers:
-    - /metadata/annotations/optipod.io~1recommendation
-    - /metadata/annotations/optipod.io~1recommendation-reason
-    - /metadata/annotations/optipod.io~1last-updated
-```
+- **Predictable** — changes should be explainable and reviewable
+- **Incremental** — small adjustments reduce risk
+- **Policy-driven** — intent should be encoded, not inferred
+- **Ownership-aware** — field conflicts must be avoided
 
-This prevents ArgoCD from showing false drift.
+This is not something VPA or ad-hoc scripts handle well on their own. It's why [OptiPod](https://sagart-cactus.github.io/optipod/) treats GitOps as a first-class constraint.
 
-### 4. Use the Webhook for Auto Mode
+## Where OptiPod fits
 
-Deploy the OptiPod webhook when using Auto mode:
+OptiPod was designed with GitOps as a hard constraint. If you're using ArgoCD or Flux, the [GitOps integration guide](https://sagart-cactus.github.io/optipod/docs/guides/gitops-integration) walks through the setup.
 
-```bash
-helm install optipod optipod/optipod \
-  --set webhook.enabled=true \
-  --set prometheus.url=http://prometheus:9090
-```
+Instead of mutating workloads directly, it:
 
-The webhook requires cert-manager, which OptiPod can auto-detect and bootstrap.
+- generates recommended changes
+- allows teams to review them
+- applies mutations in a GitOps-safe manner
+- respects Server-Side Apply ownership
 
-## Real-World Example
+Optimization becomes part of the deployment lifecycle, not a side effect that GitOps has to undo. You can explore the approach in the [OptiPod docs](https://sagart-cactus.github.io/optipod/docs).
 
-Here's how a typical team adopts OptiPod with GitOps:
+## Closing thought
 
-**Week 1-2: Assessment**
-- Deploy OptiPod in Recommend mode
-- Review recommendations across all workloads
-- Identify optimization opportunities
+GitOps and optimization are not opposing goals.
 
-**Week 3-4: Dev/Test**
-- Enable Auto mode for dev environment
-- Monitor resource usage and application performance
-- Adjust policies based on results
+They only clash when tooling assumes it can bypass ownership and safety.
 
-**Week 5-6: Staging**
-- Expand Auto mode to staging
-- Run load tests to validate recommendations
-- Fine-tune safety factors if needed
-
-**Week 7+: Production**
-- Gradually enable Auto mode for production workloads
-- Start with stateless services
-- Monitor cost savings and performance
-
-## Conclusion
-
-GitOps and resource optimization don't have to be at odds. With the right approach, you can have both:
-
-- **Maintain GitOps principles** with Git as the source of truth
-- **Optimize resources dynamically** based on actual usage
-- **Reduce costs** without sacrificing reliability
-- **Keep your platform team happy** with no drift conflicts
-
-Try OptiPod today and see how it fits into your GitOps workflow. Check out our [ArgoCD integration guide](https://sagart-cactus.github.io/optipod/docs/guides/gitops-integration) for detailed setup instructions.
-
-## Resources
-
-- [OptiPod Documentation](https://sagart-cactus.github.io/optipod/docs)
-- [ArgoCD Integration Guide](https://sagart-cactus.github.io/optipod/docs/guides/gitops-integration)
-- [GitHub Repository](https://github.com/Sagart-cactus/optipod)
+When optimization respects GitOps workflows, efficiency stops being risky—and starts being sustainable. If you want to dive deeper, start with the [OptiPod overview](https://sagart-cactus.github.io/optipod/docs/getting-started/introduction).
