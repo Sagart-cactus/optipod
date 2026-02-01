@@ -308,7 +308,7 @@ The recommended path for adopting OptiPod:
 
 ```bash
 # 1. Generate impact report
-./optipod-recommendation-report.sh -o html -f impact-report.html
+./scripts/optipod-recommendation-report.sh -o html -f impact-report.html
 
 # 2. Review report and validate recommendations
 

@@ -59,3 +59,4 @@ TEST_*.md
 # Test files and temporary artifacts
 test-*.yaml
 temp-*.yaml
+.DS_Store

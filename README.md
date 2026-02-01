@@ -1,4 +1,4 @@
-# <img src="website/images/optipod-logo-themed.svg" alt="OptiPod" width="42" height="42" style="vertical-align: middle; margin-right: 10px;"> OptiPod
+# <img src="website/src/assets/images/optipod-logo.svg" alt="OptiPod" width="42" height="42" style="vertical-align: middle; margin-right: 10px;"> OptiPod
 
 [![CI][ci-badge]][ci-link]
 [![Lint][lint-badge]][lint-link]
