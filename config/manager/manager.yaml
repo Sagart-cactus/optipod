@@ -60,17 +60,6 @@ spec:
       containers:
       - command:
         - /manager
-        args:
-          # Leader election for high availability (single replica with leader election)
-          - --leader-elect=true
-          # Health and metrics endpoints
-          - --health-probe-bind-address=:8081
-          - --metrics-bind-address=:8080
-          # OptiPod-specific configuration
-          - --metrics-provider=metrics-server
-          - --prometheus-url=http://prometheus-k8s.monitoring.svc:9090
-          - --dry-run=false
-          - --reconciliation-interval=1m
         image: controller:latest
         name: manager
         ports:

@@ -19,6 +19,7 @@ package main
 import (
 	"crypto/tls"
 	"flag"
+	"fmt"
 	"os"
 	"path/filepath"
 
@@ -67,14 +68,25 @@ func init() {
 func main() {
 	// Initialize operator configuration
 	operatorConfig := config.NewOperatorConfig()
+
+	const configMountDir = "/etc/optipod"
+	if err := operatorConfig.LoadFromDir(configMountDir); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to load operator config from %s: %v\n", configMountDir, err)
+		os.Exit(1)
+	}
+	if err := operatorConfig.LoadFromEnv(); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to load operator config from environment: %v\n", err)
+		os.Exit(1)
+	}
+
 	operatorConfig.BindFlags()
 
-	var metricsAddr string
+	var metricsAddr = operatorConfig.GetMetricsAddr()
 	var metricsCertPath, metricsCertName, metricsCertKey string
 	var webhookCertPath, webhookCertName, webhookCertKey string
 	var webhookServiceName, webhookServiceNamespace string
 	var enableWebhook bool
-	var probeAddr string
+	var probeAddr = operatorConfig.GetProbeAddr()
 	var secureMetrics bool
 	var enableHTTP2 bool
 	var tlsOpts []func(*tls.Config)
