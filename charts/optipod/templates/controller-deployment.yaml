@@ -170,7 +170,7 @@ spec:
       volumes:
       - name: config
         configMap:
-          name: optipod-config
+          name: {{ include "optipod.controller.configMapName" . }}
           optional: true
       {{- if and .Values.metricsProvider (eq .Values.metricsProvider.type "prometheus") }}
       {{- if .Values.metricsProvider.prometheus.tls.existingSecret.name }}

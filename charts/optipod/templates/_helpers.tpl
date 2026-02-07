@@ -128,6 +128,13 @@ MutatingWebhookConfiguration name
 {{- end }}
 
 {{/*
+Controller configuration ConfigMap name
+*/}}
+{{- define "optipod.controller.configMapName" -}}
+{{- printf "%s-config" (include "optipod.fullname" .) }}
+{{- end }}
+
+{{/*
 Certificate issuer name
 */}}
 {{- define "optipod.webhook.issuerName" -}}
