@@ -53,15 +53,6 @@ spec:
         - /manager
         args:
         - --enable-webhook=false
-        - --health-probe-bind-address=:{{ .Values.controller.ports.health }}
-        - --metrics-bind-address=:{{ .Values.controller.ports.metrics }}
-        - --leader-elect={{ .Values.controller.leaderElect }}
-        {{- if .Values.controller.dryRun }}
-        - --dry-run=true
-        {{- end }}
-        {{- if .Values.controller.reconciliationInterval }}
-        - --reconciliation-interval={{ .Values.controller.reconciliationInterval }}
-        {{- end }}
         {{- if .Values.controller.enableHTTP2 }}
         - --enable-http2=true
         {{- end }}
@@ -72,14 +63,9 @@ spec:
         - --metrics-cert-path={{ .Values.metrics.tls.certPath }}
         {{- end }}
         {{- if .Values.metricsProvider }}
-        - --metrics-provider={{ .Values.metricsProvider.type }}
         {{- if eq .Values.metricsProvider.type "prometheus" }}
-        - --prometheus-url={{ .Values.metricsProvider.prometheus.url }}
         {{- if .Values.metricsProvider.prometheus.auth.type }}
         - --prometheus-auth-type={{ .Values.metricsProvider.prometheus.auth.type }}
-        {{- end }}
-        {{- if .Values.metricsProvider.prometheus.timeout }}
-        - --prometheus-timeout={{ .Values.metricsProvider.prometheus.timeout }}
         {{- end }}
         {{- if .Values.metricsProvider.prometheus.tls.insecureSkipVerify }}
         - --prometheus-tls-insecure-skip-verify=true
@@ -90,20 +76,6 @@ spec:
         - --prometheus-tls-cert-file=/etc/prometheus/tls/{{ .Values.metricsProvider.prometheus.tls.existingSecret.certKey }}
         - --prometheus-tls-key-file=/etc/prometheus/tls/{{ .Values.metricsProvider.prometheus.tls.existingSecret.keyKey }}
         {{- end }}
-        {{- end }}
-        {{- end }}
-        {{- if eq .Values.metricsProvider.type "metrics-server" }}
-        {{- if .Values.metricsProvider.metricsServer.samplingInterval }}
-        - --metrics-server-sampling-interval={{ .Values.metricsProvider.metricsServer.samplingInterval }}
-        {{- end }}
-        {{- if .Values.metricsProvider.metricsServer.maxSamplesPerTarget }}
-        - --metrics-server-max-samples-per-target={{ .Values.metricsProvider.metricsServer.maxSamplesPerTarget }}
-        {{- end }}
-        {{- if .Values.metricsProvider.metricsServer.minSamplesRequired }}
-        - --metrics-server-min-samples-required={{ .Values.metricsProvider.metricsServer.minSamplesRequired }}
-        {{- end }}
-        {{- if .Values.metricsProvider.metricsServer.targetTTL }}
-        - --metrics-server-target-ttl={{ .Values.metricsProvider.metricsServer.targetTTL }}
         {{- end }}
         {{- end }}
         {{- end }}
@@ -129,6 +101,9 @@ spec:
         resources:
           {{- toYaml .Values.controller.resources | nindent 10 }}
         volumeMounts:
+        - name: config
+          mountPath: /etc/optipod
+          readOnly: true
         {{- if and .Values.metricsProvider (eq .Values.metricsProvider.type "prometheus") }}
         {{- if .Values.metricsProvider.prometheus.tls.existingSecret.name }}
         - name: prometheus-tls
@@ -138,6 +113,15 @@ spec:
         {{- end }}
         {{- with .Values.extraVolumeMounts }}
         {{- toYaml . | nindent 8 }}
+        {{- end }}
+        {{- if and .Values.controller.envConfigMap.enabled .Values.controller.envConfigMap.name }}
+        envFrom:
+        - configMapRef:
+            name: {{ .Values.controller.envConfigMap.name }}
+            optional: {{ .Values.controller.envConfigMap.optional }}
+          {{- if .Values.controller.envConfigMap.prefix }}
+          prefix: {{ .Values.controller.envConfigMap.prefix | quote }}
+          {{- end }}
         {{- end }}
         env:
         - name: POD_NAMESPACE
@@ -184,6 +168,10 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
       volumes:
+      - name: config
+        configMap:
+          name: {{ include "optipod.controller.configMapName" . }}
+          optional: true
       {{- if and .Values.metricsProvider (eq .Values.metricsProvider.type "prometheus") }}
       {{- if .Values.metricsProvider.prometheus.tls.existingSecret.name }}
       - name: prometheus-tls
