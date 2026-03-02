@@ -128,7 +128,7 @@ jobs:
         timeout-minutes: 10
 
       - name: Upload clusterless E2E test results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: clusterless-e2e-test-results
@@ -195,7 +195,7 @@ jobs:
           ls -lh deploy/
 
       - name: Upload chart artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: helm-chart
           path: deploy/*.tgz
@@ -263,7 +263,7 @@ jobs:
           docker save ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ needs.setup.outputs.version }}-${{ matrix.arch }} -o /tmp/image-${{ matrix.arch }}.tar
 
       - name: Upload image artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: container-image-${{ matrix.arch }}
           path: /tmp/image-${{ matrix.arch }}.tar
@@ -329,7 +329,7 @@ jobs:
           category: security-scan-${{ matrix.arch }}
 
       - name: Upload scan results as artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: security-scan-results-${{ matrix.arch }}
@@ -384,7 +384,7 @@ jobs:
             -o spdx-json=sbom-${{ matrix.arch }}.json
 
       - name: Upload SBOM as artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: sbom-${{ matrix.arch }}
           path: sbom-${{ matrix.arch }}.json
@@ -618,7 +618,7 @@ jobs:
           echo "Manifest validation passed"
 
       - name: Upload manifest as artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: install-manifest
           path: install.yaml
@@ -659,7 +659,7 @@ jobs:
             cmd/main.go
 
       - name: Upload binary
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: binary-${{ matrix.goos }}-${{ matrix.goarch }}
           path: optipod-${{ matrix.goos }}-${{ matrix.goarch }}
@@ -684,7 +684,7 @@ jobs:
           cat checksums.txt
 
       - name: Upload checksums
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: checksums
           path: binaries/checksums.txt
