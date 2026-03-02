@@ -281,7 +281,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Download ${{ matrix.arch }} image artifact
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: container-image-${{ matrix.arch }}
           path: /tmp
@@ -366,7 +366,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Download ${{ matrix.arch }} image artifact
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: container-image-${{ matrix.arch }}
           path: /tmp
@@ -402,13 +402,13 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Download ${{ matrix.arch }} image artifact
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: container-image-${{ matrix.arch }}
           path: /tmp
 
       - name: Download ${{ matrix.arch }} SBOM
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: sbom-${{ matrix.arch }}
           path: /tmp
@@ -671,7 +671,7 @@ jobs:
     needs: [setup, build-binaries]
     steps:
       - name: Download all binaries
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           pattern: binary-*
           path: binaries
@@ -701,40 +701,40 @@ jobs:
           fetch-depth: 0
 
       - name: Download install manifest
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: install-manifest
           path: artifacts
 
       - name: Download binaries
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           pattern: binary-*
           path: artifacts/binaries
           merge-multiple: true
 
       - name: Download checksums
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: checksums
           path: artifacts
 
       - name: Download SBOMs
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           pattern: sbom-*
           path: artifacts/sbom
           merge-multiple: true
 
       - name: Download security scan results
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           pattern: security-scan-results-*
           path: artifacts/security-scan
           merge-multiple: true
 
       - name: Download Helm chart
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: helm-chart
           path: artifacts
