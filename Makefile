@@ -152,6 +152,13 @@ manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and Cust
 .PHONY: generate
 generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
 	"$(CONTROLLER_GEN)" object:headerFile="hack/boilerplate.go.txt" paths="./..."
+	@# controller-gen v0.22 emits the meta/v1 import without its `v1` alias, which the
+	@# goimports check in CI rejects. Normalise here so `make generate` stays clean.
+	@if command -v goimports >/dev/null 2>&1; then \
+		goimports -w api/v1alpha1/zz_generated.deepcopy.go; \
+	else \
+		echo "goimports not found; run 'make format' before committing generated code"; \
+	fi
 
 .PHONY: fmt
 fmt: ## Run go fmt against code.
