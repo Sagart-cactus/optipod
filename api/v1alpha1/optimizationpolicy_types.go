@@ -589,10 +589,6 @@ func (r *OptimizationPolicy) IsImmediateRollout() bool {
 	return r.GetRolloutStrategy() == RolloutImmediate
 }
 
-func init() {
-	SchemeBuilder.Register(&OptimizationPolicy{}, &OptimizationPolicyList{})
-}
-
 // ValidateCreate validates the OptimizationPolicy on creation
 func (r *OptimizationPolicy) ValidateCreate() error {
 	return r.validateOptimizationPolicy()
