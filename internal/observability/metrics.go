@@ -23,6 +23,16 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/metrics"
 )
 
+// Prometheus label names reused across the metric definitions below.
+const (
+	labelNamespace    = "namespace"
+	labelPolicy       = "policy"
+	labelWorkload     = "workload"
+	labelMethod       = "method"
+	labelKind         = "kind"
+	labelResourceType = "resource_type"
+)
+
 var (
 	// WorkloadsMonitored tracks the number of workloads currently monitored by OptiPod
 	WorkloadsMonitored = prometheus.NewGaugeVec(
@@ -30,7 +40,7 @@ var (
 			Name: "optipod_workloads_monitored",
 			Help: "Number of workloads currently monitored by OptiPod",
 		},
-		[]string{"namespace", "policy"},
+		[]string{labelNamespace, labelPolicy},
 	)
 
 	// WorkloadsUpdated tracks the number of workloads updated in the last reconciliation cycle
@@ -39,7 +49,7 @@ var (
 			Name: "optipod_workloads_updated",
 			Help: "Number of workloads updated in the last reconciliation cycle",
 		},
-		[]string{"namespace", "policy"},
+		[]string{labelNamespace, labelPolicy},
 	)
 
 	// WorkloadsSkipped tracks the number of workloads skipped with reasons
@@ -48,7 +58,7 @@ var (
 			Name: "optipod_workloads_skipped",
 			Help: "Number of workloads skipped in the last reconciliation cycle",
 		},
-		[]string{"namespace", "policy", "reason"},
+		[]string{labelNamespace, labelPolicy, "reason"},
 	)
 
 	// ReconciliationDuration tracks the duration of reconciliation cycles
@@ -58,7 +68,7 @@ var (
 			Help:    "Duration of reconciliation cycles in seconds",
 			Buckets: prometheus.DefBuckets,
 		},
-		[]string{"policy"},
+		[]string{labelPolicy},
 	)
 
 	// MetricsCollectionDuration tracks the duration of metrics collection operations
@@ -77,7 +87,7 @@ var (
 			Name: "optipod_reconciliation_errors_total",
 			Help: "Total number of reconciliation errors",
 		},
-		[]string{"policy", "error_type"},
+		[]string{labelPolicy, "error_type"},
 	)
 
 	// RecommendationsTotal tracks the total number of recommendations generated
@@ -86,7 +96,7 @@ var (
 			Name: "optipod_recommendations_total",
 			Help: "Total number of recommendations generated",
 		},
-		[]string{"policy"},
+		[]string{labelPolicy},
 	)
 
 	// ApplicationsTotal tracks the total number of applications (updates) performed
@@ -95,7 +105,7 @@ var (
 			Name: "optipod_applications_total",
 			Help: "Total number of resource updates applied",
 		},
-		[]string{"policy", "method"},
+		[]string{labelPolicy, labelMethod},
 	)
 
 	// SSAPatchTotal tracks the total number of Server-Side Apply patch operations
@@ -104,7 +114,7 @@ var (
 			Name: "optipod_ssa_patch_total",
 			Help: "Total number of Server-Side Apply patch operations",
 		},
-		[]string{"policy", "namespace", "workload", "kind", "status", "patch_type"},
+		[]string{labelPolicy, labelNamespace, labelWorkload, labelKind, "status", "patch_type"},
 	)
 
 	// OptimizationSuccessTotal tracks successful optimizations
@@ -113,7 +123,7 @@ var (
 			Name: "optipod_optimization_success_total",
 			Help: "Total number of successful optimizations",
 		},
-		[]string{"policy", "namespace", "workload", "kind", "method"},
+		[]string{labelPolicy, labelNamespace, labelWorkload, labelKind, labelMethod},
 	)
 
 	// OptimizationFailureTotal tracks failed optimizations
@@ -122,7 +132,7 @@ var (
 			Name: "optipod_optimization_failure_total",
 			Help: "Total number of failed optimizations",
 		},
-		[]string{"policy", "namespace", "workload", "kind", "method", "reason"},
+		[]string{labelPolicy, labelNamespace, labelWorkload, labelKind, labelMethod, "reason"},
 	)
 
 	// ResourceChangesMagnitude tracks the magnitude of resource changes
@@ -132,7 +142,7 @@ var (
 			Help:    "Magnitude of resource changes in percentage",
 			Buckets: []float64{-90, -75, -50, -25, -10, -5, 0, 5, 10, 25, 50, 75, 100, 200, 500},
 		},
-		[]string{"policy", "namespace", "workload", "resource_type"},
+		[]string{labelPolicy, labelNamespace, labelWorkload, labelResourceType},
 	)
 
 	// DefaultMultiplierUsage tracks usage of default multipliers
@@ -141,7 +151,7 @@ var (
 			Name: "optipod_default_multiplier_usage_total",
 			Help: "Total number of times default multipliers were used",
 		},
-		[]string{"policy", "resource_type", "multiplier_value"},
+		[]string{labelPolicy, labelResourceType, "multiplier_value"},
 	)
 
 	// OptimizationDecisionDuration tracks time spent making optimization decisions
@@ -151,7 +161,7 @@ var (
 			Help:    "Duration of optimization decision making in seconds",
 			Buckets: prometheus.DefBuckets,
 		},
-		[]string{"policy", "workload_kind"},
+		[]string{labelPolicy, "workload_kind"},
 	)
 
 	// Webhook-specific metrics
@@ -162,7 +172,7 @@ var (
 			Name: "optipod_webhook_admission_requests_total",
 			Help: "Total number of webhook admission requests received",
 		},
-		[]string{"namespace", "pod_name", "dry_run"},
+		[]string{labelNamespace, "pod_name", "dry_run"},
 	)
 
 	// WebhookAdmissionSuccessTotal tracks successful webhook admissions
@@ -171,7 +181,7 @@ var (
 			Name: "optipod_webhook_admission_success_total",
 			Help: "Total number of successful webhook admissions",
 		},
-		[]string{"namespace", "policy", "patches_applied"},
+		[]string{labelNamespace, labelPolicy, "patches_applied"},
 	)
 
 	// WebhookAdmissionFailuresTotal tracks failed webhook admissions
@@ -180,7 +190,7 @@ var (
 			Name: "optipod_webhook_admission_failures_total",
 			Help: "Total number of failed webhook admissions",
 		},
-		[]string{"namespace", "failure_reason"},
+		[]string{labelNamespace, "failure_reason"},
 	)
 
 	// WebhookMutationDuration tracks the duration of webhook mutation operations
@@ -190,7 +200,7 @@ var (
 			Help:    "Duration of webhook mutation operations in seconds",
 			Buckets: []float64{0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0},
 		},
-		[]string{"namespace", "policy"},
+		[]string{labelNamespace, labelPolicy},
 	)
 
 	// WebhookPatchesAppliedTotal tracks the number of patches applied by the webhook
@@ -199,7 +209,7 @@ var (
 			Name: "optipod_webhook_patches_applied_total",
 			Help: "Total number of patches applied by the webhook",
 		},
-		[]string{"namespace", "policy", "container_name", "resource_type"},
+		[]string{labelNamespace, labelPolicy, "container_name", labelResourceType},
 	)
 
 	// WebhookAnnotationParsingErrorsTotal tracks annotation parsing errors
@@ -208,7 +218,7 @@ var (
 			Name: "optipod_webhook_annotation_parsing_errors_total",
 			Help: "Total number of annotation parsing errors in webhook",
 		},
-		[]string{"namespace", "pod_name", "annotation_key", "error_type"},
+		[]string{labelNamespace, "pod_name", "annotation_key", "error_type"},
 	)
 
 	// WebhookPolicyMatchingDuration tracks time spent matching policies
@@ -218,7 +228,7 @@ var (
 			Help:    "Duration of policy matching operations in webhook",
 			Buckets: []float64{0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5},
 		},
-		[]string{"namespace", "policies_found"},
+		[]string{labelNamespace, "policies_found"},
 	)
 
 	// WebhookServerHealthStatus tracks webhook server health status

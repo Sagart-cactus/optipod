@@ -328,18 +328,18 @@ func (tr *TestReport) String() string {
 
 	// Header with clear pass/fail status
 	report.WriteString("=== CONTRACT TEST REPORT ===\n")
-	report.WriteString(fmt.Sprintf("Test: %s\n", tr.TestName))
-	report.WriteString(fmt.Sprintf("Status: %s\n", tr.Status))
-	report.WriteString(fmt.Sprintf("Duration: %v\n", tr.Duration))
-	report.WriteString(fmt.Sprintf("Errors: %d, Warnings: %d\n", tr.ErrorCount, tr.WarningCount))
-	report.WriteString(fmt.Sprintf("Timestamp: %s\n", tr.Timestamp.Format(time.RFC3339)))
+	fmt.Fprintf(&report, "Test: %s\n", tr.TestName)
+	fmt.Fprintf(&report, "Status: %s\n", tr.Status)
+	fmt.Fprintf(&report, "Duration: %v\n", tr.Duration)
+	fmt.Fprintf(&report, "Errors: %d, Warnings: %d\n", tr.ErrorCount, tr.WarningCount)
+	fmt.Fprintf(&report, "Timestamp: %s\n", tr.Timestamp.Format(time.RFC3339))
 	report.WriteString("\n")
 
 	// Error details with actionable messages
 	if len(tr.Errors) > 0 {
 		report.WriteString("ERRORS:\n")
 		for i, err := range tr.Errors {
-			report.WriteString(fmt.Sprintf("%d. %s\n", i+1, err.Error()))
+			fmt.Fprintf(&report, "%d. %s\n", i+1, err.Error())
 		}
 		report.WriteString("\n")
 	}
@@ -348,7 +348,7 @@ func (tr *TestReport) String() string {
 	if len(tr.Warnings) > 0 {
 		report.WriteString("WARNINGS:\n")
 		for i, warning := range tr.Warnings {
-			report.WriteString(fmt.Sprintf("%d. %s\n", i+1, warning))
+			fmt.Fprintf(&report, "%d. %s\n", i+1, warning)
 		}
 		report.WriteString("\n")
 	}
@@ -377,10 +377,10 @@ func (cts *ContractTestSummary) GenerateSummary() string {
 	var summary strings.Builder
 
 	summary.WriteString("=== CONTRACT E2E TEST SUITE SUMMARY ===\n")
-	summary.WriteString(fmt.Sprintf("Total Tests: %d\n", cts.TotalTests))
-	summary.WriteString(fmt.Sprintf("Passed: %d\n", cts.PassedTests))
-	summary.WriteString(fmt.Sprintf("Failed: %d\n", cts.FailedTests))
-	summary.WriteString(fmt.Sprintf("Total Duration: %v\n", cts.TotalDuration))
+	fmt.Fprintf(&summary, "Total Tests: %d\n", cts.TotalTests)
+	fmt.Fprintf(&summary, "Passed: %d\n", cts.PassedTests)
+	fmt.Fprintf(&summary, "Failed: %d\n", cts.FailedTests)
+	fmt.Fprintf(&summary, "Total Duration: %v\n", cts.TotalDuration)
 	summary.WriteString("\n")
 
 	// Overall status

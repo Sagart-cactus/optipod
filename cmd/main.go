@@ -346,12 +346,19 @@ func main() {
 		mgr.GetClient(),
 	)
 
-	// Create event recorder
+	// Create event recorder.
+	// NOTE: GetEventRecorderFor is deprecated in favour of the events/v1 API
+	// (GetEventRecorder). Migrating means switching record.EventRecorder to
+	// events.EventRecorder throughout internal/observability and the reconciler,
+	// and supplying the new per-event "action" field, so it is tracked as
+	// separate follow-up work rather than folded into a dependency bump.
+	//nolint:staticcheck // SA1019: events API migration tracked separately
 	eventRecorder := observability.NewEventRecorder(mgr.GetEventRecorderFor("optimizationpolicy-controller"))
 
 	if err := (&controller.OptimizationPolicyReconciler{
-		Client:            mgr.GetClient(),
-		Scheme:            mgr.GetScheme(),
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
+		//nolint:staticcheck // SA1019: events API migration tracked separately
 		Recorder:          mgr.GetEventRecorderFor("optimizationpolicy-controller"),
 		WorkloadProcessor: workloadProcessor,
 		EventRecorder:     eventRecorder,

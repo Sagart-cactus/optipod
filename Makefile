@@ -152,6 +152,13 @@ manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and Cust
 .PHONY: generate
 generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
 	"$(CONTROLLER_GEN)" object:headerFile="hack/boilerplate.go.txt" paths="./..."
+	@# controller-gen v0.22 emits the meta/v1 import without its `v1` alias, which the
+	@# goimports check in CI rejects. Normalise here so `make generate` stays clean.
+	@if command -v goimports >/dev/null 2>&1; then \
+		goimports -w api/v1alpha1/zz_generated.deepcopy.go; \
+	else \
+		echo "goimports not found; run 'make format' before committing generated code"; \
+	fi
 
 .PHONY: fmt
 fmt: ## Run go fmt against code.
@@ -374,16 +381,16 @@ ENVTEST ?= $(LOCALBIN)/setup-envtest
 GOLANGCI_LINT = $(LOCALBIN)/golangci-lint
 
 ## Tool Versions
-KUSTOMIZE_VERSION ?= v5.7.1
-CONTROLLER_TOOLS_VERSION ?= v0.19.0
+KUSTOMIZE_VERSION ?= v5.8.1
+CONTROLLER_TOOLS_VERSION ?= v0.22.0
 
 #ENVTEST_VERSION is the version of controller-runtime release branch to fetch the envtest setup script (i.e. release-0.20)
-ENVTEST_VERSION ?= release-0.22
+ENVTEST_VERSION ?= release-0.25
 
 #ENVTEST_K8S_VERSION is the version of Kubernetes to use for setting up ENVTEST binaries (i.e. 1.31)
-ENVTEST_K8S_VERSION ?= 1.34
+ENVTEST_K8S_VERSION ?= 1.37
 
-GOLANGCI_LINT_VERSION ?= v2.5.0
+GOLANGCI_LINT_VERSION ?= v2.13.2
 .PHONY: kustomize
 kustomize: $(KUSTOMIZE) ## Download kustomize locally if necessary.
 $(KUSTOMIZE): $(LOCALBIN)

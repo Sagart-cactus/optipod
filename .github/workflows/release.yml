@@ -23,7 +23,6 @@ env:
   REGISTRY_DOCKERHUB: docker.io
   IMAGE_NAME: ${{ github.repository }}
   PLATFORMS: linux/amd64,linux/arm64
-  GO_VERSION: '1.21'
 
 jobs:
   setup:
@@ -79,7 +78,7 @@ jobs:
       - name: Run linter
         uses: golangci/golangci-lint-action@v8
         with:
-          version: v2.5.0
+          version: v2.13.2
 
   test:
     name: Run Unit Tests

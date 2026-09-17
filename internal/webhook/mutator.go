@@ -40,6 +40,10 @@ const (
 	// Constants for string literals
 	trueValue      = "true"
 	appsV1APIGroup = "apps/v1"
+	// patchOpAdd is the JSON patch "add" operation.
+	patchOpAdd = "add"
+	// logKeyPath is the structured-log key carrying the TLS key path.
+	logKeyPath = "key_path"
 )
 
 // Mutator handles pod mutation logic
@@ -533,7 +537,7 @@ func (m *Mutator) generateResourcePatches(pod *corev1.Pod, recommendations []Res
 		// Initialize resources if not present
 		if container.Resources.Requests == nil && (rec.CPU != nil || rec.Memory != nil) {
 			patches = append(patches, PatchOperation{
-				Op:    "add",
+				Op:    patchOpAdd,
 				Path:  containerPath + "/resources/requests",
 				Value: map[string]interface{}{},
 			})
@@ -541,7 +545,7 @@ func (m *Mutator) generateResourcePatches(pod *corev1.Pod, recommendations []Res
 
 		if container.Resources.Limits == nil && (rec.CPULimit != nil || rec.MemoryLimit != nil) {
 			patches = append(patches, PatchOperation{
-				Op:    "add",
+				Op:    patchOpAdd,
 				Path:  containerPath + "/resources/limits",
 				Value: map[string]interface{}{},
 			})
@@ -550,7 +554,7 @@ func (m *Mutator) generateResourcePatches(pod *corev1.Pod, recommendations []Res
 		// Add CPU request patch
 		if rec.CPU != nil {
 			patches = append(patches, PatchOperation{
-				Op:    "add",
+				Op:    patchOpAdd,
 				Path:  containerPath + "/resources/requests/cpu",
 				Value: rec.CPU.String(),
 			})
@@ -561,7 +565,7 @@ func (m *Mutator) generateResourcePatches(pod *corev1.Pod, recommendations []Res
 		// Add memory request patch
 		if rec.Memory != nil {
 			patches = append(patches, PatchOperation{
-				Op:    "add",
+				Op:    patchOpAdd,
 				Path:  containerPath + "/resources/requests/memory",
 				Value: rec.Memory.String(),
 			})
@@ -572,7 +576,7 @@ func (m *Mutator) generateResourcePatches(pod *corev1.Pod, recommendations []Res
 		// Add CPU limit patch
 		if rec.CPULimit != nil {
 			patches = append(patches, PatchOperation{
-				Op:    "add",
+				Op:    patchOpAdd,
 				Path:  containerPath + "/resources/limits/cpu",
 				Value: rec.CPULimit.String(),
 			})
@@ -583,7 +587,7 @@ func (m *Mutator) generateResourcePatches(pod *corev1.Pod, recommendations []Res
 		// Add memory limit patch
 		if rec.MemoryLimit != nil {
 			patches = append(patches, PatchOperation{
-				Op:    "add",
+				Op:    patchOpAdd,
 				Path:  containerPath + "/resources/limits/memory",
 				Value: rec.MemoryLimit.String(),
 			})

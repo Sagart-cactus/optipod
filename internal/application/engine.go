@@ -52,6 +52,12 @@ const (
 	FieldManagerName = "optipod"
 )
 
+// Unstructured patch field names and API groups.
+const (
+	fieldSpec = "spec"
+	groupApps = "apps"
+)
+
 // Default limit multiplier constants
 const (
 	// DefaultMemoryLimitMultiplier is the default multiplier for memory limits (30% buffer above requests)
@@ -1240,9 +1246,9 @@ func (e *Engine) buildResourcePatch(
 
 	// Build the patch
 	patch := map[string]interface{}{
-		"spec": map[string]interface{}{
+		fieldSpec: map[string]interface{}{
 			"template": map[string]interface{}{
-				"spec": map[string]interface{}{
+				fieldSpec: map[string]interface{}{
 					"containers": containers,
 				},
 			},
@@ -1264,19 +1270,19 @@ func (e *Engine) getGVR(kind string) (schema.GroupVersionResource, error) {
 	switch kind {
 	case kindDeployment:
 		return schema.GroupVersionResource{
-			Group:    "apps",
+			Group:    groupApps,
 			Version:  "v1",
 			Resource: "deployments",
 		}, nil
 	case kindStatefulSet:
 		return schema.GroupVersionResource{
-			Group:    "apps",
+			Group:    groupApps,
 			Version:  "v1",
 			Resource: "statefulsets",
 		}, nil
 	case kindDaemonSet:
 		return schema.GroupVersionResource{
-			Group:    "apps",
+			Group:    groupApps,
 			Version:  "v1",
 			Resource: "daemonsets",
 		}, nil
@@ -1338,9 +1344,9 @@ func (e *Engine) buildSSAPatch(
 			"name":      workload.Name,
 			"namespace": workload.Namespace,
 		},
-		"spec": map[string]interface{}{
+		fieldSpec: map[string]interface{}{
 			"template": map[string]interface{}{
-				"spec": map[string]interface{}{
+				fieldSpec: map[string]interface{}{
 					"containers": []map[string]interface{}{
 						{
 							"name":      containerName,
