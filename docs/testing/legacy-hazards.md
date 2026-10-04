@@ -21,7 +21,7 @@ several hazardous side effects on the developer's machine.
 | H7 | **Mutates a shared namespace** | `labelDefaultNamespace()` labels `default` with `environment=development` (`e2e_suite_test.go:159`) | Side effect on a shared namespace unrelated to the test's own fixtures |
 | H8 | **Ignored errors** | `_, _ = utils.Run(cmd) // Ignore cleanup errors` at `e2e_suite_test.go:315,319,326`; also `test/e2e/helpers/test_helpers.go:178,227` and `webhook_lifecycle_test.go:77` (`_ = portForwardCmd.Run()`) | Cleanup/port-forward failures are swallowed, hiding leaked resources and flaky teardown |
 | H9 | **Teardown skipped on opt-out** | `AfterSuite` deletes the cluster only when `KEEP_CLUSTER != "true"` (`e2e_suite_test.go:71`) | Fine by itself, but combined with the fixed name (H2) a retained cluster collides with later runs |
-| H10 | **Broad deletion of *all* Deployments in `default`** | `CleanupHelper.CleanupAllWorkloads()` runs `kubectl delete deployment --all -n default --ignore-not-found=true` (`test/e2e/helpers/test_helpers.go:206`); `CleanupAllPolicies()` similarly deletes `optimizationpolicy --all -n optipod-system` (`:198`) | Because the suite runs against the developer's **current context** (H1), this deletes **every** Deployment in that cluster's `default` namespace — not just the suite's own fixtures — destroying unrelated user workloads. The matching `-n default` policy cleanup in `e2e_suite_test.go:313` compounds the blast radius |
+| H10 | **Broad deletion of *all* Deployments in `default`** | `CleanupHelper.CleanupAllWorkloads()` runs `kubectl delete deployment --all -n default --ignore-not-found=true` (`test/e2e/helpers/test_helpers.go:206`); `CleanupAllPolicies()` similarly deletes `optimizationpolicy --all -n optipod-system` (`:198`) | Because the suite runs against the developer's **current context** (H1), this deletes **every** Deployment in that cluster's `default` namespace — not just the suite's own fixtures — destroying unrelated user workloads. The suite-level `cleanupTestResources()` policy cleanup at `e2e_suite_test.go:313` and `CleanupAllPolicies()` (`:198`) both delete `optimizationpolicy --all -n optipod-system` — scoped to OptiPod's **own** namespace (`optipodNamespace = "optipod-system"`, `e2e_suite_test.go:19`), **not** `default` — so they do not reach unrelated user Deployments, but on the developer's current context they still remove every OptimizationPolicy in `optipod-system` |
 
 ### Fixed/unexplained sleeps (whole suite)
 
@@ -94,9 +94,13 @@ admission proof.
 | Tests | `.github/workflows/test.yml` | `push`, `pull_request` | Runs `go mod tidy && make test`; `make test` regenerates manifests/CRDs, runs `fmt`, and writes `cover.out` — a mutating gate that can fail on generation/format drift and provides no E2E coverage |
 | CI | `.github/workflows/ci.yml` | push to `main`/`feature/**`/`fix/**` + PR | Builds binary and Docker image (no push); no test execution |
 
-In CI, `e2e.yml` also installs **Kind v0.20.0** and **kubectl `stable`** (floating) and the
-**latest** metrics-server (`e2e.yml` install steps) — versions that differ from the pinned
-local toolchain, compounding the reproducibility gap.
+In CI, `e2e.yml` installs **Kind v0.20.0** (`e2e.yml:38`) and **kubectl `stable`** (floating)
+(`e2e.yml:46`) — versions that differ from the pinned local toolchain, compounding the
+reproducibility gap. `e2e.yml` then runs the **contract** suite via `make test-e2e-contract`
+(`e2e.yml:70`), which does **not** install metrics-server. The floating **latest**
+metrics-server installer (H4) lives in the **unrun main E2E suite**'s `BeforeSuite` —
+`installMetricsServer()` (`e2e_suite_test.go:37`) applying
+`.../releases/latest/download/components.yaml` (`e2e_suite_test.go:111`) — **not** in `e2e.yml`.
 
 ### 4.2 Run 36252723861 — zero-job failure
 
