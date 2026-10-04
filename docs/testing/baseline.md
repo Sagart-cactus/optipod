@@ -78,11 +78,16 @@ PASS
 ok  	github.com/optipod/optipod/internal/application
 ```
 
-Both skips are counted as **skipped, not passing**. Their SSA field-ownership behavior is
-exercised instead by the focused envtest run below and is scheduled for production-path
-coverage in M3 (see `coverage-matrix.md` B04). The remaining `internal/application` `Test*`
-functions (including the non-envtest SSA property tests such as
-`TestProperty_UpdateRequestsOnlyBehavior`) run and pass under `-short`.
+Both skips are counted as **skipped, not passing**. Their SSA managed-field-ownership
+behavior is **not** exercised by any other executed layer in this baseline, and in
+particular **not** by the focused controller envtest run below: that reconciler integration
+constructs its `WorkloadProcessor` with a `nil` application engine
+(`internal/controller/integration_test.go:147`), so no SSA apply or managed-field assertion
+runs there. The SSA field-ownership proof therefore remains **unexecuted** at M1 and is
+scheduled for production-path coverage in M3 (see `coverage-matrix.md` B04). The remaining
+`internal/application` `Test*` functions (including the non-envtest SSA property tests such as
+`TestProperty_UpdateRequestsOnlyBehavior`) run and pass under `-short`, but those are
+patch-shape property checks, not applied before/after field-ownership outcomes.
 
 ## Viable fast layer — commands, exits, timings
 
@@ -173,39 +178,72 @@ docker build -t optipod:baseline-probe .
 
 ## Isolated Kind probe
 
-A throwaway, collision-resistant cluster was created with a **private kubeconfig**
+A throwaway, strongly-unique cluster was created with a **private kubeconfig**
 (`--kubeconfig "$KCFG"`) and the pinned node image, interacted with, then deleted. The user's
 default kubeconfig and context were never passed to any command. The recipe below is
-**runnable as-is** from the repository root: the cluster name is made collision-resistant with
-the shell PID, the node image carries the **complete pinned digest**, and a `trap` guarantees
-the probe deletes **only its own owned cluster** and the temporary kubeconfig on any exit
-(success, failure, or interrupt). It never reads, writes, or deletes the developer's default
-kubeconfig, context, or any pre-existing cluster.
+**runnable as-is** from the repository root and is deliberately hardened against the three
+ways a naive private-Kind probe can still damage developer state:
+
+1. **Strongly unique owned name.** The cluster name combines the shell PID, the current epoch
+   second, and `${RANDOM}` so it does not collide with a pre-existing cluster (a bare `$$` PID
+   can be reused across reboots). The node image carries the **complete pinned digest**.
+2. **Ownership-gated deletion.** A `CREATED` flag is set **only after** `kind create cluster`
+   succeeds. Cleanup deletes the cluster **only when this run created it**, so a failed or
+   skipped create never deletes a cluster that merely shares the name.
+3. **Private kubeconfig on delete + fail-fast.** `set -euo pipefail` makes any failing phase
+   abort immediately, and the `EXIT`/`INT`/`TERM` trap preserves that failing phase's exit code
+   while cleaning up. The delete passes `--kubeconfig "$KCFG"` so Kind cannot fall back to
+   `$KUBECONFIG` or the developer's `~/.kube/config`; a cleanup failure is reported and forces a
+   nonzero exit rather than being masked as success.
+
+The probe never reads, writes, or deletes the developer's default kubeconfig, context, or any
+pre-existing cluster.
 
 ```bash
+set -euo pipefail   # fail-fast: any failing phase aborts and keeps its nonzero exit
+
 # Pinned Kind v0.31.0 CLI and node image (complete digest, no `latest`).
 NODE_IMAGE="kindest/node:v1.35.0@sha256:4613778f3cfcd10e615029370f5786704559103cf27bef934597ba562b269661"
-CLUSTER="optipod-baseline-probe-$$"        # $$ = shell PID → collision-resistant owned name
+# Strongly-unique owned name: PID + epoch second + ${RANDOM} (not a reusable bare PID).
+CLUSTER="optipod-baseline-probe-$$-$(date +%s)-${RANDOM}"
 KCFG="$(mktemp -t optipod-probe-kubeconfig.XXXXXX)"   # private kubeconfig, never the default
+CREATED=0   # ownership flag: set to 1 only after THIS run creates the cluster
 
-# Delete ONLY this owned cluster and remove the private kubeconfig on any exit.
-trap 'kind delete cluster --name "$CLUSTER" >/dev/null 2>&1; rm -f "$KCFG"' EXIT
+cleanup() {
+  rc=$?   # preserve the failing phase's exit code
+  if [ "$CREATED" = "1" ]; then
+    # Delete ONLY the cluster this run owns, and pass the private kubeconfig so Kind
+    # cannot fall back to $KUBECONFIG or the developer's ~/.kube/config.
+    if ! kind delete cluster --name "$CLUSTER" --kubeconfig "$KCFG"; then
+      echo "WARNING: cleanup of owned cluster $CLUSTER failed; remove it manually" >&2
+      if [ "$rc" = "0" ]; then rc=1; fi   # ambiguous cleanup must not report success
+    fi
+  fi
+  rm -f "$KCFG"
+  trap - EXIT
+  exit "$rc"
+}
+trap cleanup EXIT INT TERM   # ownership-gated, private-kubeconfig teardown on any exit
 
 kind create cluster --name "$CLUSTER" --kubeconfig "$KCFG" \
   --image "$NODE_IMAGE" --wait 90s
+CREATED=1   # we now own this cluster; cleanup is allowed to delete it
+
 kubectl --kubeconfig "$KCFG" get nodes                 # control-plane Ready, v1.35.0
 kubectl --kubeconfig "$KCFG" create namespace probe-ns # created + verified
 kubectl --kubeconfig "$KCFG" get namespace probe-ns
-
-kind delete cluster --name "$CLUSTER"                  # explicit owned-cluster teardown
-rm -f "$KCFG"
-trap - EXIT
+# No explicit delete here: the ownership-gated cleanup() trap performs the only teardown,
+# so a failure in any phase above still triggers scoped, private-kubeconfig cleanup.
 ```
 
-The cleanup is **owned-cluster-scoped**: `kind delete cluster --name "$CLUSTER"` targets only
-the uniquely named probe cluster, never `kind delete cluster` without a name and never the
-developer's `kind` cluster. If the probe is interrupted mid-run, the `EXIT` trap performs the
-same scoped teardown.
+The cleanup is **ownership-gated and owned-cluster-scoped**: it runs only when `CREATED=1`
+(this run successfully created the cluster) and targets the strongly-unique probe name with the
+private kubeconfig — never `kind delete cluster` without a name, never without `--kubeconfig`,
+and never the developer's `kind` cluster. If any phase fails or the probe is interrupted
+(`INT`/`TERM`), the trap performs the same scoped teardown while **preserving the failing
+phase's exit code**; if the delete itself fails, that ambiguous cleanup is logged and forces a
+nonzero exit instead of being masked. The `Delete` row below is the clean-exit timing; a
+mid-run failure would report the failing phase's nonzero code after the same scoped cleanup.
 
 | Phase | Exit | real |
 | --- | --- | --- |
