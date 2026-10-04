@@ -21,6 +21,7 @@ several hazardous side effects on the developer's machine.
 | H7 | **Mutates a shared namespace** | `labelDefaultNamespace()` labels `default` with `environment=development` (`e2e_suite_test.go:159`) | Side effect on a shared namespace unrelated to the test's own fixtures |
 | H8 | **Ignored errors** | `_, _ = utils.Run(cmd) // Ignore cleanup errors` at `e2e_suite_test.go:315,319,326`; also `test/e2e/helpers/test_helpers.go:178,227` and `webhook_lifecycle_test.go:77` (`_ = portForwardCmd.Run()`) | Cleanup/port-forward failures are swallowed, hiding leaked resources and flaky teardown |
 | H9 | **Teardown skipped on opt-out** | `AfterSuite` deletes the cluster only when `KEEP_CLUSTER != "true"` (`e2e_suite_test.go:71`) | Fine by itself, but combined with the fixed name (H2) a retained cluster collides with later runs |
+| H10 | **Broad deletion of *all* Deployments in `default`** | `CleanupHelper.CleanupAllWorkloads()` runs `kubectl delete deployment --all -n default --ignore-not-found=true` (`test/e2e/helpers/test_helpers.go:206`); `CleanupAllPolicies()` similarly deletes `optimizationpolicy --all -n optipod-system` (`:198`) | Because the suite runs against the developer's **current context** (H1), this deletes **every** Deployment in that cluster's `default` namespace — not just the suite's own fixtures — destroying unrelated user workloads. The matching `-n default` policy cleanup in `e2e_suite_test.go:313` compounds the blast radius |
 
 ### Fixed/unexplained sleeps (whole suite)
 
@@ -48,6 +49,7 @@ and installs the controller.
 | C3 | **Unpinned binaries from PATH** | `KindBinary: "kind"`, `KubectlBinary: "kubectl"` (`contract/consistency_config.go:77-78`); kustomize fetched via `make kustomize` (`contract/execution_environment.go:151`) | Whatever versions are on PATH are used; not pinned/verified |
 | C4 | **Ignored error** | `_ = deleteCmd.Run() // Ignore errors` (`contract/execution_environment.go:205`) | Pre-create delete failure is swallowed |
 | C5 | **Setup-only / readiness-only assertions** | See table below | A green run proves installation reachable, not optimization behavior |
+| C6 | **Install subprocesses target the ambient default kubeconfig, not the private config** | `CreateConsistentCluster` runs `kind create cluster --name <fixed>` with **no `--kubeconfig`** (`contract/execution_environment.go:212-224`), so Kind writes the cluster into the developer's **default kubeconfig and switches current-context** to it. `installCRDsAndController()` then runs `kubectl apply`/`kubectl wait`/`kustomize build`/`kubectl apply -f -` subprocesses with **no `--kubeconfig`, no `--context`, and no `KUBECONFIG` in the environment** (`contract/suite_test.go:209,216,240`), so CRD and controller installation land on whatever current-context the default kubeconfig happens to hold | Split-brain, context-dependent targeting: the typed controller-runtime client is built from a private `kind get kubeconfig` string (`suite_test.go:163-169`), but the **mutating install subprocesses rely on ambient default-kubeconfig current-context**. If that context pointed at another (e.g. production) cluster at install time, the CRD and controller would be applied there. Cluster verification even hard-codes `--context kind-<name>` (`execution_environment.go:235-243`), reading/writing the shared default kubeconfig |
 
 ### Setup-only and readiness-only assertions
 
@@ -166,6 +168,8 @@ not evidence of optimization/admission behavior and did not gate any code change
 | Hazard class | Replacement in the new architecture |
 | --- | --- |
 | Context mutation (H1), fixed names (H2, C2) | Collision-resistant owned cluster + private kubeconfig; never touch default context |
+| Install subprocesses on ambient default kubeconfig (C6) | Every Kind/kubectl/kustomize subprocess receives the harness's **private `--kubeconfig`/`KUBECONFIG`** (and the typed client its matching explicit `rest.Config`); `kind create` always writes the private kubeconfig, never the default; no reliance on current-context |
+| Broad `--all -n default` deletion (H10) | Operate in per-spec **unique namespaces** on the owned cluster via the private config; delete by owned namespace/label scope only; never `kubectl delete deployment --all` or `optimizationpolicy --all` against a shared namespace or the developer's context |
 | `@latest`/floating installers (H3, H4, C3) and CI Kind/kubectl drift | Pinned CLIs, pinned node image digest, pinned fixture images; no `latest` in the test path |
 | Tracked `config/manager`/CRD edits (H5, H6, C1) | Render manifests to temporary files; no `kustomize edit`/`controller-gen` against the source tree |
 | Ignored errors (H8, C4) | Strict error propagation; only expected not-found tolerated on repeat cleanup |

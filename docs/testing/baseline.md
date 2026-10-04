@@ -45,7 +45,7 @@ VAL-DESIGN-001.
 
 | Layer | Declared location | Executed in this baseline? |
 | --- | --- | --- |
-| Unit + production-path (`api/v1alpha1`, `internal/*`) | 142 Go `Test*` functions | **Yes** |
+| Unit + production-path (`api/v1alpha1`, `internal/*`) | **142 declared** Go `Test*` functions | **140 executed, 2 skipped** under `-short` (see note) |
 | Clusterless integration | `test/clusterless/workflows` (33 Ginkgo specs) | **Yes** (fixture/simulator layer — see note) |
 | Envtest (real API server) | `internal/controller` Ginkgo "Integration Tests" suite (10 specs) | **Yes**, focused run |
 | Legacy main Kind E2E | `test/e2e` Ginkgo suite | **No — unrun unchanged** (hazardous `BeforeSuite`) |
@@ -55,6 +55,34 @@ The 33 clusterless specs exercise production calculation/handler code through **
 and an independent webhook simulator**, not deployed admission or a live API server; a green
 clusterless run is not evidence of installed-controller behavior (see
 `legacy-hazards.md`).
+
+### Declared vs. executed Go `Test*` count (142 / 140 / 2)
+
+The fast gate runs with `go test -short`. Of the **142** declared `Test*` functions in the
+fast-gate packages, **140 execute** and **2 are skipped by design** under `-short` because
+they are envtest-backed SSA integration tests that start their own API server:
+
+| Skipped test | Source | Skip guard |
+| --- | --- | --- |
+| `TestSSAIntegration` | `internal/application/ssa_integration_test.go:46` | `if testing.Short() { t.Skip("Skipping integration test in short mode") }` (`:47-48`) |
+| `TestSSAFieldOwnershipWithMultipleManagers` | `internal/application/ssa_integration_test.go:218` | `if testing.Short() { t.Skip(...) }` (`:219-220`) |
+
+Measured skip evidence (`go test -short -run 'TestSSAIntegration|TestSSAFieldOwnershipWithMultipleManagers' -v ./internal/application`):
+
+```
+--- SKIP: TestSSAIntegration (0.00s)
+    ssa_integration_test.go:48: Skipping integration test in short mode
+--- SKIP: TestSSAFieldOwnershipWithMultipleManagers (0.00s)
+    ssa_integration_test.go:220: Skipping integration test in short mode
+PASS
+ok  	github.com/optipod/optipod/internal/application
+```
+
+Both skips are counted as **skipped, not passing**. Their SSA field-ownership behavior is
+exercised instead by the focused envtest run below and is scheduled for production-path
+coverage in M3 (see `coverage-matrix.md` B04). The remaining `internal/application` `Test*`
+functions (including the non-envtest SSA property tests such as
+`TestProperty_UpdateRequestsOnlyBehavior`) run and pass under `-short`.
 
 ## Viable fast layer — commands, exits, timings
 
@@ -146,16 +174,38 @@ docker build -t optipod:baseline-probe .
 ## Isolated Kind probe
 
 A throwaway, collision-resistant cluster was created with a **private kubeconfig**
-(`--kubeconfig <tmp>`) and the pinned node image, interacted with, then deleted. The user's
-default kubeconfig and context were never passed to any command.
+(`--kubeconfig "$KCFG"`) and the pinned node image, interacted with, then deleted. The user's
+default kubeconfig and context were never passed to any command. The recipe below is
+**runnable as-is** from the repository root: the cluster name is made collision-resistant with
+the shell PID, the node image carries the **complete pinned digest**, and a `trap` guarantees
+the probe deletes **only its own owned cluster** and the temporary kubeconfig on any exit
+(success, failure, or interrupt). It never reads, writes, or deletes the developer's default
+kubeconfig, context, or any pre-existing cluster.
 
+```bash
+# Pinned Kind v0.31.0 CLI and node image (complete digest, no `latest`).
+NODE_IMAGE="kindest/node:v1.35.0@sha256:4613778f3cfcd10e615029370f5786704559103cf27bef934597ba562b269661"
+CLUSTER="optipod-baseline-probe-$$"        # $$ = shell PID → collision-resistant owned name
+KCFG="$(mktemp -t optipod-probe-kubeconfig.XXXXXX)"   # private kubeconfig, never the default
+
+# Delete ONLY this owned cluster and remove the private kubeconfig on any exit.
+trap 'kind delete cluster --name "$CLUSTER" >/dev/null 2>&1; rm -f "$KCFG"' EXIT
+
+kind create cluster --name "$CLUSTER" --kubeconfig "$KCFG" \
+  --image "$NODE_IMAGE" --wait 90s
+kubectl --kubeconfig "$KCFG" get nodes                 # control-plane Ready, v1.35.0
+kubectl --kubeconfig "$KCFG" create namespace probe-ns # created + verified
+kubectl --kubeconfig "$KCFG" get namespace probe-ns
+
+kind delete cluster --name "$CLUSTER"                  # explicit owned-cluster teardown
+rm -f "$KCFG"
+trap - EXIT
 ```
-kind create cluster --name optipod-baseline-probe-<pid> --kubeconfig <tmp> \
-  --image kindest/node:v1.35.0@sha256:4613778f...269661 --wait 90s
-kubectl --kubeconfig <tmp> get nodes            # control-plane Ready, v1.35.0
-kubectl --kubeconfig <tmp> create namespace probe-ns   # created + verified
-kind delete cluster --name optipod-baseline-probe-<pid>
-```
+
+The cleanup is **owned-cluster-scoped**: `kind delete cluster --name "$CLUSTER"` targets only
+the uniquely named probe cluster, never `kind delete cluster` without a name and never the
+developer's `kind` cluster. If the probe is interrupted mid-run, the `EXIT` trap performs the
+same scoped teardown.
 
 | Phase | Exit | real |
 | --- | --- | --- |
@@ -177,7 +227,9 @@ installed-controller, webhook, or ready-workload behavior; those are M2+ accepta
 
 | Metric | Value |
 | --- | --- |
-| Go `Test*` functions in fast-gate packages (`api/v1alpha1`, `internal/*`) | 142 |
+| Go `Test*` functions declared in fast-gate packages (`api/v1alpha1`, `internal/*`) | 142 |
+| Go `Test*` functions executed under `-short` | 140 |
+| Go `Test*` functions skipped under `-short` (envtest SSA integration) | 2 |
 | Clusterless Ginkgo specs executed | 33 |
 | Envtest controller Integration specs | 10 declared (9 passed, 1 pending) |
 | `cmd` package | no test files |
@@ -189,6 +241,7 @@ installed-controller, webhook, or ready-workload behavior; those are M2+ accepta
 | `go test ./test/e2e/...` (main suite) | `BeforeSuite` switches the developer kube-context, installs `@latest`/unpinned tooling, edits tracked `config/manager`, regenerates tracked CRDs — see `legacy-hazards.md` |
 | `go test ./test/e2e/contract/...` | `BeforeSuite` edits tracked `config/manager`, runs `make kustomize`, builds/loads an image and installs into a fixed-name cluster — see `legacy-hazards.md` |
 | `make test` | Regenerates manifests/CRDs (`manifests generate`), formats code (`fmt`), and writes `cover.out`; not usable as a non-mutating gate |
+| 2 `internal/application` SSA tests | `TestSSAIntegration` and `TestSSAFieldOwnershipWithMultipleManagers` self-skip under `-short` (`ssa_integration_test.go:48,220`); reported as skipped, not passing |
 | 1 controller envtest spec | Marked `Pending` in source; reported as pending, not passing |
 
 ## Post-baseline repository state
