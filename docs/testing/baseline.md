@@ -190,9 +190,13 @@ ways a naive private-Kind probe can still damage developer state:
 2. **Ownership-gated deletion.** A `CREATED` flag is set **only after** `kind create cluster`
    succeeds. Cleanup deletes the cluster **only when this run created it**, so a failed or
    skipped create never deletes a cluster that merely shares the name.
-3. **Private kubeconfig on delete + fail-fast.** `set -euo pipefail` makes any failing phase
-   abort immediately, and the `EXIT`/`INT`/`TERM` trap preserves that failing phase's exit code
-   while cleaning up. The delete passes `--kubeconfig "$KCFG"` so Kind cannot fall back to
+3. **Signal-correct exits, private kubeconfig on delete, fail-fast.** `set -euo pipefail` makes
+   any failing phase abort immediately. Cleanup runs from **three dedicated traps**: `EXIT`
+   preserves the ordinary success or failing-phase status, while `INT` and `TERM` inject an
+   explicit `130`/`143` so an interrupt exits nonzero even when it lands right after a
+   *successful* phase — a single shared `$?` trap would capture `0` there and report a false
+   success. A run-once guard makes the scoped teardown execute exactly once across the
+   signal→`EXIT` cascade. The delete passes `--kubeconfig "$KCFG"` so Kind cannot fall back to
    `$KUBECONFIG` or the developer's `~/.kube/config`; a cleanup failure is reported and forces a
    nonzero exit rather than being masked as success.
 
@@ -208,9 +212,12 @@ NODE_IMAGE="kindest/node:v1.35.0@sha256:4613778f3cfcd10e615029370f5786704559103c
 CLUSTER="optipod-baseline-probe-$$-$(date +%s)-${RANDOM}"
 KCFG="$(mktemp -t optipod-probe-kubeconfig.XXXXXX)"   # private kubeconfig, never the default
 CREATED=0   # ownership flag: set to 1 only after THIS run creates the cluster
+CLEANED=0   # run-once guard: the scoped teardown body executes exactly once
 
 cleanup() {
-  rc=$?   # preserve the failing phase's exit code
+  rc="$1"   # explicit status from the firing trap, NOT a shared $?
+  if [ "$CLEANED" = "1" ]; then exit "$rc"; fi   # scoped teardown runs exactly once
+  CLEANED=1
   if [ "$CREATED" = "1" ]; then
     # Delete ONLY the cluster this run owns, and pass the private kubeconfig so Kind
     # cannot fall back to $KUBECONFIG or the developer's ~/.kube/config.
@@ -220,10 +227,12 @@ cleanup() {
     fi
   fi
   rm -f "$KCFG"
-  trap - EXIT
   exit "$rc"
 }
-trap cleanup EXIT INT TERM   # ownership-gated, private-kubeconfig teardown on any exit
+# Dedicated traps so an interrupt exits nonzero even after a successful phase:
+trap 'cleanup "$?"' EXIT   # ordinary success or failing-phase status
+trap 'cleanup 130'  INT    # 128 + SIGINT(2)
+trap 'cleanup 143'  TERM   # 128 + SIGTERM(15)
 
 kind create cluster --name "$CLUSTER" --kubeconfig "$KCFG" \
   --image "$NODE_IMAGE" --wait 90s
@@ -239,11 +248,15 @@ kubectl --kubeconfig "$KCFG" get namespace probe-ns
 The cleanup is **ownership-gated and owned-cluster-scoped**: it runs only when `CREATED=1`
 (this run successfully created the cluster) and targets the strongly-unique probe name with the
 private kubeconfig — never `kind delete cluster` without a name, never without `--kubeconfig`,
-and never the developer's `kind` cluster. If any phase fails or the probe is interrupted
-(`INT`/`TERM`), the trap performs the same scoped teardown while **preserving the failing
-phase's exit code**; if the delete itself fails, that ambiguous cleanup is logged and forces a
-nonzero exit instead of being masked. The `Delete` row below is the clean-exit timing; a
-mid-run failure would report the failing phase's nonzero code after the same scoped cleanup.
+and never the developer's `kind` cluster. On an ordinary exit the `EXIT` trap preserves the
+success or failing-phase status; if the probe is interrupted the dedicated `INT`/`TERM` traps
+inject an explicit `130`/`143`, so a signal that lands right after a *successful* phase still
+exits nonzero instead of a false success (a single shared `$?` trap captured `0` there). The
+run-once guard makes the scoped teardown execute exactly once across the signal→`EXIT` cascade,
+and if the delete itself fails that ambiguous cleanup is logged and forces a nonzero exit. The
+`Delete` row below is the clean-exit timing; a mid-run failure or interrupt would report the
+nonzero code after the same single scoped cleanup. The trap contract is proved below by a
+shell-only simulation that stubs `kind` and never touches a real cluster.
 
 | Phase | Exit | real |
 | --- | --- | --- |
@@ -260,6 +273,60 @@ mid-run failure would report the failing phase's nonzero code after the same sco
 
 The probe proves ephemeral private-kubeconfig cluster lifecycle only. It does **not** prove
 installed-controller, webhook, or ready-workload behavior; those are M2+ acceptance checks.
+
+### Shell-only trap simulation (no real cluster)
+
+The signal-exit contract is verified **without** creating or deleting a Kind cluster: the
+probe's exact trap wiring is driven with `kind create cluster` / `kind delete cluster` replaced
+by shell stubs. Each scenario runs as a **foreground** process that self-signals via `$$` after
+a successful phase. Foreground execution is required: a backgrounded job inherits `SIGINT` as
+ignored (POSIX async behaviour), so its `INT` trap would never fire and the test would be a
+false negative. The stubbed cleanup appends one line per invocation to a log, so the line count
+proves the scoped teardown ran exactly once.
+
+```bash
+set -euo pipefail
+MODE="$1"; CLEAN_LOG="$2"
+CREATED=0
+CLEANED=0
+
+cleanup() {
+  rc="$1"
+  if [ "$CLEANED" = "1" ]; then exit "$rc"; fi   # scoped teardown runs exactly once
+  CLEANED=1
+  if [ "$CREATED" = "1" ]; then
+    echo cleanup >> "$CLEAN_LOG"   # stub for: kind delete cluster --name ... --kubeconfig ...
+  fi
+  exit "$rc"
+}
+trap 'cleanup "$?"' EXIT   # ordinary success or failing-phase status
+trap 'cleanup 130'  INT    # 128 + SIGINT(2)
+trap 'cleanup 143'  TERM   # 128 + SIGTERM(15)
+
+CREATED=1                  # stub for a successful: kind create cluster ...
+true                       # a SUCCESSFUL phase, so a naive $? would be 0 at the signal
+case "$MODE" in
+  normal) : ;;
+  fail)   false ;;                 # a failing phase under set -e
+  int)    kill -INT  "$$" ; sleep 10 ;;
+  term)   kill -TERM "$$" ; sleep 10 ;;
+esac
+```
+
+Measured results (each mode run in the foreground as `bash <script> "$MODE" "$log"`, exit code
+captured, cleanup-log lines counted; `bash 3.2.57` on this host):
+
+| Mode | Exit (want) | Scoped cleanup invocations (want) |
+| --- | --- | --- |
+| `normal` | 0 (0) | 1 (1) |
+| `fail` | 1 (1) | 1 (1) |
+| `int` (SIGINT after a good phase) | 130 (130) | 1 (1) |
+| `term` (SIGTERM after a good phase) | 143 (143) | 1 (1) |
+
+For contrast, the previous single `trap cleanup EXIT INT TERM` reading `rc=$?` returns exit
+**0** for both `int` and `term`, because `$?` is `0` after the successful phase — the
+false-success this fix removes. The `normal` and `fail` exits are unchanged by the fix, so
+ordinary success and failing-phase behaviour are preserved.
 
 ## Counts summary
 
@@ -287,4 +354,3 @@ installed-controller, webhook, or ready-workload behavior; those are M2+ accepta
 `git status --short` was **empty** after all commands above, confirming the viable fast
 layer, vet, lint, focused envtest, image build, and the isolated Kind probe mutated no
 tracked files and left no working-tree changes.
-</content>
