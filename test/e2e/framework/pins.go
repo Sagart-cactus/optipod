@@ -53,12 +53,17 @@ const (
 	// name-prefixed identities the harness verifies after install.
 	ControllerDeploymentName     = "optipod-controller-manager"
 	ControllerServiceAccountName = "optipod-controller-manager"
-	OptimizationPolicyCRDName    = "optimizationpolicies.optipod.optipod.io"
-	WebhookServiceName           = "optipod-webhook-service"
-	WebhookConfigurationName     = "mutating-webhook-configuration"
-	WebhookCertSecretName        = "webhook-server-certs"
-	WebhookServicePort           = 443
-	WebhookServerPort            = 9443
+	// ControllerContainerName is the shipped manager container name inside
+	// the controller pod.
+	ControllerContainerName = "manager"
+	// ControllerPodSelector matches the shipped controller-manager pods.
+	ControllerPodSelector     = "control-plane=controller-manager"
+	OptimizationPolicyCRDName = "optimizationpolicies.optipod.optipod.io"
+	WebhookServiceName        = "optipod-webhook-service"
+	WebhookConfigurationName  = "mutating-webhook-configuration"
+	WebhookCertSecretName     = "webhook-server-certs"
+	WebhookServicePort        = 443
+	WebhookServerPort         = 9443
 	// WebhookPath is the admission path served by the production webhook server
 	// (internal/webhook/server.go registers "/mutate", matching the shipped
 	// Helm chart; config/webhook/webhook-config.yaml's "/mutate-v1-pod" predates

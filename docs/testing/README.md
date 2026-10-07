@@ -16,6 +16,38 @@ and `coverage-matrix.md` for what each future test must prove and which legacy s
 supersedes, then `baseline.md` and `legacy-hazards.md` for measured context and the hazards
 being removed.
 
+## New hermetic Kind suite (M2, now executable)
+
+The new installed-controller suite lives in `test/e2e/suite` and is the only package the
+targets below run — the legacy suites (`test/e2e` root package, `test/e2e/contract`) are
+never invoked by them, and `go test ./test/e2e/...` is never used. Each invocation owns one
+uniquely named Kind cluster with a private kubeconfig, builds/loads/installs the checkout
+controller once, and removes only its own cluster. `KEEP_CLUSTER=1` retains the owned
+cluster and prints private-kubeconfig inspection/disposal commands.
+
+| Command | Purpose |
+| --- | --- |
+| `make test-e2e-labels E2E_LABELS="diagnostics"` | Run the new suite filtered by Ginkgo label (also `E2E_LABELS="smoke"`, `"smoke && webhook"`, `"webhook"`, `"failure-recovery"`, ...). `E2E_SUITE_TIMEOUT` (default `45m`) bounds the `go test` timeout. |
+| `make test-e2e-deliberate-failure` | Opt-in spec that fails one deliberate assertion to exercise pre-teardown redacted diagnostics; a nonzero exit and a redacted bundle are the expected outcome, not a product defect. |
+
+Labels currently in the suite: `diagnostics` (harness self-check), `deliberate-failure`
+(opt-in failure-path validation). The behavior labels `smoke`, `webhook` and
+`failure-recovery` from `design.md` §5 arrive with the M2 smoke features; `conformance`,
+`rbac`, `observability` and friends with M3.
+
+Every invocation — success or failure — writes into a git-ignored
+`test/e2e/artifacts/run-<id>/` directory (override with `OPTIPOD_E2E_ARTIFACTS_DIR`):
+
+- `junit.xml` — parseable per-spec JUnit (`tests`/`failures`/`skipped` attributes; `[It]`
+  testcases are the specs; `[BeforeSuite]`/`[AfterSuite]` testcases record setup state).
+- `timings.json` — measured setup, spec, diagnostics and teardown phases; phases that did
+  not run in that invocation are explicitly marked `"skipped": true`.
+- `diagnostics/` — on failure only: the original failure text, controller logs, scoped
+  events, policy/workload/pod YAML/status, deployment/pod state, webhook configuration and
+  CA **metadata**, metrics-fixture trace, and Secret **metadata only**. Kubeconfig
+  contents, Secret values, private keys, bearer tokens and credentials are structurally
+  excluded and additionally scrubbed to `[REDACTED]`.
+
 Honesty boundaries that apply across all M1 docs: local timings are warm, single-host
 measurements (not universal cold-start numbers); pending/skipped/simulator-only/fixture-only
 legacy checks are never credited as deployed-behaviour proof; and every coverage-matrix row is

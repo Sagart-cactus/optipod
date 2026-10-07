@@ -149,7 +149,7 @@ func WaitForWebhookCABundle(ctx context.Context, clients *Clients, caPEM []byte,
 // identity rather than any pre-existing or cached image.
 func VerifyControllerIdentity(ctx context.Context, clients *Clients, image *BuiltImage) error {
 	pods, err := clients.Kube.CoreV1().Pods(SystemNamespace).List(ctx, metav1.ListOptions{
-		LabelSelector: "control-plane=controller-manager",
+		LabelSelector: ControllerPodSelector,
 	})
 	if err != nil {
 		return fmt.Errorf("list controller pods: %w", err)
@@ -165,12 +165,12 @@ func VerifyControllerIdentity(ctx context.Context, clients *Clients, image *Buil
 		}
 		var specImage, statusImageID string
 		for _, c := range pod.Spec.Containers {
-			if c.Name == "manager" {
+			if c.Name == ControllerContainerName {
 				specImage = c.Image
 			}
 		}
 		for _, cs := range pod.Status.ContainerStatuses {
-			if cs.Name == "manager" {
+			if cs.Name == ControllerContainerName {
 				statusImageID = cs.ImageID
 			}
 		}

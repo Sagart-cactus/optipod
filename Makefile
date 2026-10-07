@@ -37,7 +37,7 @@ all: build
 
 .PHONY: help
 help: ## Display this help.
-	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make \033[36m<target>\033[0m\n"} /^[a-zA-Z_0-9-]+:.*?##/ { printf "  \033[36m%-15s\033[0m %s\n", $1, $2 } /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($0, 5) } ' $(MAKEFILE_LIST)
+	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make \033[36m<target>\033[0m\n"} /^[a-zA-Z_0-9-]+:.*?##/ { printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2 } /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
 
 ##@ Code Quality
 
@@ -364,6 +364,31 @@ cleanup-e2e: ## Clean up e2e test environment
 cleanup-contract-e2e: ## Clean up contract e2e test environment
 	@echo "Cleaning up contract e2e test environment..."
 	@kind delete cluster --name optipod-contract-e2e || true
+
+##@ Hermetic Kind Suite (new harness)
+
+# The new suite lives ONLY in test/e2e/suite: these targets never invoke the
+# legacy suites (test/e2e root package or test/e2e/contract) and never touch
+# the default kubeconfig, tracked config or existing clusters. Each invocation
+# owns one uniquely named Kind cluster, builds/loads/installs the checkout
+# controller once, and removes only its own cluster. Per-spec JUnit
+# (junit.xml), measured phase/spec timings (timings.json) and, on failure, a
+# redacted pre-teardown diagnostics bundle are written under
+# test/e2e/artifacts/run-<id>/ (git-ignored). KEEP_CLUSTER=1 retains the owned
+# cluster and prints private-kubeconfig inspection commands.
+E2E_SUITE ?= ./test/e2e/suite/
+E2E_SUITE_TIMEOUT ?= 45m
+E2E_LABELS ?= smoke
+
+.PHONY: test-e2e-labels
+test-e2e-labels: ## Run the new Kind suite with a Ginkgo label filter (E2E_LABELS="smoke && webhook")
+	@echo "Running the new Kind suite (package: $(E2E_SUITE)) with label filter: $(E2E_LABELS)"
+	go test $(E2E_SUITE) -count=1 -timeout=$(E2E_SUITE_TIMEOUT) -v -ginkgo.v -ginkgo.label-filter="$(E2E_LABELS)"
+
+.PHONY: test-e2e-deliberate-failure
+test-e2e-deliberate-failure: ## Deliberately fail one suite spec to verify pre-teardown redacted diagnostics (expected nonzero exit)
+	@echo "Deliberately failing one new-suite spec to exercise redacted failure diagnostics (nonzero exit is expected)"
+	OPTIPOD_E2E_DELIBERATE_FAILURE=1 go test $(E2E_SUITE) -count=1 -timeout=$(E2E_SUITE_TIMEOUT) -v -ginkgo.v -ginkgo.label-filter="deliberate-failure"
 
 ##@ Dependencies
 
