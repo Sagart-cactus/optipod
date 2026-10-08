@@ -3,8 +3,10 @@ package framework
 import (
 	"context"
 	"errors"
+	"os/exec"
 	"strings"
 	"testing"
+	"time"
 )
 
 // okPreflighter returns a Preflighter whose injected dependencies all succeed,
@@ -107,5 +109,40 @@ func assertBlocker(t *testing.T, err error, wantCheck string) {
 	}
 	if strings.TrimSpace(b.Remedy) == "" {
 		t.Errorf("blocker %q has no actionable remedy", b.Check)
+	}
+}
+
+// TestExecRunnerReturnsWhenOrphanHoldsOutputPipe reproduces the hang the runner
+// must bound: a cancelled command (e.g. docker build on its timeout) can leave
+// a descendant holding the output pipe open. Without the WaitDelay bound, the
+// cancelled build's Wait would block until the orphan exits and the suite would
+// stall with an owned cluster left behind.
+func TestExecRunnerReturnsWhenOrphanHoldsOutputPipe(t *testing.T) {
+	bash, err := exec.LookPath("bash")
+	if err != nil {
+		t.Skipf("bash not available: %v", err)
+	}
+
+	oldDelay := commandWaitDelay
+	commandWaitDelay = 300 * time.Millisecond
+	t.Cleanup(func() { commandWaitDelay = oldDelay })
+
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		cancel()
+	}()
+
+	start := time.Now()
+	// The background sleep inherits bash's stdout (the runner's pipe) and
+	// survives bash's exit, exactly like an orphaned buildx session proxy.
+	_, err = execRunner(ctx, bash, "-c", "sleep 30 & exit 0")
+	elapsed := time.Since(start)
+
+	if err == nil {
+		t.Fatal("a cancelled command must return an error, got nil")
+	}
+	if elapsed > 5*time.Second {
+		t.Fatalf("runner stayed blocked for %s waiting on an orphaned pipe holder; the WaitDelay bound did not apply", elapsed)
 	}
 }

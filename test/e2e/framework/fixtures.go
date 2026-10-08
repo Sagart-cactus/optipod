@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -192,6 +193,15 @@ func WithResourceBounds(cpuMin, cpuMax, memMin, memMax string) PolicyOption {
 func WithWorkloadSelector(matchLabels map[string]string) PolicyOption {
 	return func(p *optipodv1alpha1.OptimizationPolicy) {
 		p.Spec.Selector.WorkloadSelector = &metav1.LabelSelector{MatchLabels: matchLabels}
+	}
+}
+
+// WithReconciliationInterval sets the policy's supported requeue interval so
+// installed-controller scenarios observe fresh reconciles within their bounded
+// waits instead of relying on long fixed sleeps or repeated manual triggers.
+func WithReconciliationInterval(d time.Duration) PolicyOption {
+	return func(p *optipodv1alpha1.OptimizationPolicy) {
+		p.Spec.ReconciliationInterval = metav1.Duration{Duration: d}
 	}
 }
 

@@ -3,6 +3,7 @@ package framework
 import (
 	"strings"
 	"testing"
+	"time"
 
 	optipodv1alpha1 "github.com/optipod/optipod/api/v1alpha1"
 )
@@ -112,6 +113,7 @@ func TestPolicyFixtureDefaultsAndOptions(t *testing.T) {
 		WithWeight(250),
 		WithResourceBounds("100m", "2", "128Mi", "4Gi"),
 		WithWorkloadSelector(map[string]string{"app": "web"}),
+		WithReconciliationInterval(30*time.Second),
 	)
 	if *custom.Spec.UpdateStrategy.Strategy != "ssa" {
 		t.Errorf("strategy = %q", *custom.Spec.UpdateStrategy.Strategy)
@@ -124,5 +126,8 @@ func TestPolicyFixtureDefaultsAndOptions(t *testing.T) {
 	}
 	if custom.Spec.Selector.WorkloadSelector.MatchLabels["app"] != "web" {
 		t.Error("workload selector not applied")
+	}
+	if custom.Spec.ReconciliationInterval.Duration != 30*time.Second {
+		t.Errorf("reconciliation interval = %v, want 30s", custom.Spec.ReconciliationInterval.Duration)
 	}
 }

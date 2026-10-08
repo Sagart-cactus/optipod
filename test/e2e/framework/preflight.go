@@ -31,8 +31,17 @@ func (b *Blocker) Error() string {
 // commandRunner runs a command bounded by ctx and returns its combined output.
 type commandRunner func(ctx context.Context, name string, args ...string) ([]byte, error)
 
+// commandWaitDelay bounds how long a cancelled command's Wait may keep waiting
+// once its output pipes are held open by an orphaned descendant. docker build
+// (buildx) can leave a session proxy or credential helper holding the output
+// pipe after the CLI itself exits; without this bound, cancelling a hung build
+// would leave the whole suite blocked forever with an owned cluster behind it.
+var commandWaitDelay = 10 * time.Second
+
 func execRunner(ctx context.Context, name string, args ...string) ([]byte, error) {
-	return exec.CommandContext(ctx, name, args...).CombinedOutput()
+	cmd := exec.CommandContext(ctx, name, args...)
+	cmd.WaitDelay = commandWaitDelay
+	return cmd.CombinedOutput()
 }
 
 // Preflighter verifies host prerequisites before any cluster is owned. Every

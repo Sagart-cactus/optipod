@@ -369,16 +369,23 @@ cleanup-contract-e2e: ## Clean up contract e2e test environment
 
 # The new suite lives ONLY in test/e2e/suite: these targets never invoke the
 # legacy suites (test/e2e root package or test/e2e/contract) and never touch
-# the default kubeconfig, tracked config or existing clusters. Each invocation
-# owns one uniquely named Kind cluster, builds/loads/installs the checkout
-# controller once, and removes only its own cluster. Per-spec JUnit
-# (junit.xml), measured phase/spec timings (timings.json) and, on failure, a
-# redacted pre-teardown diagnostics bundle are written under
-# test/e2e/artifacts/run-<id>/ (git-ignored). KEEP_CLUSTER=1 retains the owned
-# cluster and prints private-kubeconfig inspection commands.
+# the default kubeconfig, tracked config or existing clusters. `make
+# test-e2e-smoke` is the one-command entry point from a clean checkout: it
+# preflights, creates its own uniquely named Kind cluster, builds and loads the
+# checkout controller once, installs it together with the webhook and the
+# deterministic in-cluster metrics fixture, runs the smoke-labelled specs and
+# removes only its own cluster. Per-spec JUnit (junit.xml), measured phase/spec timings
+# (timings.json) and, on failure, a redacted pre-teardown diagnostics bundle
+# are written under test/e2e/artifacts/run-<id>/ (git-ignored). KEEP_CLUSTER=1
+# retains the owned cluster and prints private-kubeconfig inspection commands.
 E2E_SUITE ?= ./test/e2e/suite/
 E2E_SUITE_TIMEOUT ?= 45m
 E2E_LABELS ?= smoke
+
+.PHONY: test-e2e-smoke
+test-e2e-smoke: ## Run the hermetic installed-controller smoke suite end to end (one command; owns and removes its Kind cluster)
+	@echo "Running the hermetic installed-controller smoke suite (label filter: smoke)..."
+	go test $(E2E_SUITE) -count=1 -timeout=$(E2E_SUITE_TIMEOUT) -v -ginkgo.v -ginkgo.label-filter="smoke"
 
 .PHONY: test-e2e-labels
 test-e2e-labels: ## Run the new Kind suite with a Ginkgo label filter (E2E_LABELS="smoke && webhook")

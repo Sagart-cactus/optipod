@@ -27,13 +27,15 @@ cluster and prints private-kubeconfig inspection/disposal commands.
 
 | Command | Purpose |
 | --- | --- |
+| `make test-e2e-smoke` | The one-command smoke entry point (M2): runs the smoke-labelled specs of the new suite end to end from a clean checkout — preflight → owned cluster → one build/load/install → specs → diagnostics on failure → teardown. |
 | `make test-e2e-labels E2E_LABELS="diagnostics"` | Run the new suite filtered by Ginkgo label (also `E2E_LABELS="smoke"`, `"smoke && webhook"`, `"webhook"`, `"failure-recovery"`, ...). `E2E_SUITE_TIMEOUT` (default `45m`) bounds the `go test` timeout. |
 | `make test-e2e-deliberate-failure` | Opt-in spec that fails one deliberate assertion to exercise pre-teardown redacted diagnostics; a nonzero exit and a redacted bundle are the expected outcome, not a product defect. |
 
-Labels currently in the suite: `diagnostics` (harness self-check), `deliberate-failure`
-(opt-in failure-path validation). The behavior labels `smoke`, `webhook` and
-`failure-recovery` from `design.md` §5 arrive with the M2 smoke features; `conformance`,
-`rbac`, `observability` and friends with M3.
+Labels currently in the suite: `smoke` (critical installed-controller behaviour; the smoke specs also carry
+`install`/`policy` for API admission and readiness and `modes`/`recommend`/`auto`/`ssa` for the Recommend and
+Auto scenarios), `diagnostics` (harness self-check) and `deliberate-failure` (opt-in failure-path validation).
+The remaining behavior labels from `design.md` §5 — `webhook` and `failure-recovery` — arrive with the
+remaining M2 smoke features; `conformance`, `rbac`, `observability` and friends with M3.
 
 Every invocation — success or failure — writes into a git-ignored
 `test/e2e/artifacts/run-<id>/` directory (override with `OPTIPOD_E2E_ARTIFACTS_DIR`):
@@ -50,6 +52,6 @@ Every invocation — success or failure — writes into a git-ignored
 
 Honesty boundaries that apply across all M1 docs: local timings are warm, single-host
 measurements (not universal cold-start numbers); pending/skipped/simulator-only/fixture-only
-legacy checks are never credited as deployed-behaviour proof; and every coverage-matrix row is
-`Planned` at M1 — `make test-e2e-smoke` first exists in M2 and `make test-e2e-conformance` in
-M3.
+legacy checks are never credited as deployed-behaviour proof; `make test-e2e-smoke` exists
+as of M2 while `make test-e2e-conformance` first exists in M3, and every coverage-matrix row
+claims only what its named, executing test proves.
