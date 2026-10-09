@@ -8,6 +8,7 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -95,10 +96,10 @@ func waitForPolicyStatus(ctx context.Context, namespace, name string, want polic
 // waitForDeploymentAnnotation waits (bounded) until the deployment carries all
 // the expected annotation key/value pairs, and returns the observed deployment
 // so callers can also assert the management annotations and unchanged fields.
-func waitForDeploymentAnnotation(ctx context.Context, namespace, name string, want map[string]string, timeout time.Duration) *appsv1.Deployment {
+func waitForDeploymentAnnotation(ctx context.Context, namespace, name string, want map[string]string) *appsv1.Deployment {
 	var observed *appsv1.Deployment
 	err := framework.WaitForCondition(ctx, framework.WaitOptions{
-		Timeout:     timeout,
+		Timeout:     policyStatusTimeout,
 		Description: fmt.Sprintf("deployment %s/%s to carry recommendation annotations %v", namespace, name, want),
 	}, func(ctx context.Context) (bool, error) {
 		dep := &appsv1.Deployment{}
@@ -118,12 +119,10 @@ func waitForDeploymentAnnotation(ctx context.Context, namespace, name string, wa
 }
 
 // waitForDeploymentRequests waits (bounded) until the deployment's container
-// template carries exactly the expected CPU/memory requests, and returns the
-// observed deployment for further assertions.
-func waitForDeploymentRequests(ctx context.Context, namespace, name, container, cpu, memory string, timeout time.Duration) *appsv1.Deployment {
-	var observed *appsv1.Deployment
+// template carries exactly the expected CPU/memory requests.
+func waitForDeploymentRequests(ctx context.Context, namespace, name, container, cpu, memory string) {
 	err := framework.WaitForCondition(ctx, framework.WaitOptions{
-		Timeout: timeout,
+		Timeout: policyStatusTimeout,
 		Description: fmt.Sprintf("deployment %s/%s container %q requests to become cpu=%s memory=%s",
 			namespace, name, container, cpu, memory),
 	}, func(ctx context.Context) (bool, error) {
@@ -138,11 +137,9 @@ func waitForDeploymentRequests(ctx context.Context, namespace, name, container, 
 		if gotCPU.String() != cpu || gotMemory.String() != memory {
 			return false, nil
 		}
-		observed = dep
 		return true, nil
 	})
 	Expect(err).NotTo(HaveOccurred(), "deployed controller never applied the expected workload requests")
-	return observed
 }
 
 // containerRequests returns the CPU/memory requests of the named container, or
@@ -225,6 +222,34 @@ func isReady(pod *corev1.Pod) bool {
 		}
 	}
 	return false
+}
+
+// waitForPodsToSettle waits (bounded) until exactly count pods matching the
+// selector remain and none of the before UIDs survive. A replaced pod stays
+// visible (Terminating) after its replacement is ready, so a pod-identity
+// snapshot taken too early could change without any rollout churn; this wait
+// bounds that window before steady-state captures.
+func waitForPodsToSettle(ctx context.Context, namespace, labelSelector string, count int, before map[types.UID]string, timeout time.Duration) {
+	err := framework.WaitForCondition(ctx, framework.WaitOptions{
+		Timeout: timeout,
+		Description: fmt.Sprintf("pods matching %q in %s to settle at exactly %d with none of the replaced identities",
+			labelSelector, namespace, count),
+	}, func(ctx context.Context) (bool, error) {
+		list, err := env.Clients.Kube.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{LabelSelector: labelSelector})
+		if err != nil {
+			return false, err
+		}
+		if len(list.Items) != count {
+			return false, nil
+		}
+		for _, pod := range list.Items {
+			if _, existed := before[pod.UID]; existed {
+				return false, nil
+			}
+		}
+		return true, nil
+	})
+	Expect(err).NotTo(HaveOccurred(), "replaced pods never finished terminating before the steady-state snapshot")
 }
 
 // containerSamples describes the deterministic fixture input for one workload
@@ -371,4 +396,114 @@ func expectManagementAnnotations(dep *appsv1.Deployment, policy *optipodv1alpha1
 	Expect(err).NotTo(HaveOccurred(), "optipod.io/last-recommendation is not an RFC3339 timestamp")
 	Expect(last.After(createdAfter.Add(-clockSkewTolerance))).To(BeTrue(),
 		"last-recommendation timestamp predates policy creation")
+}
+
+// nextReconcileTimeout bounds the wait for one further policy reconciliation
+// after a reference reconcile. The smoke fixtures set a 30s reconciliation
+// interval, so three intervals absorb requeue jitter without hiding a stalled
+// controller behind an overlong deadline.
+const nextReconcileTimeout = 90 * time.Second
+
+// waitForNextReconcile waits (bounded) until the installed policy reports a
+// completed reconciliation strictly after the reference time, and returns the
+// observed policy. This observes the controller's own requeue loop — no fixed
+// sleep is involved — and is how steady-state specs prove behavior across two
+// distinct completed reconciles.
+func waitForNextReconcile(ctx context.Context, namespace, name string, after time.Time) *optipodv1alpha1.OptimizationPolicy {
+	var observed *optipodv1alpha1.OptimizationPolicy
+	err := framework.WaitForCondition(ctx, framework.WaitOptions{
+		Timeout: nextReconcileTimeout,
+		Description: fmt.Sprintf("policy %s/%s to complete another reconciliation after %s",
+			namespace, name, after.Format(time.RFC3339)),
+	}, func(ctx context.Context) (bool, error) {
+		policy := &optipodv1alpha1.OptimizationPolicy{}
+		if err := env.Clients.Ctrl.Get(ctx, types.NamespacedName{Namespace: namespace, Name: name}, policy); err != nil {
+			return false, err
+		}
+		if policy.Status.LastReconciliation == nil {
+			return false, nil
+		}
+		if !policy.Status.LastReconciliation.After(after) {
+			return false, nil
+		}
+		observed = policy
+		return true, nil
+	})
+	Expect(err).NotTo(HaveOccurred(), "installed policy never completed a further bounded reconcile")
+	return observed
+}
+
+// steadyState captures the rollout-relevant observables of a smoke workload:
+// the Deployment revision annotation (bumped only on pod-template changes by
+// the Deployment controller), the ReplicaSet set (a rollout always adds one),
+// the live pod identities and the pod-template spec.
+//
+// metadata.generation is deliberately NOT part of this snapshot: the upstream
+// Deployment registry strategy bumps generation on annotation-only updates too
+// (annotations are copied from Deployments to their ReplicaSets), and the
+// controller writes a fresh optipod.io/last-recommendation timestamp on every
+// reconcile, so generation moves by design while a converged workload must
+// not. The stable no-churn observables are the revision, the ReplicaSet set,
+// the pod identities and the pod-template contents.
+type steadyState struct {
+	revision    string
+	replicaSets []string
+	podUIDs     map[types.UID]string
+	template    corev1.PodTemplateSpec
+}
+
+// captureSteadyState reads one workload's steady-state observables through the
+// private-config typed API.
+func captureSteadyState(ctx context.Context, namespace, name, podSelector string) steadyState {
+	dep := &appsv1.Deployment{}
+	Expect(env.Clients.Ctrl.Get(ctx, types.NamespacedName{Namespace: namespace, Name: name}, dep)).
+		To(Succeed(), "read workload %s/%s for the steady-state snapshot", namespace, name)
+	return steadyState{
+		revision:    dep.Annotations["deployment.kubernetes.io/revision"],
+		replicaSets: replicaSetNames(ctx, namespace, podSelector),
+		podUIDs:     podUIDs(ctx, namespace, podSelector),
+		template:    *dep.Spec.Template.DeepCopy(),
+	}
+}
+
+// expectSteadyWorkload re-reads the workload and asserts every steady-state
+// observable is unchanged, proving the completed reconcile between the
+// snapshot and this check caused no rollout churn.
+func expectSteadyWorkload(ctx context.Context, before steadyState, namespace, name, podSelector, afterWhat string) {
+	dep := &appsv1.Deployment{}
+	Expect(env.Clients.Ctrl.Get(ctx, types.NamespacedName{Namespace: namespace, Name: name}, dep)).
+		To(Succeed(), "read workload %s/%s after %s", namespace, name, afterWhat)
+	Expect(dep.Annotations["deployment.kubernetes.io/revision"]).To(Equal(before.revision),
+		"%s triggered a new Deployment revision (rollout churn)", afterWhat)
+	Expect(replicaSetNames(ctx, namespace, podSelector)).To(Equal(before.replicaSets),
+		"%s created or removed ReplicaSets (rollout churn)", afterWhat)
+	Expect(podUIDs(ctx, namespace, podSelector)).To(Equal(before.podUIDs),
+		"%s restarted or replaced workload pods (rollout churn)", afterWhat)
+	Expect(apiequality.Semantic.DeepEqual(dep.Spec.Template, before.template)).To(BeTrue(),
+		"%s changed the pod template", afterWhat)
+}
+
+// expectAppliedContainerRequests asserts every sampled container of a live pod
+// carries exactly the fixture-derived applied requests and no limits (the
+// default updateRequestsOnly behavior): no container may keep its previous
+// values or lose its requests.
+func expectAppliedContainerRequests(containers []corev1.Container, samples []containerSamples, what string) {
+	for _, s := range samples {
+		cpu, memory := containerRequests(containers, s.name)
+		Expect(cpu).NotTo(BeNil(), "%s lost container %s", what, s.name)
+		Expect(memory).NotTo(BeNil(), "%s lost container %s memory request", what, s.name)
+		Expect(cpu.String()).To(Equal(s.expectedCPU),
+			"%s: container %s was not set to its recommended CPU request %s", what, s.name, s.expectedCPU)
+		Expect(memory.String()).To(Equal(s.expectedMemory),
+			"%s: container %s was not set to its recommended memory request %s", what, s.name, s.expectedMemory)
+		Expect(cpu.String()).NotTo(Equal(s.initialCPU),
+			"%s: container %s was left with its previous CPU request", what, s.name)
+		Expect(memory.String()).NotTo(Equal(s.initialMemory),
+			"%s: container %s was left with its previous memory request", what, s.name)
+		cpuLimit, memLimit := containerLimits(containers, s.name)
+		Expect(cpuLimit).To(BeNil(),
+			"%s: container %s was given a CPU limit the default updateRequestsOnly behavior must not add", what, s.name)
+		Expect(memLimit).To(BeNil(),
+			"%s: container %s was given a memory limit the default updateRequestsOnly behavior must not add", what, s.name)
+	}
 }

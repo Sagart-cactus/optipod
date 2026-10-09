@@ -72,9 +72,9 @@ var _ = Describe("Explicit SSA managed-field ownership on the installed workload
 
 		By("waiting for the exact per-container request values to be applied")
 		waitForDeploymentRequests(ctx, ns.Name, workloadName, smokeApp.name,
-			smokeApp.expectedCPU, smokeApp.expectedMemory, waitTimeout)
+			smokeApp.expectedCPU, smokeApp.expectedMemory)
 		waitForDeploymentRequests(ctx, ns.Name, workloadName, smokeSidecar.name,
-			smokeSidecar.expectedCPU, smokeSidecar.expectedMemory, waitTimeout)
+			smokeSidecar.expectedCPU, smokeSidecar.expectedMemory)
 
 		By("reading the applied workload back through the private-config API")
 		applied := &appsv1.Deployment{}

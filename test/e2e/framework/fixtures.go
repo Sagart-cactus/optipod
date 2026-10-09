@@ -166,6 +166,17 @@ func WithStrategy(strategy, rollout string) PolicyOption {
 	}
 }
 
+// WithDefaultStrategy clears the strategy and rollout pointers so the deployed
+// controller exercises its own production defaults (webhook strategy with
+// onNextRestart rollout) instead of fixture-explicit values; specs proving the
+// default strategy use it so the default is observed live, not hard-coded.
+func WithDefaultStrategy() PolicyOption {
+	return func(p *optipodv1alpha1.OptimizationPolicy) {
+		p.Spec.UpdateStrategy.Strategy = nil
+		p.Spec.UpdateStrategy.RolloutStrategy = nil
+	}
+}
+
 // WithWeight sets the policy weight.
 func WithWeight(weight int32) PolicyOption {
 	return func(p *optipodv1alpha1.OptimizationPolicy) {

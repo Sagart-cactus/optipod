@@ -130,4 +130,16 @@ func TestPolicyFixtureDefaultsAndOptions(t *testing.T) {
 	if custom.Spec.ReconciliationInterval.Duration != 30*time.Second {
 		t.Errorf("reconciliation interval = %v, want 30s", custom.Spec.ReconciliationInterval.Duration)
 	}
+
+	defaults := NewPolicyFixture("ns-x", "policy-3", optipodv1alpha1.ModeAuto, WithDefaultStrategy())
+	if defaults.Spec.UpdateStrategy.Strategy != nil || defaults.Spec.UpdateStrategy.RolloutStrategy != nil {
+		t.Errorf("WithDefaultStrategy left strategy=%v rollout=%v, want both unset for the production default path",
+			defaults.Spec.UpdateStrategy.Strategy, defaults.Spec.UpdateStrategy.RolloutStrategy)
+	}
+	if got := defaults.GetStrategy(); got != optipodv1alpha1.StrategyWebhook {
+		t.Errorf("production default strategy = %q, want webhook", got)
+	}
+	if got := defaults.GetRolloutStrategy(); got != optipodv1alpha1.RolloutOnNextRestart {
+		t.Errorf("production default rollout strategy = %q, want onNextRestart", got)
+	}
 }

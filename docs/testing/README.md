@@ -32,13 +32,23 @@ cluster and prints private-kubeconfig inspection/disposal commands.
 | `make test-e2e-deliberate-failure` | Opt-in spec that fails one deliberate assertion to exercise pre-teardown redacted diagnostics; a nonzero exit and a redacted bundle are the expected outcome, not a product defect. |
 
 Labels currently in the suite: `smoke` (critical installed-controller behaviour; the smoke specs also carry
-`install`/`policy` for API admission and readiness, `modes`/`recommend`/`auto`/`ssa` for the Recommend and
-Auto scenarios, and `webhook` for the SSA managed-field-ownership scenario and the live TLS admission probe
-that mutates an eligible hand-labelled pod and admits ineligible pods unchanged — that probe proves
-admission reachability only, never natural rollout, which is a conformance-tier concern), `diagnostics`
-(harness self-check) and `deliberate-failure` (opt-in failure-path validation). The remaining behavior label
-from `design.md` §5 — `failure-recovery` — arrives with the remaining M2 smoke feature; `conformance`,
-`rbac`, `observability` and friends with M3.
+`install`/`policy` for API admission and readiness, and `modes` with `recommend` for the Recommend scenario and
+`auto` with `ssa` for the Auto scenario). The Auto scenario exercises the restored multi-container coverage on a
+two-container workload under the explicit `strategy: ssa`: one workload-wide apply lands both containers' exact
+values, the workload rolls once, and a steady state — unchanged revision, ReplicaSet set, pod identities and
+template — holds across a further completed reconcile with no rollout churn (VAL-SMOKE-002, VAL-SMOKE-005). The
+default-webhook-strategy half of VAL-SMOKE-005 (every eligible container mutated on each pod the Deployment
+controller admits naturally, existing pods untouched under the default `onNextRestart` rollout) is written and
+verified live but is not yet in the suite: it requires the pod→ReplicaSet→Deployment parent-annotation lookup
+the production mutator performs, and the kustomize `config/rbac/role.yaml` drifts from the shipped Helm chart
+(which grants the controller's service account `replicasets` read for exactly that lookup) so a
+`config/`-installed controller silently admits new Deployment pods unmutated; with the chart-mirroring one-line
+role addition the spec and the full suite pass. The `webhook` label also covers the SSA
+managed-field-ownership scenario and the live TLS admission probe that mutates an eligible hand-labelled pod and
+admits ineligible pods unchanged — that probe proves admission reachability only, never natural rollout, which is
+a conformance-tier concern), `diagnostics` (harness self-check) and `deliberate-failure` (opt-in failure-path
+validation). The remaining behavior label from `design.md` §5 — `failure-recovery` — arrives with the remaining
+M2 smoke feature; `conformance`, `rbac`, `observability` and friends with M3.
 
 Every invocation — success or failure — writes into a git-ignored
 `test/e2e/artifacts/run-<id>/` directory (override with `OPTIPOD_E2E_ARTIFACTS_DIR`):

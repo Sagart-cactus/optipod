@@ -11,6 +11,8 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
+
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	optipodv1alpha1 "github.com/optipod/optipod/api/v1alpha1"
@@ -21,31 +23,17 @@ import (
 // against deterministic metric samples served by the in-cluster fixture
 // (VAL-SMOKE-002). Recommend must write the exact per-container recommendation
 // annotations derived from the queried samples while leaving workload
-// requests/limits, the pod template and pod identities untouched; explicit
-// Auto under an SSA strategy must apply the corresponding distinct CPU and
-// memory values and roll the workload. The fixture's existence, a Ready policy
-// or an unchanged request alone can never pass these specs: each one observes
-// the controller's queries, the recommendation values and the workload state.
-//
-// The Auto spec uses a single-container workload. Applying to more than one
-// container under SSA is currently destructive in production (each
-// per-container apply shares the "optipod" field manager and omits the other
-// containers, so the API server prunes previously applied requests); that
-// behavior belongs to multi-container conformance, not to this smoke tier.
+// requests/limits, the pod template and pod identities untouched. Auto runs
+// the same two-container workload shape under the explicit SSA strategy
+// (VAL-SMOKE-005): one workload-wide apply must land both containers' exact
+// values, roll the workload once, and then hold a steady state — unchanged
+// revision, ReplicaSet set, pod identities and template — across a further
+// completed reconcile with no rollout churn. The fixture's existence, a Ready
+// policy or an unchanged request alone can never pass these specs: each one
+// observes the controller's queries, the recommendation values and the
+// workload/pod state.
 var _ = Describe("Recommend and Auto modes with deterministic deployed metrics", Label("smoke", "modes"), func() {
 	const waitTimeout = 3 * time.Minute
-
-	// recommendationAnnotations builds the exact per-container annotation map a
-	// policy with the default requests-only behavior must write.
-	recommendationAnnotations := func(samples []containerSamples) map[string]string {
-		prefix := optipodv1alpha1.AnnotationRecommendationPrefix
-		annotations := map[string]string{}
-		for _, s := range samples {
-			annotations[fmt.Sprintf("%s.%s.cpu-request", prefix, s.name)] = s.expectedCPU
-			annotations[fmt.Sprintf("%s.%s.memory-request", prefix, s.name)] = s.expectedMemory
-		}
-		return annotations
-	}
 
 	It("writes exact per-container recommendations without changing requests, limits or pods", Label("recommend"), func(ctx context.Context) {
 		ns := specNamespace(ctx, "smoke-recommend")
@@ -77,7 +65,7 @@ var _ = Describe("Recommend and Auto modes with deterministic deployed metrics",
 
 		By("waiting for the exact per-container recommendation annotations")
 		annotated := waitForDeploymentAnnotation(ctx, ns.Name, workload.Name,
-			recommendationAnnotations(smokeSamples()), waitTimeout)
+			recommendationAnnotations(smokeSamples()))
 		expectManagementAnnotations(annotated, policy, createdAt)
 
 		By("asserting requests, limits, the pod template and pod identity were left untouched")
@@ -124,15 +112,15 @@ var _ = Describe("Recommend and Auto modes with deterministic deployed metrics",
 		expectFixtureQueried(ctx, series)
 	})
 
-	It("applies the exact resource values under an explicit Auto SSA policy", Label("auto", "ssa"), func(ctx context.Context) {
+	It("applies both containers' exact values under an explicit Auto SSA policy and stays steady across a repeat reconcile", Label("auto", "ssa"), func(ctx context.Context) {
 		ns := specNamespace(ctx, "smoke-auto")
 		DeferCleanup(func(ctx context.Context) {
 			Expect(framework.DeleteNamespace(ctx, env.Clients, ns.Name)).To(Succeed(),
-				"clean up the Auto-mode spec namespace")
+				"clean up the Auto SSA spec namespace")
 		})
-		samples := []containerSamples{smokeApp}
+		samples := smokeSamples()
 
-		By("creating a single-container workload whose pod becomes ready")
+		By("creating a two-container workload whose pod becomes ready")
 		workload := createSmokeWorkload(ctx, ns.Name, "smoke-auto", samples)
 		podSelector := "app=" + workload.Name
 		beforeUIDs := podUIDs(ctx, ns.Name, podSelector)
@@ -150,33 +138,53 @@ var _ = Describe("Recommend and Auto modes with deterministic deployed metrics",
 		Expect(env.Clients.Ctrl.Create(ctx, policy)).To(Succeed(), "create the Auto policy")
 		createdAt := policy.CreationTimestamp.Time
 
-		By("waiting for the exact request values to be applied")
-		applied := waitForDeploymentRequests(ctx, ns.Name, workload.Name, smokeApp.name,
-			smokeApp.expectedCPU, smokeApp.expectedMemory, waitTimeout)
+		By("waiting for both containers' exact request values to coexist on the workload")
+		waitForDeploymentRequests(ctx, ns.Name, workload.Name, smokeApp.name,
+			smokeApp.expectedCPU, smokeApp.expectedMemory)
+		waitForDeploymentRequests(ctx, ns.Name, workload.Name, smokeSidecar.name,
+			smokeSidecar.expectedCPU, smokeSidecar.expectedMemory)
 
 		By("asserting the recommendation annotations and untouched limits on the applied workload")
+		applied := &appsv1.Deployment{}
+		Expect(env.Clients.Ctrl.Get(ctx, client.ObjectKeyFromObject(workload), applied)).
+			To(Succeed(), "read the applied workload")
 		expectManagementAnnotations(applied, policy, createdAt)
 		for key, value := range recommendationAnnotations(samples) {
 			Expect(applied.Annotations[key]).To(Equal(value),
 				"applied workload annotation %q has the wrong value", key)
 		}
-		gotCPULimit, gotMemLimit := containerLimits(applied.Spec.Template.Spec.Containers, smokeApp.name)
-		Expect(gotCPULimit).To(BeNil(),
-			"the default updateRequestsOnly=true behavior added a CPU limit to %s", smokeApp.name)
-		Expect(gotMemLimit).To(BeNil(),
-			"the default updateRequestsOnly=true behavior added a memory limit to %s", smokeApp.name)
+		expectAppliedContainerRequests(applied.Spec.Template.Spec.Containers, samples, "the applied pod template")
 
-		By("waiting for the rollout to produce a new ready pod with the applied values")
+		By("waiting for the rollout to produce a new ready pod with both containers' applied values")
 		Expect(framework.WaitForDeploymentAvailable(ctx, env.Clients, ns.Name, workload.Name,
 			framework.WaitOptions{Timeout: waitTimeout})).To(Succeed(),
 			"the applied workload never returned to Available")
 		freshPods := waitForReplacementPod(ctx, ns.Name, podSelector, beforeUIDs, waitTimeout)
-		podCPU, podMemory := containerRequests(freshPods[0].Spec.Containers, smokeApp.name)
-		Expect(podCPU).NotTo(BeNil(), "replacement pod lost container %s", smokeApp.name)
-		Expect(podCPU.String()).To(Equal(smokeApp.expectedCPU),
-			"replacement pod container %s does not carry the applied CPU request", smokeApp.name)
-		Expect(podMemory.String()).To(Equal(smokeApp.expectedMemory),
-			"replacement pod container %s does not carry the applied memory request", smokeApp.name)
+		expectAppliedContainerRequests(freshPods[0].Spec.Containers, samples, "the replacement pod")
+
+		By("waiting for the replaced pod to finish terminating before snapshotting identities")
+		waitForPodsToSettle(ctx, ns.Name, podSelector, 1, beforeUIDs, waitTimeout)
+
+		By("capturing the steady state and waiting for one more completed reconcile")
+		steady := captureSteadyState(ctx, ns.Name, workload.Name, podSelector)
+		reference := &optipodv1alpha1.OptimizationPolicy{}
+		Expect(env.Clients.Ctrl.Get(ctx, types.NamespacedName{Namespace: ns.Name, Name: policyName}, reference)).
+			To(Succeed(), "read the policy for the reference reconcile")
+		Expect(reference.Status.LastReconciliation).NotTo(BeNil(),
+			"the applied policy records no completed reconcile to reference")
+		reconciled := waitForNextReconcile(ctx, ns.Name, policyName,
+			reference.Status.LastReconciliation.Time)
+		Expect(reconciled.Status.WorkloadsProcessed).To(Equal(1),
+			"the completed repeat reconcile did not process the workload again")
+
+		By("asserting the completed repeat reconcile left both containers applied with no rollout churn")
+		expectSteadyWorkload(ctx, steady, ns.Name, workload.Name, podSelector,
+			"the completed repeat SSA reconcile")
+		settled := &appsv1.Deployment{}
+		Expect(env.Clients.Ctrl.Get(ctx, client.ObjectKeyFromObject(workload), settled)).
+			To(Succeed(), "read the settled workload")
+		expectAppliedContainerRequests(settled.Spec.Template.Spec.Containers, samples,
+			"the pod template after the repeat reconcile")
 
 		By("waiting for the policy's reconciliation summary")
 		waitForPolicyStatus(ctx, ns.Name, policyName, policyStatusWait{
@@ -192,6 +200,18 @@ var _ = Describe("Recommend and Auto modes with deterministic deployed metrics",
 		expectFixtureQueried(ctx, series)
 	})
 })
+
+// recommendationAnnotations builds the exact per-container annotation map a
+// policy with the default requests-only behavior must write.
+func recommendationAnnotations(samples []containerSamples) map[string]string {
+	prefix := optipodv1alpha1.AnnotationRecommendationPrefix
+	annotations := map[string]string{}
+	for _, s := range samples {
+		annotations[fmt.Sprintf("%s.%s.cpu-request", prefix, s.name)] = s.expectedCPU
+		annotations[fmt.Sprintf("%s.%s.memory-request", prefix, s.name)] = s.expectedMemory
+	}
+	return annotations
+}
 
 // createSmokeWorkload creates a Deployment with one container per sample and
 // waits until it is Available with a ready pod, so the deterministic fixture
