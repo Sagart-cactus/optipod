@@ -92,7 +92,7 @@ func (m *mockApplicationEngine) CanApply(ctx context.Context, workload *applicat
 	}, nil
 }
 
-func (m *mockApplicationEngine) Apply(ctx context.Context, workload *application.Workload, containerName string, rec *recommendation.Recommendation, policy *optipodv1alpha1.OptimizationPolicy) (*application.ApplyResult, error) {
+func (m *mockApplicationEngine) Apply(ctx context.Context, workload *application.Workload, recommendations []application.ContainerRecommendation, policy *optipodv1alpha1.OptimizationPolicy) (*application.ApplyResult, error) {
 	m.applyCalled = true
 	if m.applyError != nil {
 		return nil, m.applyError
