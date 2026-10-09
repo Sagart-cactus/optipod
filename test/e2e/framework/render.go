@@ -246,7 +246,7 @@ metadata:
     app.kubernetes.io/name: optipod
     app.kubernetes.io/managed-by: kustomize
 webhooks:
-- name: pod-resource-mutator.optipod.io
+- name: %s
   clientConfig:
     service:
       name: %s
@@ -276,8 +276,8 @@ webhooks:
   failurePolicy: Ignore
   timeoutSeconds: 10
   reinvocationPolicy: Never
-`, WebhookConfigurationName, WebhookServiceName, SystemNamespace,
-		WebhookPath, WebhookServicePort, caBundle)
+`, WebhookConfigurationName, PodMutatorWebhookName, WebhookServiceName,
+		SystemNamespace, WebhookPath, WebhookServicePort, caBundle)
 }
 
 // metricsFixtureManifest deploys the deterministic Prometheus-compatible

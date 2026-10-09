@@ -32,10 +32,13 @@ cluster and prints private-kubeconfig inspection/disposal commands.
 | `make test-e2e-deliberate-failure` | Opt-in spec that fails one deliberate assertion to exercise pre-teardown redacted diagnostics; a nonzero exit and a redacted bundle are the expected outcome, not a product defect. |
 
 Labels currently in the suite: `smoke` (critical installed-controller behaviour; the smoke specs also carry
-`install`/`policy` for API admission and readiness and `modes`/`recommend`/`auto`/`ssa` for the Recommend and
-Auto scenarios), `diagnostics` (harness self-check) and `deliberate-failure` (opt-in failure-path validation).
-The remaining behavior labels from `design.md` §5 — `webhook` and `failure-recovery` — arrive with the
-remaining M2 smoke features; `conformance`, `rbac`, `observability` and friends with M3.
+`install`/`policy` for API admission and readiness, `modes`/`recommend`/`auto`/`ssa` for the Recommend and
+Auto scenarios, and `webhook` for the SSA managed-field-ownership scenario and the live TLS admission probe
+that mutates an eligible hand-labelled pod and admits ineligible pods unchanged — that probe proves
+admission reachability only, never natural rollout, which is a conformance-tier concern), `diagnostics`
+(harness self-check) and `deliberate-failure` (opt-in failure-path validation). The remaining behavior label
+from `design.md` §5 — `failure-recovery` — arrives with the remaining M2 smoke feature; `conformance`,
+`rbac`, `observability` and friends with M3.
 
 Every invocation — success or failure — writes into a git-ignored
 `test/e2e/artifacts/run-<id>/` directory (override with `OPTIPOD_E2E_ARTIFACTS_DIR`):

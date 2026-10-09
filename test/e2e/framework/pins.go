@@ -69,6 +69,13 @@ const (
 	// Helm chart; config/webhook/webhook-config.yaml's "/mutate-v1-pod" predates
 	// that handler and is corrected in the rendered harness configuration).
 	WebhookPath = "/mutate"
+	// PodMutatorWebhookName is the mutating webhook's registered name in the
+	// shipped and harness-rendered MutatingWebhookConfiguration; the readiness
+	// gate and the admission specs identify the installed webhook by it. (On
+	// the pinned Kubernetes, mutations applied at pod CREATE are absorbed into
+	// the creator's managedFields entry rather than attributed to the webhook
+	// name, so admission itself is proven by observed request values.)
+	PodMutatorWebhookName = "pod-resource-mutator.optipod.io"
 
 	// FixtureNamespace and FixtureServiceName locate the deterministic metrics
 	// fixture inside the owned cluster.

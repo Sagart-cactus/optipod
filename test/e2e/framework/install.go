@@ -134,7 +134,7 @@ func WaitForWebhookCABundle(ctx context.Context, clients *Clients, caPEM []byte,
 			return false, err
 		}
 		for _, wh := range mwc.Webhooks {
-			if wh.Name == "pod-resource-mutator.optipod.io" {
+			if wh.Name == PodMutatorWebhookName {
 				return bytes.Equal(wh.ClientConfig.CABundle, caPEM), nil
 			}
 		}
