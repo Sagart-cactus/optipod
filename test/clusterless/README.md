@@ -223,10 +223,9 @@ The cluster-free tests provide comprehensive coverage of:
 - ✅ Percentile selection (P50, P90, P95, P99)
 
 ### Safety Mechanisms
-- ✅ Memory decrease prevention
-- ✅ Gradual memory decrease
 - ✅ Resource bounds enforcement
 - ✅ Safety factor application
+- ⚠️ Memory decrease guard: not implemented — memory decreases apply in full; `allowUnsafeMemoryDecrease`/`gradualDecreaseConfig` are schema-validated but read by no production code
 
 ### Webhook Operations
 - ✅ Pod mutation based on annotations

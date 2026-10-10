@@ -512,15 +512,9 @@ kubectl patch optimizationpolicy <policy-name> -n optipod-system \
   --patch '{"spec":{"metricsConfig":{"rollingWindow":"48h"}}}'
 ```
 
-**Enable Gradual Memory Decrease (Not Yet Implemented):**
+**Memory Decrease Guard (Not Available):**
 
-> **⚠️ Note**: This configuration is accepted but not yet implemented.
-
-```bash
-kubectl patch optimizationpolicy <policy-name> -n optipod-system \
-  --type merge \
-  --patch '{"spec":{"updateStrategy":{"gradualDecreaseConfig":{"enabled":true,"memoryDecreasePercentage":10}}}}'
-```
+> **⚠️ Note**: OptiPod has no memory decrease guard. `gradualDecreaseConfig` is accepted by the CRD but is not implemented, so enabling it does not change behavior. To reduce decreases, raise the safety factor or percentile as shown above.
 
 **Manually Restore Resources:**
 ```bash

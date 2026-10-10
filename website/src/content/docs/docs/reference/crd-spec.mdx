@@ -455,23 +455,23 @@ updateStrategy:
 
 #### updateStrategy.allowUnsafeMemoryDecrease (optional)
 
-Disables memory safety checks when true. Use with caution.
+Work-in-progress toggle that would disable memory decrease safety gating when true. Use with caution.
 
 **Type**: `boolean`
 **Required**: No
 **Default**: `false`
 
+> **⚠️ Implementation Status**: This field is defined in the CRD schema and validated, but **no production code reads it**, so setting it has **no effect**.
+
 **Behavior**:
-- When `false` (default): OptiPod blocks memory decreases that could cause pod eviction or OOM
-- When `true`: OptiPod applies all memory recommendations regardless of safety concerns
+- OptiPod currently has **no memory decrease guard**. A recommended memory decrease is applied in full, exactly like any other recommendation, constrained only by `resourceBounds` and the safety factor.
+- Setting this field to `true` or `false` does not change that behavior yet.
 
 **Example**:
 ```yaml
 updateStrategy:
-  allowUnsafeMemoryDecrease: false  # Safe default
+  allowUnsafeMemoryDecrease: false  # Accepted, but not enforced today
 ```
-
-**Warning**: Setting this to `true` can cause pod instability. Only use in controlled environments.
 
 #### updateStrategy.gradualDecreaseConfig (optional)
 
@@ -484,7 +484,7 @@ Configures gradual memory reduction for safer optimization. When implemented, la
 
 **Fields**:
 
-- `enabled` (boolean) - Activates gradual decrease functionality
+- `enabled` (boolean) - Would activate gradual decrease functionality
   - **Default**: `false`
   - **Note**: Currently has no effect
 
@@ -495,13 +495,13 @@ Configures gradual memory reduction for safer optimization. When implemented, la
 
 - `minimumDecreaseThreshold` (Quantity) - Minimum decrease amount to trigger gradual reduction
   - **Default**: `100Mi`
-  - Decreases smaller than this threshold are applied immediately
+  - Decreases smaller than this threshold would be applied immediately
   - **Note**: Currently has no effect
 
 - `maximumTotalDecrease` (integer) - Maximum total percentage decrease from original value
   - **Default**: `70` (70% maximum total decrease)
   - **Range**: `1` to `90`
-  - Prevents excessive optimization that could destabilize workloads
+  - Would prevent excessive optimization that could destabilize workloads
   - **Note**: Currently has no effect
 
 **Example**:
@@ -514,7 +514,7 @@ updateStrategy:
     maximumTotalDecrease: 70          # Max 70% total decrease
 ```
 
-**Current Behavior**: Memory decreases are applied immediately in full, subject to other safety checks.
+**Current Behavior**: Memory decreases are applied in full in a single reconciliation. `allowUnsafeMemoryDecrease` and `gradualDecreaseConfig` are inert until implemented.
 
 ### reconciliationInterval (optional)
 

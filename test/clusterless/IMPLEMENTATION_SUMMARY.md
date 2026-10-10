@@ -47,8 +47,7 @@ We have successfully implemented the cluster-free E2E testing architecture for O
 - Time-based operations with mock clock
 
 ### Safety Mechanisms ✅
-- Memory decrease prevention
-- Gradual memory decrease configuration
+- ⚠️ Memory decrease guard: not implemented — memory decreases apply in full; `allowUnsafeMemoryDecrease`/`gradualDecreaseConfig` are schema-validated but read by no production code
 - Resource bounds enforcement (min/max)
 - Safety factor application
 - Edge case handling (missing metrics, zero usage)

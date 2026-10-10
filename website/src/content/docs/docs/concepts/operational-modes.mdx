@@ -188,8 +188,8 @@ spec:
   updateStrategy:
     strategy: ssa  # or "webhook"
     rolloutStrategy: onNextRestart
-    allowUnsafeMemoryDecrease: false
-    # Note: gradualDecreaseConfig not yet implemented
+    # Note: allowUnsafeMemoryDecrease and gradualDecreaseConfig are not
+    # implemented; memory decreases are applied in full
 ```
 
 ### Update Strategies
@@ -430,8 +430,7 @@ Verify:
 Review:
 - Policy configuration (bounds, safety factor)
 - Recent metrics data
-- Safety settings (allowUnsafeMemoryDecrease)
-- Gradual decrease configuration
+- Note: `allowUnsafeMemoryDecrease` and `gradualDecreaseConfig` are not implemented and do not change behavior
 
 ## Next Steps
 

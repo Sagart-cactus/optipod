@@ -29,8 +29,9 @@ OptiPod exists to provide a GitOps-safe, policy-driven way to *recommend first*,
 
 - Will not mutate workloads unless explicitly configured
 - Will not override GitOps ownership
-- Will not blindly reduce memory
 - Will not require a SaaS backend
+
+Note: OptiPod does not currently guard memory decreases — a recommended decrease is applied in full. See the [Safety model](docs/concepts/safety-model.md) for details.
 
 ## Quick Start (safe Recommend mode)
 
@@ -163,7 +164,7 @@ This design keeps the policy status lightweight while making individual recommen
 1. Discovers workloads selected by your policy (namespaces, labels, workload types)
 2. Reads CPU/memory usage from your metrics backend
 3. Computes recommendations (percentiles over a rolling window + safety factor)
-4. Applies **policy-driven safety** (bounds, change controls, memory safeguards)
+4. Applies **policy-driven safety** (resource bounds and safety factor; the memory-decrease and change-rate guards are not implemented yet)
 5. Either:
    - writes **explainable recommendations** as annotations on individual workloads (Recommend mode), or
    - applies changes via **Server-Side Apply (SSA)** (Auto mode)
@@ -221,8 +222,8 @@ spec:
 
 OptiPod is built around conservative defaults and explicit, policy-driven controls:
 
-- **Policy-driven safety**: min/max bounds, safety factors, and (where configured) change-rate limits.
-- **Conservative memory handling**: avoids “blind” memory reductions; requires explicit bounds/constraints.
+- **Policy-driven safety**: min/max bounds and safety factors (the memory-decrease and change-rate guards are not implemented yet).
+- **Memory handling**: recommendations are derived from observed usage and clamped to your explicit bounds; memory decreases are currently applied in full.
 - **GitOps-safe**: supports both **webhook strategy** (ArgoCD compatible) and **Server-Side Apply (SSA)** for different environments.
 - **Explainable recommendations**: usage window, percentile choice, and safety margin are visible before applying.
 - **Update strategy control**: allow/disallow in-place resize; block disruptive recreation unless you opt in.
