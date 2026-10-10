@@ -165,6 +165,20 @@ var _ = Describe("Recommend and Auto modes with deterministic deployed metrics",
 		By("waiting for the replaced pod to finish terminating before snapshotting identities")
 		waitForPodsToSettle(ctx, ns.Name, podSelector, 1, beforeUIDs, waitTimeout)
 
+		By("re-registering deterministic samples for the replacement pod so the repeat reconcile consumes data")
+		// The fixture series registered before the rollout named the original
+		// pod. Without re-registering them for the replacement pod, the repeat
+		// reconcile would query a pod with no series, observe a missing-metrics
+		// skip and change nothing — making the no-churn assertion below pass
+		// without any data-consuming re-apply. Re-registering the current pod's
+		// series (as the webhook-strategy spec does) forces the repeat reconcile
+		// to recompute from fixture data and re-apply the same values.
+		current := &appsv1.Deployment{}
+		Expect(env.Clients.Ctrl.Get(ctx, types.NamespacedName{Namespace: ns.Name, Name: workload.Name}, current)).
+			To(Succeed(), "read the workload for replacement-pod series registration")
+		steadySeries := registerContainerSeries(ctx, ns.Name, current, samples)
+		registeredAt := time.Now()
+
 		By("capturing the steady state and waiting for one more completed reconcile")
 		steady := captureSteadyState(ctx, ns.Name, workload.Name, podSelector)
 		reference := &optipodv1alpha1.OptimizationPolicy{}
@@ -176,6 +190,13 @@ var _ = Describe("Recommend and Auto modes with deterministic deployed metrics",
 			reference.Status.LastReconciliation.Time)
 		Expect(reconciled.Status.WorkloadsProcessed).To(Equal(1),
 			"the completed repeat reconcile did not process the workload again")
+
+		By("proving the repeat reconcile re-queried the replacement pod's series after the samples were registered")
+		// A missing-metrics reconcile still records a query, so a post-
+		// registration query for the replacement pod proves the controller
+		// actually consumed the re-registered data during a reconcile rather
+		// than skipping the workload.
+		expectFixtureQueriedAfter(ctx, steadySeries, registeredAt)
 
 		By("asserting the completed repeat reconcile left both containers applied with no rollout churn")
 		expectSteadyWorkload(ctx, steady, ns.Name, workload.Name, podSelector,

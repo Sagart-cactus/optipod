@@ -382,6 +382,49 @@ func expectFixtureQueried(ctx context.Context, series []framework.FixtureSeries)
 	}
 }
 
+// expectFixtureQueriedAfter waits (bounded) until the deployed controller has
+// issued a Prometheus query for every given target at or after the supplied
+// time. A missing-metrics reconcile still records a query, so pairing a
+// post-registration timestamp with the re-registered series proves a reconcile
+// that ran after the samples were registered consumed them, rather than the
+// workload being skipped for missing data.
+func expectFixtureQueriedAfter(ctx context.Context, series []framework.FixtureSeries, after time.Time) {
+	err := framework.WaitForCondition(ctx, framework.WaitOptions{
+		Timeout: policyStatusTimeout,
+		Description: fmt.Sprintf("the deployed controller to re-query %d fixture targets at or after %s",
+			len(series), after.Format(time.RFC3339)),
+	}, func(ctx context.Context) (bool, error) {
+		trace, err := env.Fixture.Trace(ctx)
+		if err != nil {
+			return false, err
+		}
+		for _, s := range series {
+			if !fixtureTraceQueried(trace, s, after) {
+				return false, nil
+			}
+		}
+		return true, nil
+	})
+	Expect(err).NotTo(HaveOccurred(),
+		"the deployed controller never re-queried the replacement pod's series after the samples were registered")
+}
+
+// fixtureTraceQueried reports whether the fixture recorded a query matching the
+// target at or after the given instant.
+func fixtureTraceQueried(trace []framework.RecordedQuery, s framework.FixtureSeries, after time.Time) bool {
+	for _, q := range trace {
+		if q.Time.Before(after) {
+			continue
+		}
+		if strings.Contains(q.Query, fmt.Sprintf("namespace=%q", s.Namespace)) &&
+			strings.Contains(q.Query, fmt.Sprintf("pod=%q", s.Pod)) &&
+			strings.Contains(q.Query, fmt.Sprintf("container=%q", s.Container)) {
+			return true
+		}
+	}
+	return false
+}
+
 // expectManagementAnnotations asserts the OptiPod management annotations the
 // processor writes alongside the per-container recommendations.
 func expectManagementAnnotations(dep *appsv1.Deployment, policy *optipodv1alpha1.OptimizationPolicy, createdAfter time.Time) {

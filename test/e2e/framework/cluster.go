@@ -175,15 +175,24 @@ func CreateCluster(ctx context.Context, opts ClusterOptions) (*Cluster, error) {
 }
 
 // ReuseOwnedCluster attaches to a previously retained harness cluster for focused
-// reruns. It accepts only a cluster that carries the harness prefix, has a
-// readable private kubeconfig, and is actually present among Kind clusters. A
-// reused cluster is treated as user-managed and is never auto-deleted.
+// reruns. It accepts only a cluster that carries the harness prefix, is actually
+// present among Kind clusters, and is named by a private kubeconfig that
+// provably targets that same cluster. The kubeconfig must not be the developer's
+// default config ($HOME/.kube/config or a $KUBECONFIG entry), and its current
+// context/cluster name plus server endpoint must match Kind's identity for the
+// requested cluster, so a mismatched config fails closed instead of silently
+// redirecting every client operation to another cluster. A reused cluster is
+// treated as user-managed and is never auto-deleted.
 func ReuseOwnedCluster(ctx context.Context, name, kubeconfig string, opts ClusterOptions) (*Cluster, error) {
 	if !strings.HasPrefix(name, ClusterNamePrefix) {
 		return nil, fmt.Errorf("refusing to reuse cluster %q: missing harness prefix %q", name, ClusterNamePrefix)
 	}
 	if kubeconfig == "" {
 		return nil, fmt.Errorf("refusing to reuse cluster %q: no private kubeconfig provided", name)
+	}
+	if isDefaultKubeconfigPath(kubeconfig) {
+		return nil, fmt.Errorf("refusing to reuse cluster %q: %q is the default kubeconfig path, not a retained cluster's private kubeconfig",
+			name, kubeconfig)
 	}
 	if _, err := os.Stat(kubeconfig); err != nil {
 		return nil, fmt.Errorf("private kubeconfig %q unavailable: %w", kubeconfig, err)
@@ -199,6 +208,9 @@ func ReuseOwnedCluster(ctx context.Context, name, kubeconfig string, opts Cluste
 	}
 	if !clusterListed(string(out), name) {
 		return nil, fmt.Errorf("refusing to reuse cluster %q: not present among kind clusters", name)
+	}
+	if err := bindKubeconfigToCluster(cctx, run, kindPath, name, kubeconfig); err != nil {
+		return nil, err
 	}
 	return &Cluster{
 		Name:       name,
