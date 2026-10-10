@@ -87,8 +87,7 @@ var _ = Describe("Controller restart recovery", Label("smoke", "failure-recovery
 			"delete the controller pod %s to restart it", restarted.Name)
 
 		By("waiting for a new ready controller pod on the same image and service account")
-		fresh := waitForReplacementPod(ctx, framework.SystemNamespace, framework.ControllerPodSelector,
-			beforeUIDs, waitTimeout)
+		fresh := waitForReplacementPod(ctx, framework.SystemNamespace, framework.ControllerPodSelector, beforeUIDs)
 		Expect(fresh).NotTo(BeEmpty(), "no replacement controller pod became ready")
 		newPod := fresh[0]
 		Expect(newPod.Spec.ServiceAccountName).To(Equal(framework.ControllerServiceAccountName),

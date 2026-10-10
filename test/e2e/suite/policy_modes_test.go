@@ -159,11 +159,11 @@ var _ = Describe("Recommend and Auto modes with deterministic deployed metrics",
 		Expect(framework.WaitForDeploymentAvailable(ctx, env.Clients, ns.Name, workload.Name,
 			framework.WaitOptions{Timeout: waitTimeout})).To(Succeed(),
 			"the applied workload never returned to Available")
-		freshPods := waitForReplacementPod(ctx, ns.Name, podSelector, beforeUIDs, waitTimeout)
+		freshPods := waitForReplacementPod(ctx, ns.Name, podSelector, beforeUIDs)
 		expectAppliedContainerRequests(freshPods[0].Spec.Containers, samples, "the replacement pod")
 
 		By("waiting for the replaced pod to finish terminating before snapshotting identities")
-		waitForPodsToSettle(ctx, ns.Name, podSelector, 1, beforeUIDs, waitTimeout)
+		waitForPodsToSettle(ctx, ns.Name, podSelector, beforeUIDs)
 
 		By("re-registering deterministic samples for the replacement pod so the repeat reconcile consumes data")
 		// The fixture series registered before the rollout named the original

@@ -207,6 +207,39 @@ func WithWorkloadSelector(matchLabels map[string]string) PolicyOption {
 	}
 }
 
+// WithNamespaceFilter overrides the namespace allow/deny lists. An empty allow
+// list together with a non-nil filter clears the fixture's default allow list
+// so another selector (for example WithNamespaceSelector) alone governs
+// matching; a deny entry always takes precedence over allow.
+func WithNamespaceFilter(allow, deny []string) PolicyOption {
+	return func(p *optipodv1alpha1.OptimizationPolicy) {
+		p.Spec.Selector.Namespaces = &optipodv1alpha1.NamespaceFilter{
+			Allow: allow,
+			Deny:  deny,
+		}
+	}
+}
+
+// WithNamespaceSelector restricts the policy to namespaces carrying the given
+// labels.
+func WithNamespaceSelector(matchLabels map[string]string) PolicyOption {
+	return func(p *optipodv1alpha1.OptimizationPolicy) {
+		p.Spec.Selector.NamespaceSelector = &metav1.LabelSelector{MatchLabels: matchLabels}
+	}
+}
+
+// WithWorkloadTypes sets the include/exclude workload-type filters. Production
+// selection applies exclude with precedence over include, and an omitted
+// filter means all three kinds are eligible.
+func WithWorkloadTypes(include, exclude []optipodv1alpha1.WorkloadType) PolicyOption {
+	return func(p *optipodv1alpha1.OptimizationPolicy) {
+		p.Spec.Selector.WorkloadTypes = &optipodv1alpha1.WorkloadTypeFilter{
+			Include: include,
+			Exclude: exclude,
+		}
+	}
+}
+
 // WithReconciliationInterval sets the policy's supported requeue interval so
 // installed-controller scenarios observe fresh reconciles within their bounded
 // waits instead of relying on long fixed sleeps or repeated manual triggers.

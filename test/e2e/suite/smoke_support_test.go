@@ -188,14 +188,19 @@ func podUIDs(ctx context.Context, namespace, labelSelector string) map[types.UID
 	return out
 }
 
-// waitForReplacementPod waits (bounded) until at least one ready pod matching
-// the selector exists whose UID is not in the before set, proving the workload
-// actually rolled rather than merely changing metadata. It returns the new
-// ready pods.
-func waitForReplacementPod(ctx context.Context, namespace, labelSelector string, before map[types.UID]string, timeout time.Duration) []corev1.Pod {
+// rolloutWaitTimeout bounds the rollout-related waits shared by every rollout
+// assertion in the suite: a replacement pod becoming ready and the replaced
+// pod finishing termination.
+const rolloutWaitTimeout = 3 * time.Minute
+
+// waitForReplacementPod waits (up to rolloutWaitTimeout) until at least one
+// ready pod matching the selector exists whose UID is not in the before set,
+// proving the workload actually rolled rather than merely changing metadata.
+// It returns the new ready pods.
+func waitForReplacementPod(ctx context.Context, namespace, labelSelector string, before map[types.UID]string) []corev1.Pod {
 	var fresh []corev1.Pod
 	err := framework.WaitForCondition(ctx, framework.WaitOptions{
-		Timeout:     timeout,
+		Timeout:     rolloutWaitTimeout,
 		Description: fmt.Sprintf("a ready replacement pod matching %q in %s", labelSelector, namespace),
 	}, func(ctx context.Context) (bool, error) {
 		list, err := env.Clients.Kube.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{LabelSelector: labelSelector})
@@ -224,22 +229,22 @@ func isReady(pod *corev1.Pod) bool {
 	return false
 }
 
-// waitForPodsToSettle waits (bounded) until exactly count pods matching the
-// selector remain and none of the before UIDs survive. A replaced pod stays
-// visible (Terminating) after its replacement is ready, so a pod-identity
-// snapshot taken too early could change without any rollout churn; this wait
-// bounds that window before steady-state captures.
-func waitForPodsToSettle(ctx context.Context, namespace, labelSelector string, count int, before map[types.UID]string, timeout time.Duration) {
+// waitForPodsToSettle waits (up to rolloutWaitTimeout) until exactly one pod
+// matching the selector remains and none of the before UIDs survive. A
+// replaced pod stays visible (Terminating) after its replacement is ready,
+// so a pod-identity snapshot taken too early could change without any
+// rollout churn; this wait bounds that window before steady-state captures.
+func waitForPodsToSettle(ctx context.Context, namespace, labelSelector string, before map[types.UID]string) {
 	err := framework.WaitForCondition(ctx, framework.WaitOptions{
-		Timeout: timeout,
-		Description: fmt.Sprintf("pods matching %q in %s to settle at exactly %d with none of the replaced identities",
-			labelSelector, namespace, count),
+		Timeout: rolloutWaitTimeout,
+		Description: fmt.Sprintf("pods matching %q in %s to settle at exactly one with none of the replaced identities",
+			labelSelector, namespace),
 	}, func(ctx context.Context) (bool, error) {
 		list, err := env.Clients.Kube.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{LabelSelector: labelSelector})
 		if err != nil {
 			return false, err
 		}
-		if len(list.Items) != count {
+		if len(list.Items) != 1 {
 			return false, nil
 		}
 		for _, pod := range list.Items {
@@ -428,17 +433,7 @@ func fixtureTraceQueried(trace []framework.RecordedQuery, s framework.FixtureSer
 // expectManagementAnnotations asserts the OptiPod management annotations the
 // processor writes alongside the per-container recommendations.
 func expectManagementAnnotations(dep *appsv1.Deployment, policy *optipodv1alpha1.OptimizationPolicy, createdAfter time.Time) {
-	Expect(dep.Annotations).NotTo(BeNil(), "workload has no annotations at all")
-	Expect(dep.Annotations[optipodv1alpha1.AnnotationManaged]).To(Equal("true"),
-		"workload lacks the optipod.io/managed annotation")
-	Expect(dep.Annotations[optipodv1alpha1.AnnotationPolicy]).To(Equal(policy.Name),
-		"workload names the wrong managing policy")
-	Expect(dep.Annotations[optipodv1alpha1.AnnotationPolicyUID]).To(Equal(string(policy.UID)),
-		"workload records the wrong policy UID")
-	last, err := time.Parse(time.RFC3339, dep.Annotations[optipodv1alpha1.AnnotationLastRecommendation])
-	Expect(err).NotTo(HaveOccurred(), "optipod.io/last-recommendation is not an RFC3339 timestamp")
-	Expect(last.After(createdAfter.Add(-clockSkewTolerance))).To(BeTrue(),
-		"last-recommendation timestamp predates policy creation")
+	expectManagementAnnotationsOn(dep.Annotations, policy, createdAfter)
 }
 
 // nextReconcileTimeout bounds the wait for one further policy reconciliation

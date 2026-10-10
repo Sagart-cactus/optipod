@@ -143,3 +143,43 @@ func TestPolicyFixtureDefaultsAndOptions(t *testing.T) {
 		t.Errorf("production default rollout strategy = %q, want onNextRestart", got)
 	}
 }
+
+func TestPolicyFixtureSelectorOptions(t *testing.T) {
+	filtered := NewPolicyFixture("ns-x", "policy-4", optipodv1alpha1.ModeRecommend,
+		WithNamespaceFilter([]string{"ns-a", "ns-b"}, []string{"ns-b"}),
+		WithNamespaceSelector(map[string]string{"env": "optimize"}),
+		WithWorkloadTypes(
+			[]optipodv1alpha1.WorkloadType{optipodv1alpha1.WorkloadTypeDeployment, optipodv1alpha1.WorkloadTypeStatefulSet},
+			[]optipodv1alpha1.WorkloadType{optipodv1alpha1.WorkloadTypeDeployment}),
+	)
+	if got := filtered.Spec.Selector.Namespaces; got == nil ||
+		len(got.Allow) != 2 || got.Allow[0] != "ns-a" || got.Allow[1] != "ns-b" ||
+		len(got.Deny) != 1 || got.Deny[0] != "ns-b" {
+		t.Errorf("WithNamespaceFilter allow=%v deny=%v, want [ns-a ns-b] / [ns-b]", filtered.Spec.Selector.Namespaces, filtered.Spec.Selector.Namespaces)
+	}
+	if got := filtered.Spec.Selector.NamespaceSelector; got == nil || got.MatchLabels["env"] != "optimize" {
+		t.Errorf("WithNamespaceSelector = %v, want env=optimize", filtered.Spec.Selector.NamespaceSelector)
+	}
+	if got := filtered.Spec.Selector.WorkloadTypes; got == nil ||
+		len(got.Include) != 2 || len(got.Exclude) != 1 ||
+		got.Exclude[0] != optipodv1alpha1.WorkloadTypeDeployment {
+		t.Errorf("WithWorkloadTypes include=%v exclude=%v, want [Deployment StatefulSet] / [Deployment]",
+			filtered.Spec.Selector.WorkloadTypes.Include, filtered.Spec.Selector.WorkloadTypes.Exclude)
+	}
+	// The exclude-over-include precedence is production behavior; the fixture
+	// must let specs observe it, so pin the active set here.
+	active := optipodv1alpha1.GetActiveWorkloadTypes(filtered.Spec.Selector.WorkloadTypes)
+	if active.Contains(optipodv1alpha1.WorkloadTypeDeployment) ||
+		!active.Contains(optipodv1alpha1.WorkloadTypeStatefulSet) ||
+		active.Contains(optipodv1alpha1.WorkloadTypeDaemonSet) {
+		t.Errorf("active workload types = %v, want exclude precedence to leave only StatefulSet", active)
+	}
+
+	cleared := NewPolicyFixture("ns-x", "policy-5", optipodv1alpha1.ModeRecommend,
+		WithNamespaceFilter(nil, nil),
+		WithNamespaceSelector(map[string]string{"env": "optimize"}),
+	)
+	if got := cleared.Spec.Selector.Namespaces; got == nil || len(got.Allow) != 0 || len(got.Deny) != 0 {
+		t.Errorf("WithNamespaceFilter(nil, nil) = %+v, want a present filter with empty allow/deny so the default allow list is cleared", got)
+	}
+}
