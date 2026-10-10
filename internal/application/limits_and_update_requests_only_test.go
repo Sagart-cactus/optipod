@@ -361,22 +361,25 @@ func TestApplyUpdateRequestsOnlyWebhookOutcome(t *testing.T) {
 // for memory decreases in Auto mode so the gap between the API documentation
 // and the engine is executable evidence rather than a doc claim.
 //
-// CONFLICT DISCLOSURE (VAL-FAST-005): the approved validation contract states
-// "Unsafe memory decreases are blocked under the configured default" and
-// "explicitly enabled gradual decrease produces bounded steps", and the API
-// documents AllowUnsafeMemoryDecrease=false (the schema default) as blocking
-// memory decreases while GradualDecreaseConfig bounds decrease steps. However
-// commit 9dfc868 ("feat: implement memory safety enhancements") deliberately
-// REMOVED the engine's isUnsafeMemoryDecrease guard, and no production code
-// consumes AllowUnsafeMemoryDecrease or GradualDecreaseConfig today (only the
-// deepcopy). The engine's own property test asserts the opposite ("applied
-// regardless of memory decrease magnitude").
+// CONTRACT NOTE (VAL-FAST-005, user-approved amendment): production has no
+// memory-decrease guard — commit 9dfc868 ("feat: implement memory safety
+// enhancements") deliberately REMOVED the engine's isUnsafeMemoryDecrease
+// guard, and no production code consumes AllowUnsafeMemoryDecrease or
+// GradualDecreaseConfig today (only the deepcopy); the engine's own property
+// test pins the same fact ("applied regardless of memory decrease magnitude").
+// The amended validation contract therefore requires tests to pin the actual
+// behavior — a recommended memory decrease is applied in full like any other
+// recommendation — rather than an aspirational blocked or gradual-step
+// outcome. (The API docs still describe AllowUnsafeMemoryDecrease=false and
+// GradualDecreaseConfig as if they gated decreases; those fields remain
+// schema-validated only.)
 //
 // This characterization asserts what production actually does: an Auto apply
 // with a decreased memory recommendation is NOT blocked with the default
-// AllowUnsafeMemoryDecrease=false, and the decrease is stored for the pod
-// mutator. When decrease-safety behavior is (re-)authorized, replace this
-// test with blocked-decrease and gradual-step assertions.
+// AllowUnsafeMemoryDecrease=false, and the decrease is applied in full and
+// stored for the pod mutator. If decrease-safety behavior is ever implemented
+// and authorized, replace this test with blocked-decrease and gradual-step
+// assertions.
 func TestApplyMemoryDecreaseCharacterization(t *testing.T) {
 	ctx := context.Background()
 
