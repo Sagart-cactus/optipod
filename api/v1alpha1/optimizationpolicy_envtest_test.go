@@ -302,6 +302,18 @@ func TestEnvtestCRDDefaultsPersisted(t *testing.T) {
 	if stored.GetWeight() != 100 {
 		t.Errorf("GetWeight() = %d, expected 100 from the persisted default", stored.GetWeight())
 	}
+	if stored.Spec.Selector.WorkloadTypes != nil {
+		t.Errorf("persisted workloadTypes = %+v, expected omitted legacy filter to remain absent", stored.Spec.Selector.WorkloadTypes)
+	}
+	if stored.Spec.UpdateStrategy.LimitConfig != nil {
+		t.Errorf("persisted limitConfig = %+v, expected omitted legacy limit configuration to remain absent", stored.Spec.UpdateStrategy.LimitConfig)
+	}
+	if stored.Spec.UpdateStrategy.GradualDecreaseConfig != nil {
+		t.Errorf("persisted gradualDecreaseConfig = %+v, expected omitted legacy setting to remain absent", stored.Spec.UpdateStrategy.GradualDecreaseConfig)
+	}
+	if stored.Spec.UpdateStrategy.AllowUnsafeMemoryDecrease == nil || *stored.Spec.UpdateStrategy.AllowUnsafeMemoryDecrease {
+		t.Errorf("persisted allowUnsafeMemoryDecrease = %v, expected its false schema default", stored.Spec.UpdateStrategy.AllowUnsafeMemoryDecrease)
+	}
 
 	// A fully defaulted policy must also satisfy the runtime validator.
 	if err := stored.ValidateCreate(); err != nil {
