@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+
 	optipodv1alpha1 "github.com/optipod/optipod/api/v1alpha1"
 )
 
@@ -141,6 +143,60 @@ func TestPolicyFixtureDefaultsAndOptions(t *testing.T) {
 	}
 	if got := defaults.GetRolloutStrategy(); got != optipodv1alpha1.RolloutOnNextRestart {
 		t.Errorf("production default rollout strategy = %q, want onNextRestart", got)
+	}
+
+	limits := NewPolicyFixture("ns-x", "policy-6", optipodv1alpha1.ModeAuto, WithLimitsConfig(1.5, 1.25))
+	if limits.Spec.UpdateStrategy.UpdateRequestsOnly {
+		t.Error("WithLimitsConfig must clear updateRequestsOnly so limits are applied too")
+	}
+	if limits.Spec.UpdateStrategy.LimitConfig == nil ||
+		limits.Spec.UpdateStrategy.LimitConfig.CPULimitMultiplier == nil ||
+		*limits.Spec.UpdateStrategy.LimitConfig.CPULimitMultiplier != 1.5 ||
+		limits.Spec.UpdateStrategy.LimitConfig.MemoryLimitMultiplier == nil ||
+		*limits.Spec.UpdateStrategy.LimitConfig.MemoryLimitMultiplier != 1.25 {
+		t.Errorf("WithLimitsConfig limitConfig = %+v, want explicit CPU 1.5 and memory 1.25 multipliers",
+			limits.Spec.UpdateStrategy.LimitConfig)
+	}
+}
+
+func TestPolicyUnstructuredPreservesExplicitFalseBools(t *testing.T) {
+	limits := NewPolicyFixture("ns-x", "policy-6", optipodv1alpha1.ModeAuto, WithLimitsConfig(1.5, 1.25))
+
+	// The typed encoding drops the explicit updateRequestsOnly=false (omitempty
+	// on a non-pointer bool), which would make the API server re-apply the
+	// schema default true; the unstructured conversion must preserve it.
+	u, err := PolicyUnstructured(limits)
+	if err != nil {
+		t.Fatalf("PolicyUnstructured: %v", err)
+	}
+	if got := u.GetAPIVersion(); got != "optipod.optipod.io/v1alpha1" {
+		t.Errorf("unstructured apiVersion = %q", got)
+	}
+	if got := u.GetKind(); got != "OptimizationPolicy" {
+		t.Errorf("unstructured kind = %q", got)
+	}
+	requestsOnly, found, err := unstructured.NestedBool(u.Object, "spec", "updateStrategy", "updateRequestsOnly")
+	if err != nil || !found {
+		t.Fatalf("updateRequestsOnly not present in the unstructured wire format (found=%v err=%v); the API server would re-apply the schema default true",
+			found, err)
+	}
+	if requestsOnly {
+		t.Error("updateRequestsOnly must persist as the explicit false a user's YAML apply would send")
+	}
+	cpuMultiplier, found, _ := unstructured.NestedFloat64(u.Object, "spec", "updateStrategy", "limitConfig", "cpuLimitMultiplier")
+	if !found || cpuMultiplier != 1.5 {
+		t.Errorf("unstructured cpuLimitMultiplier = %v (found=%v), want 1.5", cpuMultiplier, found)
+	}
+
+	// A requests-only policy keeps the explicit true, so both wire formats
+	// agree there.
+	requestsOnlyPolicy := NewPolicyFixture("ns-x", "policy-7", optipodv1alpha1.ModeAuto, WithStrategy("ssa", ""))
+	u2, err := PolicyUnstructured(requestsOnlyPolicy)
+	if err != nil {
+		t.Fatalf("PolicyUnstructured(requests-only): %v", err)
+	}
+	if got, found, _ := unstructured.NestedBool(u2.Object, "spec", "updateStrategy", "updateRequestsOnly"); !found || got {
+		t.Errorf("requests-only policy wire format updateRequestsOnly = %v (found=%v), want explicit true", got, found)
 	}
 }
 

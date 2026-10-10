@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"regexp"
 	"strings"
@@ -13,6 +14,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
 	optipodv1alpha1 "github.com/optipod/optipod/api/v1alpha1"
 )
@@ -198,6 +200,70 @@ func WithResourceBounds(cpuMin, cpuMax, memMin, memMax string) PolicyOption {
 			},
 		}
 	}
+}
+
+// WithLimitsConfig enables limit updates (clearing the fixture's default
+// requests-only behavior) with explicit CPU/memory limit multipliers, so
+// specs can observe the production limit arithmetic through the installed
+// apply path: applied limits must equal the applied requests multiplied by
+// these configured factors.
+func WithLimitsConfig(cpuMultiplier, memoryMultiplier float64) PolicyOption {
+	return func(p *optipodv1alpha1.OptimizationPolicy) {
+		p.Spec.UpdateStrategy.UpdateRequestsOnly = false
+		p.Spec.UpdateStrategy.LimitConfig = &optipodv1alpha1.LimitConfig{
+			CPULimitMultiplier:    &cpuMultiplier,
+			MemoryLimitMultiplier: &memoryMultiplier,
+		}
+	}
+}
+
+// PolicyUnstructured converts a typed policy fixture into an unstructured
+// object whose wire format preserves explicit false boolean fields the typed
+// Go encoding would drop. The one that matters is updateRequestsOnly: it is a
+// non-pointer bool with omitempty, so `updateRequestsOnly: false` is dropped
+// from typed-client JSON and the API server then re-applies the CRD schema
+// default (true) — a limits-enabled policy is unreachable through the typed
+// client. A user's YAML apply sends the explicit false and persists it, and
+// this helper mirrors exactly that wire format so installed behavior can be
+// observed for the configuration users can actually express.
+func PolicyUnstructured(policy *optipodv1alpha1.OptimizationPolicy) (*unstructured.Unstructured, error) {
+	raw, err := json.Marshal(policy)
+	if err != nil {
+		return nil, fmt.Errorf("marshal policy fixture: %w", err)
+	}
+	obj := map[string]interface{}{}
+	if err := json.Unmarshal(raw, &obj); err != nil {
+		return nil, fmt.Errorf("unmarshal policy fixture: %w", err)
+	}
+	obj["apiVersion"] = optipodv1alpha1.GroupVersion.String()
+	obj["kind"] = "OptimizationPolicy"
+	spec, ok := obj["spec"].(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("policy fixture %s/%s marshalled without a spec object",
+			policy.Namespace, policy.Name)
+	}
+	strategy, ok := spec["updateStrategy"].(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("policy fixture %s/%s marshalled without an updateStrategy object",
+			policy.Namespace, policy.Name)
+	}
+	strategy["updateRequestsOnly"] = policy.Spec.UpdateStrategy.UpdateRequestsOnly
+	return &unstructured.Unstructured{Object: obj}, nil
+}
+
+// CreatePolicyPreservingExplicitBools creates the named policy fixture through
+// the raw/unstructured API path (see PolicyUnstructured), so explicit false
+// booleans persist exactly as a user's kubectl apply would send them.
+func CreatePolicyPreservingExplicitBools(ctx context.Context, c *Clients, policy *optipodv1alpha1.OptimizationPolicy) error {
+	u, err := PolicyUnstructured(policy)
+	if err != nil {
+		return err
+	}
+	if err := c.Ctrl.Create(ctx, u); err != nil {
+		return fmt.Errorf("create policy %s/%s through the raw API path: %w",
+			policy.Namespace, policy.Name, err)
+	}
+	return nil
 }
 
 // WithWorkloadSelector restricts the policy to workloads with matching labels.

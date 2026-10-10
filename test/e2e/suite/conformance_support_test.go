@@ -20,10 +20,11 @@ import (
 	"github.com/optipod/optipod/test/e2e/framework"
 )
 
-// Support helpers shared by the conformance specs (modes, selectors and
-// policy-weight scenarios). Everything here observes the installed cluster
-// through the suite's private typed clients: no fixture field or local
-// validator output is accepted as an outcome.
+// Support helpers shared by the conformance specs (modes, selectors,
+// policy-weight, bounds, multi-container and metrics-fault scenarios).
+// Everything here observes the installed cluster through the suite's private
+// typed clients: no fixture field or local validator output is accepted as an
+// outcome.
 
 // optipodAnnotationPrefix is the annotation namespace every OptiPod-managed
 // annotation key lives under (see AnnotationManaged and friends in
@@ -34,6 +35,150 @@ const optipodAnnotationPrefix = "optipod.io/"
 // conformanceWorkloadReadyTimeout bounds the wait for a freshly created
 // workload of any supported kind to schedule and report a ready pod.
 const conformanceWorkloadReadyTimeout = 3 * time.Minute
+
+// policyEventTimeout bounds the wait for an installed-controller Kubernetes
+// Event on a policy. The controller emits events synchronously with its
+// reconcile outcomes (through its broadcaster), so a matching event after a
+// phase's reference time is the explicit per-reconcile outcome signal; the
+// bound only absorbs broadcaster delivery lag, never a missing signal.
+const policyEventTimeout = 90 * time.Second
+
+// annotationThrottleMargin pads the production 30s recommendation-annotation
+// write-throttle window when a spec waits the window out, absorbing
+// controller/test clock skew on the recorded last-recommendation timestamp.
+const annotationThrottleMargin = 2 * time.Second
+
+// waitForAnnotationThrottleWindow waits until the production recommendation-
+// annotation write throttle no longer suppresses metadata writes for the
+// named deployment. The deployed processor records its last successful
+// annotation write in optipod.io/last-recommendation and skips the whole
+// annotation update (while still applying) for 30s after it, so a phase that
+// needs NEW annotations stored must let that window elapse before triggering
+// the reconcile. The wait is anchored on the recorded timestamp rather than
+// on sleeps: it returns immediately when the window is already over.
+func waitForAnnotationThrottleWindow(ctx context.Context, namespace, name string) {
+	err := framework.WaitForCondition(ctx, framework.WaitOptions{
+		Timeout:     policyStatusTimeout,
+		Description: fmt.Sprintf("deployment %s/%s recommendation-annotation throttle window to elapse", namespace, name),
+	}, func(ctx context.Context) (bool, error) {
+		dep := &appsv1.Deployment{}
+		if err := env.Clients.Ctrl.Get(ctx, types.NamespacedName{Namespace: namespace, Name: name}, dep); err != nil {
+			return false, err
+		}
+		if dep.Annotations == nil {
+			return false, nil
+		}
+		last, exists := dep.Annotations[optipodv1alpha1.AnnotationLastRecommendation]
+		if !exists {
+			// No write ever succeeded: nothing suppresses the next one.
+			return true, nil
+		}
+		lastTime, err := time.Parse(time.RFC3339, last)
+		if err != nil {
+			// Unreadable record: proceed and let the assertions judge.
+			return true, nil
+		}
+		return time.Since(lastTime) > 30*time.Second+annotationThrottleMargin, nil
+	})
+	Expect(err).NotTo(HaveOccurred(),
+		"the recommendation-annotation throttle window never elapsed for deployment %s/%s", namespace, name)
+}
+
+// waitForPolicyEvent waits (bounded) until the installed controller emitted a
+// Kubernetes Event on the named policy with the given reason at or after the
+// reference time, whose message contains every fragment. The controller emits
+// events per completed reconcile outcome (WorkloadSkipped for the whole-
+// workload missing-metrics skip, ValidationFailed for a runtime-invalid
+// policy), so a matching event is the explicit signal that a fresh reconcile
+// completed with that outcome. Repeated identical messages bump the existing
+// event's count and lastTimestamp, so either timestamp moving at or after the
+// reference time (with the small clock-skew tolerance) is accepted.
+func waitForPolicyEvent(ctx context.Context, namespace, policyName, reason string, since time.Time, fragments ...string) {
+	err := framework.WaitForCondition(ctx, framework.WaitOptions{
+		Timeout: policyEventTimeout,
+		Description: fmt.Sprintf("a %s event on policy %s/%s at or after %s containing %v",
+			reason, namespace, policyName, since.Format(time.RFC3339), fragments),
+	}, func(ctx context.Context) (bool, error) {
+		events, err := env.Clients.Kube.CoreV1().Events(namespace).List(ctx, metav1.ListOptions{
+			FieldSelector: fmt.Sprintf("involvedObject.name=%s,involvedObject.namespace=%s,reason=%s",
+				policyName, namespace, reason),
+		})
+		if err != nil {
+			return false, err
+		}
+		for i := range events.Items {
+			if !policyEventAtOrAfter(events.Items[i], since) {
+				continue
+			}
+			if messageContainsFragments(events.Items[i].Message, fragments) {
+				return true, nil
+			}
+		}
+		return false, nil
+	})
+	Expect(err).NotTo(HaveOccurred(),
+		"the installed controller never emitted a %s event on policy %s/%s containing %v",
+		reason, namespace, policyName, fragments)
+}
+
+// policyEventAtOrAfter reports whether the event was created or last bumped at
+// or after the reference time, within the suite's clock-skew tolerance (events
+// carry API-server timestamps written from the controller's observation).
+func policyEventAtOrAfter(event corev1.Event, since time.Time) bool {
+	tolerated := since.Add(-clockSkewTolerance)
+	if !event.FirstTimestamp.IsZero() && event.FirstTimestamp.After(tolerated) {
+		return true
+	}
+	if !event.LastTimestamp.IsZero() && event.LastTimestamp.After(tolerated) {
+		return true
+	}
+	return !event.EventTime.IsZero() && event.EventTime.After(tolerated)
+}
+
+// messageContainsFragments reports whether the message contains every
+// fragment as a substring.
+func messageContainsFragments(message string, fragments []string) bool {
+	for _, fragment := range fragments {
+		if !strings.Contains(message, fragment) {
+			return false
+		}
+	}
+	return true
+}
+
+// waitForReplacedReadyPods waits (bounded) until every pod from the before set
+// is gone and at least as many NEW ready pods matching the selector exist, so
+// multi-replica assertions can observe a fully completed rollout. It returns
+// the fresh ready pods.
+func waitForReplacedReadyPods(ctx context.Context, namespace, labelSelector string, before map[types.UID]string) []corev1.Pod {
+	var observed []corev1.Pod
+	err := framework.WaitForCondition(ctx, framework.WaitOptions{
+		Timeout: rolloutWaitTimeout,
+		Description: fmt.Sprintf("all replaced pods matching %q in %s to terminate and %d fresh ready pods to exist",
+			labelSelector, namespace, len(before)),
+	}, func(ctx context.Context) (bool, error) {
+		list, err := env.Clients.Kube.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{LabelSelector: labelSelector})
+		if err != nil {
+			return false, err
+		}
+		fresh := make([]corev1.Pod, 0, len(before))
+		for i := range list.Items {
+			if _, existed := before[list.Items[i].UID]; existed {
+				return false, nil // a replaced pod is still terminating
+			}
+			if isReady(&list.Items[i]) {
+				fresh = append(fresh, list.Items[i])
+			}
+		}
+		if len(fresh) < len(before) {
+			return false, nil
+		}
+		observed = append(observed[:0], fresh...)
+		return true, nil
+	})
+	Expect(err).NotTo(HaveOccurred(), "the workload never finished replacing its pods")
+	return observed
+}
 
 // updatePolicy applies mutate to the named policy's current spec through the
 // API with a bounded conflict retry: the installed controller updates policy
@@ -344,6 +489,33 @@ func expectNoFixtureQuerySince(ctx context.Context, namespace string, since time
 				what, namespace, since.Format(time.RFC3339), q.Query))
 		}
 	}
+}
+
+// sampledPodName returns the name of the workload's pod the production
+// processor samples metrics for: it lists the workload's pods with Limit(1)
+// against the same selector, and API list results are name-sorted, so the
+// lexicographically first pod is the one whose series a reconcile must query.
+func sampledPodName(ctx context.Context, namespace, workloadName string) string {
+	pods, err := env.Clients.Kube.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{
+		LabelSelector: "app=" + workloadName,
+	})
+	Expect(err).NotTo(HaveOccurred(), "list pods of workload %s", workloadName)
+	Expect(pods.Items).NotTo(BeEmpty(), "workload %s has no pods to sample", workloadName)
+	return pods.Items[0].Name
+}
+
+// seriesForPod filters a registered series set down to one pod's series, so
+// trace assertions target exactly the targets a reconcile must have queried
+// (the processor samples the workload's first pod only).
+func seriesForPod(series []framework.FixtureSeries, pod string) []framework.FixtureSeries {
+	out := make([]framework.FixtureSeries, 0, len(series))
+	for _, s := range series {
+		if s.Pod == pod {
+			out = append(out, s)
+		}
+	}
+	Expect(out).NotTo(BeEmpty(), "no registered series target pod %s", pod)
+	return out
 }
 
 // waitForReconcileAfter waits (bounded) until the named policy reports a
