@@ -377,7 +377,9 @@ cleanup-contract-e2e: ## Clean up contract e2e test environment
 # removes only its own cluster. Per-spec JUnit (junit.xml), measured phase/spec timings
 # (timings.json) and, on failure, a redacted pre-teardown diagnostics bundle
 # are written under test/e2e/artifacts/run-<id>/ (git-ignored). KEEP_CLUSTER=1
-# retains the owned cluster and prints private-kubeconfig inspection commands.
+# retains the owned cluster and prints private-kubeconfig inspection, explicit
+# focused-reuse (make test-e2e-reuse) and disposal commands; a reused cluster
+# keeps the retained install and is never deleted by a run.
 E2E_SUITE ?= ./test/e2e/suite/
 E2E_SUITE_TIMEOUT ?= 45m
 E2E_LABELS ?= smoke
@@ -390,6 +392,15 @@ test-e2e-smoke: ## Run the hermetic installed-controller smoke suite end to end 
 .PHONY: test-e2e-labels
 test-e2e-labels: ## Run the new Kind suite with a Ginkgo label filter (E2E_LABELS="smoke && webhook")
 	@echo "Running the new Kind suite (package: $(E2E_SUITE)) with label filter: $(E2E_LABELS)"
+	go test $(E2E_SUITE) -count=1 -timeout=$(E2E_SUITE_TIMEOUT) -v -ginkgo.v -ginkgo.label-filter="$(E2E_LABELS)"
+
+.PHONY: test-e2e-reuse
+test-e2e-reuse: ## Focused rerun against a retained harness cluster (OPTIPOD_E2E_REUSE_CLUSTER/OPTIPOD_E2E_REUSE_KUBECONFIG from a KEEP_CLUSTER=1 run; the retained install is kept, not rebuilt)
+	@if [ -z "$$OPTIPOD_E2E_REUSE_CLUSTER" ] || [ -z "$$OPTIPOD_E2E_REUSE_KUBECONFIG" ]; then \
+		echo "test-e2e-reuse requires OPTIPOD_E2E_REUSE_CLUSTER and OPTIPOD_E2E_REUSE_KUBECONFIG (printed by a KEEP_CLUSTER=1 run)"; \
+		exit 2; \
+	fi
+	@echo "Reusing retained harness cluster $$OPTIPOD_E2E_REUSE_CLUSTER for a focused rerun (label filter: $(E2E_LABELS)); the retained install is kept, not rebuilt"
 	go test $(E2E_SUITE) -count=1 -timeout=$(E2E_SUITE_TIMEOUT) -v -ginkgo.v -ginkgo.label-filter="$(E2E_LABELS)"
 
 .PHONY: test-e2e-deliberate-failure

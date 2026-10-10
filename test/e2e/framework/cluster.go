@@ -48,6 +48,37 @@ func OptionsFromEnv() ClusterOptions {
 	return ClusterOptions{Keep: keepClusterRequested()}
 }
 
+// Environment variables for explicit focused reuse of a retained harness
+// cluster. They are deliberately opt-in: unset (the default) always means
+// "create a new owned cluster", and a set-but-unusable value is an error,
+// never an implicit fallback.
+const (
+	// ReuseClusterEnvVar names the retained harness cluster to attach to.
+	ReuseClusterEnvVar = "OPTIPOD_E2E_REUSE_CLUSTER"
+	// ReuseKubeconfigEnvVar names the retained cluster's private kubeconfig.
+	ReuseKubeconfigEnvVar = "OPTIPOD_E2E_REUSE_KUBECONFIG"
+)
+
+// ReuseFromEnv returns the retained harness cluster an operator explicitly
+// named for a focused rerun, or nil when no reuse was requested. It accepts
+// only what ReuseOwnedCluster verifies as harness-owned (prefix, readable
+// private kubeconfig, cluster actually present); anything else — a user
+// cluster such as "kind", a foreign name or a missing kubeconfig — is an
+// error so an explicit reuse request can never silently fall back to
+// creating or deleting anything.
+func ReuseFromEnv(ctx context.Context, opts ClusterOptions) (*Cluster, error) {
+	name := strings.TrimSpace(os.Getenv(ReuseClusterEnvVar))
+	if name == "" {
+		return nil, nil
+	}
+	kubeconfig := strings.TrimSpace(os.Getenv(ReuseKubeconfigEnvVar))
+	cluster, err := ReuseOwnedCluster(ctx, name, kubeconfig, opts)
+	if err != nil {
+		return nil, fmt.Errorf("focused cluster reuse requested via %s but refused: %w", ReuseClusterEnvVar, err)
+	}
+	return cluster, nil
+}
+
 func keepClusterRequested() bool {
 	switch strings.ToLower(strings.TrimSpace(os.Getenv("KEEP_CLUSTER"))) {
 	case "1", "true", "yes":
@@ -223,13 +254,16 @@ func (c *Cluster) Owned() bool { return c.owned }
 // Keep reports whether the cluster is retained on cleanup.
 func (c *Cluster) Keep() bool { return c.keep }
 
-// InspectCommands returns copy-pasteable commands to inspect and dispose of a
-// retained owned cluster. It references the private kubeconfig by path only and
-// never prints its contents.
+// InspectCommands returns copy-pasteable commands to inspect, explicitly
+// reuse for a focused rerun, and dispose of a retained owned cluster. It
+// references the private kubeconfig by path only and never prints its
+// contents.
 func (c *Cluster) InspectCommands() []string {
 	return []string{
 		fmt.Sprintf("export KUBECONFIG=%s", c.Kubeconfig),
 		fmt.Sprintf("kubectl --kubeconfig %s get pods -A", c.Kubeconfig),
+		fmt.Sprintf("%s=%s %s=%s make test-e2e-reuse E2E_LABELS=\"failure-recovery\"",
+			ReuseClusterEnvVar, c.Name, ReuseKubeconfigEnvVar, c.Kubeconfig),
 		fmt.Sprintf("%s delete cluster --name %s --kubeconfig %s", c.kindPath, c.Name, c.Kubeconfig),
 	}
 }

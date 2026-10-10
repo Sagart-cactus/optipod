@@ -23,12 +23,14 @@ targets below run — the legacy suites (`test/e2e` root package, `test/e2e/cont
 never invoked by them, and `go test ./test/e2e/...` is never used. Each invocation owns one
 uniquely named Kind cluster with a private kubeconfig, builds/loads/installs the checkout
 controller once, and removes only its own cluster. `KEEP_CLUSTER=1` retains the owned
-cluster and prints private-kubeconfig inspection/disposal commands.
+cluster and prints private-kubeconfig inspection, explicit focused-reuse and disposal
+commands.
 
 | Command | Purpose |
 | --- | --- |
 | `make test-e2e-smoke` | The one-command smoke entry point (M2): runs the smoke-labelled specs of the new suite end to end from a clean checkout — preflight → owned cluster → one build/load/install → specs → diagnostics on failure → teardown. |
 | `make test-e2e-labels E2E_LABELS="diagnostics"` | Run the new suite filtered by Ginkgo label (also `E2E_LABELS="smoke"`, `"smoke && webhook"`, `"webhook"`, `"failure-recovery"`, ...). `E2E_SUITE_TIMEOUT` (default `45m`) bounds the `go test` timeout. |
+| `make test-e2e-reuse` | Explicit focused rerun against a retained harness cluster: set `OPTIPOD_E2E_REUSE_CLUSTER` and `OPTIPOD_E2E_REUSE_KUBECONFIG` (printed by a `KEEP_CLUSTER=1` run) plus `E2E_LABELS`. The retained install is verified ready and kept — not rebuilt, reinstalled or deleted; only the printed disposal command removes the cluster. |
 | `make test-e2e-deliberate-failure` | Opt-in spec that fails one deliberate assertion to exercise pre-teardown redacted diagnostics; a nonzero exit and a redacted bundle are the expected outcome, not a product defect. |
 
 Labels currently in the suite: `smoke` (critical installed-controller behaviour; the smoke specs also carry
@@ -49,8 +51,22 @@ unmutated. The `webhook` label also covers the SSA
 managed-field-ownership scenario and the live TLS admission probe that mutates an eligible hand-labelled pod and
 admits ineligible pods unchanged — that probe proves admission reachability only, never natural rollout, which is
 a conformance-tier concern), `diagnostics` (harness self-check) and `deliberate-failure` (opt-in failure-path
-validation). The remaining behavior label from `design.md` §5 — `failure-recovery` — arrives with the remaining
-M2 smoke feature; `conformance`, `rbac`, `observability` and friends with M3.
+validation). The `failure-recovery` label covers controller restart recovery (VAL-SMOKE-004): after an observed
+recommendation the installed controller pod is deleted, and the replacement pod — ready, on the same image and
+shipped service account — must consume changed deterministic fixture input through a fresh reconcile and rewrite
+the workload's recommendation annotations (with an advanced resourceVersion and a fresh reconciliation status);
+a ready pod or a stale annotation alone fails the spec. `conformance`, `rbac`, `observability` and friends arrive
+with M3.
+
+**Retained-cluster inspection, focused reuse and disposal.** A `KEEP_CLUSTER=1` run keeps its owned cluster and
+prints the retained cluster's name, its private kubeconfig path and copy-pasteable commands to (1) inspect the
+cluster through that private kubeconfig (`kubectl --kubeconfig <path> get pods -A`), (2) explicitly reuse it for
+a focused rerun (`OPTIPOD_E2E_REUSE_CLUSTER=<name> OPTIPOD_E2E_REUSE_KUBECONFIG=<path> make test-e2e-reuse
+E2E_LABELS="failure-recovery"` — the reuse is accepted only for a harness-prefixed cluster that is actually
+present with its readable private kubeconfig; anything else is refused, and the retained install is verified
+ready but never rebuilt or deleted by the rerun), and (3) dispose of it
+(`kind delete cluster --name <name> --kubeconfig <path>`). Normal runs always create a new owned cluster and
+remove it; reuse only ever happens through the explicit variables above.
 
 Every invocation — success or failure — writes into a git-ignored
 `test/e2e/artifacts/run-<id>/` directory (override with `OPTIPOD_E2E_ARTIFACTS_DIR`):

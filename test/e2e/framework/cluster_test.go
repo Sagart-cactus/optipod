@@ -207,6 +207,10 @@ func TestInspectCommandsReferencePathNotContents(t *testing.T) {
 	if !strings.Contains(cmds, "delete cluster --name "+c.Name) {
 		t.Errorf("inspect commands should include disposal, got %q", cmds)
 	}
+	if !strings.Contains(cmds, ReuseClusterEnvVar+"="+c.Name) ||
+		!strings.Contains(cmds, ReuseKubeconfigEnvVar+"="+c.Kubeconfig) {
+		t.Errorf("inspect commands should include the explicit focused-reuse invocation, got %q", cmds)
+	}
 }
 
 func TestKeepClusterRequestedParsing(t *testing.T) {
@@ -219,5 +223,74 @@ func TestKeepClusterRequestedParsing(t *testing.T) {
 	t.Setenv("KEEP_CLUSTER", "")
 	if OptionsFromEnv().Keep {
 		t.Error("empty KEEP_CLUSTER should not request retention")
+	}
+}
+
+func TestReuseFromEnvNotRequestedReturnsNil(t *testing.T) {
+	t.Setenv(ReuseClusterEnvVar, "")
+	t.Setenv(ReuseKubeconfigEnvVar, "")
+	cluster, err := ReuseFromEnv(context.Background(), ClusterOptions{Run: (&fakeRunner{}).run})
+	if err != nil {
+		t.Fatalf("no reuse requested should never error, got %v", err)
+	}
+	if cluster != nil {
+		t.Fatalf("no reuse requested must not attach to anything, got %+v", cluster)
+	}
+}
+
+func TestReuseFromEnvAttachesRetainedHarnessCluster(t *testing.T) {
+	dir := t.TempDir()
+	kc := filepath.Join(dir, "kubeconfig")
+	if err := os.WriteFile(kc, []byte("apiVersion: v1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	name := ClusterNamePrefix + "retained"
+	t.Setenv(ReuseClusterEnvVar, name)
+	t.Setenv(ReuseKubeconfigEnvVar, kc)
+	cluster, err := ReuseFromEnv(context.Background(),
+		ClusterOptions{Run: (&fakeRunner{clustersOut: "kind\n" + name + "\n"}).run})
+	if err != nil {
+		t.Fatalf("ReuseFromEnv: %v", err)
+	}
+	if cluster == nil {
+		t.Fatal("explicit reuse should attach to the retained cluster")
+	}
+	if cluster.Name != name || cluster.Kubeconfig != kc {
+		t.Errorf("attached to %q/%q, want %q/%q", cluster.Name, cluster.Kubeconfig, name, kc)
+	}
+	if !cluster.Owned() || !cluster.Keep() {
+		t.Errorf("reused cluster should be owned and retained, owned=%v keep=%v", cluster.Owned(), cluster.Keep())
+	}
+}
+
+func TestReuseFromEnvRefusesUserCluster(t *testing.T) {
+	dir := t.TempDir()
+	kc := filepath.Join(dir, "kubeconfig")
+	if err := os.WriteFile(kc, []byte("apiVersion: v1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(ReuseClusterEnvVar, "kind")
+	t.Setenv(ReuseKubeconfigEnvVar, kc)
+	cluster, err := ReuseFromEnv(context.Background(), ClusterOptions{Run: (&fakeRunner{}).run})
+	if err == nil {
+		t.Fatal("expected refusal to reuse a user cluster named by the reuse variables")
+	}
+	if cluster != nil {
+		t.Fatalf("a refused reuse must attach to nothing, got %+v", cluster)
+	}
+	if !strings.Contains(err.Error(), "refused") {
+		t.Errorf("the refusal should stay identifiable, got %q", err.Error())
+	}
+}
+
+func TestReuseFromEnvRefusesMissingKubeconfig(t *testing.T) {
+	t.Setenv(ReuseClusterEnvVar, ClusterNamePrefix+"gone")
+	t.Setenv(ReuseKubeconfigEnvVar, filepath.Join(t.TempDir(), "does-not-exist"))
+	cluster, err := ReuseFromEnv(context.Background(), ClusterOptions{Run: (&fakeRunner{}).run})
+	if err == nil {
+		t.Fatal("expected refusal when the retained cluster's kubeconfig is missing")
+	}
+	if cluster != nil {
+		t.Fatalf("a refused reuse must attach to nothing, got %+v", cluster)
 	}
 }

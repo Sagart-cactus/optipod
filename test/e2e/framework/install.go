@@ -80,6 +80,25 @@ func ensureWebhookCertSecret(ctx context.Context, clients *Clients, cert *Webhoo
 	return nil
 }
 
+// readyStep is one bounded readiness gate.
+type readyStep struct {
+	desc string
+	wait func(context.Context) error
+}
+
+// runReadySteps executes the gates in order with one shared bounded context
+// so the total readiness wait cannot exceed the timeout.
+func runReadySteps(ctx context.Context, timeout time.Duration, steps []readyStep) error {
+	cctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	for _, step := range steps {
+		if err := step.wait(cctx); err != nil {
+			return fmt.Errorf("await ready: %s: %w", step.desc, err)
+		}
+	}
+	return nil
+}
+
 // AwaitReady establishes, with bounded condition waits, that the installed
 // control plane is genuinely ready before any admission or policy scenario
 // runs: the OptimizationPolicy CRD is Established, the controller and fixture
@@ -90,13 +109,7 @@ func AwaitReady(ctx context.Context, clients *Clients, webhookCert *WebhookServi
 	if timeout <= 0 {
 		timeout = defaultAwaitTimeout
 	}
-	cctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-
-	steps := []struct {
-		desc string
-		wait func(context.Context) error
-	}{
+	steps := []readyStep{
 		{"CRD " + OptimizationPolicyCRDName + " Established", func(ctx context.Context) error {
 			return WaitForCRDEstablished(ctx, clients, OptimizationPolicyCRDName, WaitOptions{Timeout: timeout})
 		}},
@@ -113,12 +126,39 @@ func AwaitReady(ctx context.Context, clients *Clients, webhookCert *WebhookServi
 			return WaitForWebhookCABundle(ctx, clients, webhookCert.CAPEM, WaitOptions{Timeout: timeout})
 		}},
 	}
-	for _, step := range steps {
-		if err := step.wait(cctx); err != nil {
-			return fmt.Errorf("await ready: %s: %w", step.desc, err)
-		}
+	return runReadySteps(ctx, timeout, steps)
+}
+
+// AwaitInstalledReady verifies that a retained harness cluster's installed
+// pieces are genuinely ready before a focused reuse rerun runs its specs:
+// the OptimizationPolicy CRD is Established, the controller and fixture
+// Deployments are Available, and the webhook Service has ready endpoints. A
+// focused rerun attaches to the retaining run's installation, so two of that
+// run's checks are deliberately absent here: the webhook CA-bundle equality
+// check (the CA was generated inside the retaining run's memory and the
+// bundle the API server already trusts is the one the installed webhook
+// serves) and the freshly built image identity check (a focused rerun does
+// not rebuild the controller, so the installed image is the retaining run's
+// build by design).
+func AwaitInstalledReady(ctx context.Context, clients *Clients, timeout time.Duration) error {
+	if timeout <= 0 {
+		timeout = defaultAwaitTimeout
 	}
-	return nil
+	steps := []readyStep{
+		{"CRD " + OptimizationPolicyCRDName + " Established", func(ctx context.Context) error {
+			return WaitForCRDEstablished(ctx, clients, OptimizationPolicyCRDName, WaitOptions{Timeout: timeout})
+		}},
+		{"controller Deployment Available", func(ctx context.Context) error {
+			return WaitForDeploymentAvailable(ctx, clients, SystemNamespace, ControllerDeploymentName, WaitOptions{Timeout: timeout})
+		}},
+		{"metrics fixture Deployment Available", func(ctx context.Context) error {
+			return WaitForDeploymentAvailable(ctx, clients, FixtureNamespace, FixtureServiceName, WaitOptions{Timeout: timeout})
+		}},
+		{"webhook Service endpoints", func(ctx context.Context) error {
+			return WaitForServiceEndpoints(ctx, clients, SystemNamespace, WebhookServiceName, WaitOptions{Timeout: timeout})
+		}},
+	}
+	return runReadySteps(ctx, timeout, steps)
 }
 
 // WaitForWebhookCABundle waits until the MutatingWebhookConfiguration exists

@@ -44,6 +44,14 @@ type Environment struct {
 type EnvironmentOptions struct {
 	// Cluster configures cluster creation (KEEP_CLUSTER etc.).
 	Cluster ClusterOptions
+	// ExistingCluster, when non-nil, attaches the suite to a previously
+	// retained harness cluster (explicit focused reuse via ReuseFromEnv)
+	// instead of creating a new one. A focused rerun does not rebuild or
+	// reinstall: it verifies the retained installation is ready (see
+	// AwaitInstalledReady) and runs its specs against the controller the
+	// retaining run installed. A reused cluster is always retained and is
+	// never deleted by this run; only the printed disposal command removes it.
+	ExistingCluster *Cluster
 	// RepoRoot is the checkout root; defaults to the repository containing
 	// this source file so the harness works from any working directory.
 	RepoRoot string
@@ -106,7 +114,18 @@ func SetupEnvironment(ctx context.Context, opts EnvironmentOptions) (*Environmen
 	}
 
 	var cluster *Cluster
-	if err := step("cluster-create", func() error {
+	reusing := opts.ExistingCluster != nil
+	if reusing {
+		// Explicit focused reuse: attach to the retained harness cluster
+		// instead of creating one. The reused cluster is kept (never deleted
+		// by this run); anything not verifiably retained is refused.
+		start := time.Now()
+		cluster = opts.ExistingCluster
+		if !cluster.Owned() || !cluster.Keep() {
+			return nil, fmt.Errorf("refusing to reuse cluster %q: not a verifiably retained harness cluster", cluster.Name)
+		}
+		env.Phases = append(env.Phases, Phase{Name: "cluster-reuse", Duration: time.Since(start)})
+	} else if err := step("cluster-create", func() error {
 		var err error
 		cluster, err = CreateCluster(ctx, opts.Cluster)
 		return err
@@ -114,7 +133,8 @@ func SetupEnvironment(ctx context.Context, opts EnvironmentOptions) (*Environmen
 		return nil, err
 	}
 	env.Cluster = cluster
-	// From here on, failure tears down the owned cluster (unless retained).
+	// From here on, failure tears down the owned cluster (unless retained;
+	// a reused cluster is always retained, so teardown is a no-op).
 	fail := func(err error) (*Environment, error) {
 		cctx, cancel := CleanupContext()
 		defer cancel()
@@ -139,73 +159,86 @@ func SetupEnvironment(ctx context.Context, opts EnvironmentOptions) (*Environmen
 		return fail(err)
 	}
 
-	builder := NewImageBuilder(repoRoot)
-	installation := &Installation{FixtureURL: FixtureServiceURL(), WorkloadImageRef: WorkloadImage()}
-	if err := step("image-build", func() error {
-		controllerImage, err := builder.BuildControllerImage(ctx)
-		if err != nil {
-			return err
+	// A focused reuse rerun attaches to the retaining run's installation: the
+	// controller is not rebuilt, reloaded, re-rendered or reinstalled, so the
+	// specs run against exactly the installed state the operator retained for
+	// debugging. Ordinary runs keep the one build/load/render/install cycle.
+	var installation *Installation
+	if !reusing {
+		builder := NewImageBuilder(repoRoot)
+		installation = &Installation{FixtureURL: FixtureServiceURL(), WorkloadImageRef: WorkloadImage()}
+		if err := step("image-build", func() error {
+			controllerImage, err := builder.BuildControllerImage(ctx)
+			if err != nil {
+				return err
+			}
+			installation.ControllerImage = controllerImage
+			fixtureImage, err := builder.BuildFixtureImage(ctx)
+			if err != nil {
+				return err
+			}
+			installation.FixtureImage = fixtureImage
+			return nil
+		}); err != nil {
+			return fail(err)
 		}
-		installation.ControllerImage = controllerImage
-		fixtureImage, err := builder.BuildFixtureImage(ctx)
-		if err != nil {
-			return err
-		}
-		installation.FixtureImage = fixtureImage
-		return nil
-	}); err != nil {
-		return fail(err)
-	}
 
-	// Only the two locally built images are loaded. The digest-pinned workload
-	// image (pause) is a multi-arch manifest list, which kind cannot load from
-	// the local store; pods reference it by digest and the node's containerd
-	// pulls exactly that content.
-	if err := step("image-load", func() error {
-		controllerNodeID, err := builder.LoadImage(ctx, cluster.Name, installation.ControllerImage.Ref)
-		if err != nil {
-			return err
+		// Only the two locally built images are loaded. The digest-pinned workload
+		// image (pause) is a multi-arch manifest list, which kind cannot load from
+		// the local store; pods reference it by digest and the node's containerd
+		// pulls exactly that content.
+		if err := step("image-load", func() error {
+			controllerNodeID, err := builder.LoadImage(ctx, cluster.Name, installation.ControllerImage.Ref)
+			if err != nil {
+				return err
+			}
+			installation.ControllerImage.NodeID = controllerNodeID
+			fixtureNodeID, err := builder.LoadImage(ctx, cluster.Name, installation.FixtureImage.Ref)
+			if err != nil {
+				return err
+			}
+			installation.FixtureImage.NodeID = fixtureNodeID
+			return nil
+		}); err != nil {
+			return fail(err)
 		}
-		installation.ControllerImage.NodeID = controllerNodeID
-		fixtureNodeID, err := builder.LoadImage(ctx, cluster.Name, installation.FixtureImage.Ref)
-		if err != nil {
-			return err
-		}
-		installation.FixtureImage.NodeID = fixtureNodeID
-		return nil
-	}); err != nil {
-		return fail(err)
-	}
 
-	if err := step("render", func() error {
-		cert, err := GenerateWebhookServingCert(WebhookServiceName, SystemNamespace)
-		if err != nil {
-			return err
+		if err := step("render", func() error {
+			cert, err := GenerateWebhookServingCert(WebhookServiceName, SystemNamespace)
+			if err != nil {
+				return err
+			}
+			installation.WebhookCert = cert
+			rendered, err := RenderManifests(ctx, RenderOptions{
+				RepoRoot:               repoRoot,
+				ControllerImageRef:     installation.ControllerImage.Ref,
+				FixtureImageRef:        installation.FixtureImage.Ref,
+				WebhookCAPEM:           cert.CAPEM,
+				ReconciliationInterval: opts.ReconciliationInterval,
+			})
+			if err != nil {
+				return err
+			}
+			installation.Rendered = rendered
+			return nil
+		}); err != nil {
+			return fail(err)
 		}
-		installation.WebhookCert = cert
-		rendered, err := RenderManifests(ctx, RenderOptions{
-			RepoRoot:               repoRoot,
-			ControllerImageRef:     installation.ControllerImage.Ref,
-			FixtureImageRef:        installation.FixtureImage.Ref,
-			WebhookCAPEM:           cert.CAPEM,
-			ReconciliationInterval: opts.ReconciliationInterval,
-		})
-		if err != nil {
-			return err
-		}
-		installation.Rendered = rendered
-		return nil
-	}); err != nil {
-		return fail(err)
-	}
 
-	if err := step("install-apply", func() error {
-		return Install(ctx, cluster, env.Clients, installation.Rendered, installation.WebhookCert, InstallOptions{})
-	}); err != nil {
-		return fail(err)
+		if err := step("install-apply", func() error {
+			return Install(ctx, cluster, env.Clients, installation.Rendered, installation.WebhookCert, InstallOptions{})
+		}); err != nil {
+			return fail(err)
+		}
 	}
 
 	if err := step("await-ready", func() error {
+		if reusing {
+			// A focused reuse rerun proves the retained installation is
+			// genuinely ready; the CA-bundle and fresh-image identity checks
+			// belong to the retaining run (see AwaitInstalledReady).
+			return AwaitInstalledReady(ctx, env.Clients, defaultAwaitTimeout)
+		}
 		if err := AwaitReady(ctx, env.Clients, installation.WebhookCert, defaultAwaitTimeout); err != nil {
 			return err
 		}

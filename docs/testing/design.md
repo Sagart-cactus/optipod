@@ -111,7 +111,12 @@ response is asserted.
 
 **Ownership rule.** New ordinary runs own and remove their cluster. Focused reuse may attach
 only to a retained, harness-created cluster; a user cluster (e.g. `kind`) is never treated as
-disposable. If ownership is uncertain, the harness stops.
+disposable. If ownership is uncertain, the harness stops. Reuse is explicit only: it happens
+solely when an operator sets `OPTIPOD_E2E_REUSE_CLUSTER`/`OPTIPOD_E2E_REUSE_KUBECONFIG` (the
+values a `KEEP_CLUSTER=1` run prints); the harness verifies the named cluster carries the
+harness prefix, is actually present and has a readable private kubeconfig, and never
+rebuilds, reinstalls or deletes it — a set-but-unusable request fails the run rather than
+falling back to anything implicit (`make test-e2e-reuse`).
 
 **Concurrency.** One Kind suite at a time (Docker ~8 GB on the reference host); kube-apiserver
 and port-forward ports are dynamically allocated localhost ports, never fixed host ports
@@ -153,6 +158,8 @@ selects `smoke`, `webhook` or `failure-recovery` **without** invoking either leg
 | Target | Milestone | Behaviour |
 | --- | --- | --- |
 | `make test-e2e-smoke` | M2 | Runs the new framework smoke suite (label `smoke`) end to end: preflight → own cluster → build/load/install once → specs → diagnostics → teardown. Exposed in `make help`. |
+| `make test-e2e-labels E2E_LABELS="..."` | M2 | Same suite/installed-controller path with a Ginkgo label filter (`failure-recovery`, `webhook`, ...), never a legacy suite. |
+| `make test-e2e-reuse` | M2 | Explicit focused rerun against a retained harness cluster (`OPTIPOD_E2E_REUSE_CLUSTER`/`OPTIPOD_E2E_REUSE_KUBECONFIG` from a `KEEP_CLUSTER=1` run): verifies the retained install is ready, keeps it unbuilt/unreinstalled and never deletes it. |
 | `make test-e2e-conformance` | M3 | Runs smoke **plus** the full conformance labels over the same owned installed cluster. |
 
 Both targets launch Go/Ginkgo with label filters and **must not** delegate to the legacy

@@ -69,9 +69,22 @@ var _ = BeforeSuite(func(ctx context.Context) {
 	Expect(err).NotTo(HaveOccurred(), "create per-run artifacts directory")
 	fmt.Printf("=== optipod e2e artifacts: %s\n", artifacts.Dir)
 
+	// Focused reuse is explicit only: unless the operator names a retained
+	// harness cluster and its private kubeconfig, the suite creates a new
+	// owned cluster. A set-but-unusable reuse request fails the run rather
+	// than falling back to anything implicit.
+	reuse, err := framework.ReuseFromEnv(ctx, framework.ClusterOptions{})
+	if err != nil {
+		Fail(fmt.Sprintf("explicit focused cluster reuse was refused: %v", err))
+	}
+	if reuse != nil {
+		fmt.Printf("=== focused reuse of retained harness cluster %s (installed controller kept; not rebuilt)\n", reuse.Name)
+	}
+
 	setupStart := time.Now()
 	env, err = framework.SetupEnvironment(ctx, framework.EnvironmentOptions{
-		Cluster: framework.OptionsFromEnv(),
+		Cluster:         framework.OptionsFromEnv(),
+		ExistingCluster: reuse,
 	})
 	run.setupSeconds = time.Since(setupStart).Seconds()
 	if err != nil {
