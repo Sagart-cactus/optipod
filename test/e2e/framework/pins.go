@@ -53,6 +53,12 @@ const (
 	// name-prefixed identities the harness verifies after install.
 	ControllerDeploymentName     = "optipod-controller-manager"
 	ControllerServiceAccountName = "optipod-controller-manager"
+	// ControllerClusterRoleName is the name-prefixed ClusterRole config/default
+	// installs for the controller (config/rbac/role.yaml metadata.name
+	// "manager-role" plus the default kustomization's "optipod-" namePrefix).
+	// Admission specs read it to prove the installed role grants the reads the
+	// deployed mutator needs.
+	ControllerClusterRoleName = "optipod-manager-role"
 	// ControllerContainerName is the shipped manager container name inside
 	// the controller pod.
 	ControllerContainerName = "manager"
