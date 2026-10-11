@@ -88,9 +88,10 @@ type PhaseTiming struct {
 	Skipped         bool    `json:"skipped"`
 }
 
-// PhaseTimingFrom converts a measured setup Phase into a PhaseTiming.
+// PhaseTimingFrom converts a measured setup Phase into a PhaseTiming,
+// preserving the explicit skipped marker of a phase the run did not perform.
 func PhaseTimingFrom(p Phase) PhaseTiming {
-	return PhaseTiming{Name: p.Name, DurationSeconds: p.Duration.Seconds()}
+	return PhaseTiming{Name: p.Name, DurationSeconds: p.Duration.Seconds(), Skipped: p.Skipped}
 }
 
 // SkippedPhase marks a named phase as not executed in this run.

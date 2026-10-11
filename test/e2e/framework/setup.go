@@ -8,10 +8,35 @@ import (
 	"time"
 )
 
+// Setup phase names. Every suite invocation reports every one of these phases
+// in its timing file: an ordinary run measures all of them, while a focused
+// reuse rerun marks the install-cycle phases it does not perform as skipped
+// instead of omitting them, so machine-readable timing evidence is uniform
+// across smoke, failure and reuse runs.
+const (
+	phasePreflight     = "preflight"
+	phaseClusterCreate = "cluster-create"
+	phaseClusterReuse  = "cluster-reuse"
+	phaseClients       = "clients"
+	phaseImageBuild    = "image-build"
+	phaseImageLoad     = "image-load"
+	phaseRender        = "render"
+	phaseInstallApply  = "install-apply"
+	phaseAwaitReady    = "await-ready"
+)
+
+// installCyclePhases are the phases a focused reuse rerun deliberately does
+// not perform: it attaches to the retaining run's installation instead of
+// rebuilding, reloading, re-rendering or reinstalling.
+var installCyclePhases = []string{phaseImageBuild, phaseImageLoad, phaseRender, phaseInstallApply}
+
 // Phase records one setup phase's wall time for later timing diagnostics.
+// A phase the run deliberately did not perform is recorded with Skipped set
+// (and no meaningful duration) rather than omitted.
 type Phase struct {
 	Name     string
 	Duration time.Duration
+	Skipped  bool
 }
 
 // Installation captures the single build/load/install cycle's evidence: which
@@ -100,7 +125,7 @@ func SetupEnvironment(ctx context.Context, opts EnvironmentOptions) (*Environmen
 		return nil
 	}
 
-	if err := step("preflight", func() error {
+	if err := step(phasePreflight, func() error {
 		if opts.SkipPreflight {
 			return nil
 		}
@@ -124,8 +149,8 @@ func SetupEnvironment(ctx context.Context, opts EnvironmentOptions) (*Environmen
 		if !cluster.Owned() || !cluster.Keep() {
 			return nil, fmt.Errorf("refusing to reuse cluster %q: not a verifiably retained harness cluster", cluster.Name)
 		}
-		env.Phases = append(env.Phases, Phase{Name: "cluster-reuse", Duration: time.Since(start)})
-	} else if err := step("cluster-create", func() error {
+		env.Phases = append(env.Phases, Phase{Name: phaseClusterReuse, Duration: time.Since(start)})
+	} else if err := step(phaseClusterCreate, func() error {
 		var err error
 		cluster, err = CreateCluster(ctx, opts.Cluster)
 		return err
@@ -144,7 +169,7 @@ func SetupEnvironment(ctx context.Context, opts EnvironmentOptions) (*Environmen
 		return nil, err
 	}
 
-	if err := step("clients", func() error {
+	if err := step(phaseClients, func() error {
 		restConfig, err := cluster.RESTConfig()
 		if err != nil {
 			return err
@@ -167,7 +192,7 @@ func SetupEnvironment(ctx context.Context, opts EnvironmentOptions) (*Environmen
 	if !reusing {
 		builder := NewImageBuilder(repoRoot)
 		installation = &Installation{FixtureURL: FixtureServiceURL(), WorkloadImageRef: WorkloadImage()}
-		if err := step("image-build", func() error {
+		if err := step(phaseImageBuild, func() error {
 			controllerImage, err := builder.BuildControllerImage(ctx)
 			if err != nil {
 				return err
@@ -187,7 +212,7 @@ func SetupEnvironment(ctx context.Context, opts EnvironmentOptions) (*Environmen
 		// image (pause) is a multi-arch manifest list, which kind cannot load from
 		// the local store; pods reference it by digest and the node's containerd
 		// pulls exactly that content.
-		if err := step("image-load", func() error {
+		if err := step(phaseImageLoad, func() error {
 			controllerNodeID, err := builder.LoadImage(ctx, cluster.Name, installation.ControllerImage.Ref)
 			if err != nil {
 				return err
@@ -203,7 +228,7 @@ func SetupEnvironment(ctx context.Context, opts EnvironmentOptions) (*Environmen
 			return fail(err)
 		}
 
-		if err := step("render", func() error {
+		if err := step(phaseRender, func() error {
 			cert, err := GenerateWebhookServingCert(WebhookServiceName, SystemNamespace)
 			if err != nil {
 				return err
@@ -225,14 +250,16 @@ func SetupEnvironment(ctx context.Context, opts EnvironmentOptions) (*Environmen
 			return fail(err)
 		}
 
-		if err := step("install-apply", func() error {
+		if err := step(phaseInstallApply, func() error {
 			return Install(ctx, cluster, env.Clients, installation.Rendered, installation.WebhookCert, InstallOptions{})
 		}); err != nil {
 			return fail(err)
 		}
+	} else {
+		env.markSkippedInstallPhases()
 	}
 
-	if err := step("await-ready", func() error {
+	if err := step(phaseAwaitReady, func() error {
 		if reusing {
 			// A focused reuse rerun proves the retained installation is
 			// genuinely ready; the CA-bundle and fresh-image identity checks
@@ -263,4 +290,14 @@ func (e *Environment) Teardown() error {
 	cctx, cancel := CleanupContext()
 	defer cancel()
 	return e.Cluster.Delete(cctx)
+}
+
+// markSkippedInstallPhases records the install-cycle phases a focused reuse
+// rerun does not perform as explicitly skipped, in the same position an
+// ordinary run measures them, so the run's timing file carries every phase
+// with a uniform schema.
+func (e *Environment) markSkippedInstallPhases() {
+	for _, name := range installCyclePhases {
+		e.Phases = append(e.Phases, Phase{Name: name, Skipped: true})
+	}
 }

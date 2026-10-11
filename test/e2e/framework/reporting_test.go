@@ -92,6 +92,31 @@ func TestWriteTimingsReportMarksSkippedPhases(t *testing.T) {
 	}
 }
 
+func TestPhaseTimingFromPreservesSkippedMarker(t *testing.T) {
+	measured := PhaseTimingFrom(Phase{Name: "image-build", Duration: 1500 * time.Millisecond})
+	if measured.Skipped || measured.DurationSeconds != 1.5 {
+		t.Errorf("measured phase converted wrong: %+v", measured)
+	}
+	skipped := PhaseTimingFrom(Phase{Name: "image-build", Skipped: true})
+	if !skipped.Skipped || skipped.DurationSeconds != 0 {
+		t.Errorf("skipped phase converted wrong: %+v", skipped)
+	}
+	raw, err := json.Marshal(skipped)
+	if err != nil {
+		t.Fatalf("marshal skipped phase: %v", err)
+	}
+	var decoded map[string]any
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		t.Fatalf("skipped phase is not parseable JSON: %v", err)
+	}
+	if decoded["skipped"] != true {
+		t.Errorf("skipped phase JSON lacks explicit skipped marker: %s", raw)
+	}
+	if _, present := decoded["durationSeconds"]; present {
+		t.Errorf("skipped phase JSON must not carry a fabricated zero duration: %s", raw)
+	}
+}
+
 func TestWriteJUnitReportIsParseableAndRedacted(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "junit.xml")
 	start := time.Now()
