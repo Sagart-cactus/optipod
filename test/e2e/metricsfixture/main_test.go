@@ -3,8 +3,11 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -211,5 +214,110 @@ func TestParseLabelsHandlesProviderQueryShapes(t *testing.T) {
 	}
 	if isCPUQuery(memQuery) {
 		t.Fatal("memory query misdetected as cpu")
+	}
+}
+
+// writeTokenFile materializes a fake projected service-account token for the
+// scrape-through tests.
+func writeTokenFile(t *testing.T, token string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "token")
+	if err := os.WriteFile(path, []byte(token), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func doScrapeMetrics(t *testing.T, ts *httptest.Server) (int, string) {
+	t.Helper()
+	resp, err := http.Get(ts.URL + "/-/scrape-metrics")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return resp.StatusCode, string(body)
+}
+
+// TestScrapeMetricsRelaysAuthenticatedExposition proves the scrape-through
+// endpoint presents the pod's bearer token to the controller metrics endpoint
+// over HTTPS (the shipped ServiceMonitor shape) and relays the exposition.
+func TestScrapeMetricsRelaysAuthenticatedExposition(t *testing.T) {
+	var gotAuth string
+	upstream := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "text/plain; version=0.0.4")
+		_, _ = w.Write([]byte("optipod_workloads_monitored{namespace=\"n\",policy=\"p\"} 1\n"))
+	}))
+	t.Cleanup(upstream.Close)
+
+	s, ts := newTestServer(t)
+	s.scrapeTarget = upstream.URL
+	s.tokenPath = writeTokenFile(t, "fixture-sa-token\n")
+
+	code, body := doScrapeMetrics(t, ts)
+	if code != http.StatusOK {
+		t.Fatalf("code = %d, want 200 (body %q)", code, body)
+	}
+	if gotAuth != "Bearer fixture-sa-token" {
+		t.Fatalf("upstream Authorization = %q, want the projected bearer token", gotAuth)
+	}
+	if !strings.Contains(body, `optipod_workloads_monitored{namespace="n",policy="p"} 1`) {
+		t.Fatalf("exposition not relayed verbatim: %q", body)
+	}
+}
+
+// TestScrapeMetricsRelaysUpstreamFailureStatus proves a filtered-endpoint
+// rejection (e.g. 401/403 from the authentication/authorization filter) is
+// surfaced with its status rather than masked as a fixture success.
+func TestScrapeMetricsRelaysUpstreamFailureStatus(t *testing.T) {
+	upstream := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+	}))
+	t.Cleanup(upstream.Close)
+
+	s, ts := newTestServer(t)
+	s.scrapeTarget = upstream.URL
+	s.tokenPath = writeTokenFile(t, "fixture-sa-token")
+
+	code, body := doScrapeMetrics(t, ts)
+	if code != http.StatusForbidden {
+		t.Fatalf("code = %d, want the upstream 403 relayed", code)
+	}
+	if !strings.Contains(body, "HTTP 403") {
+		t.Fatalf("error envelope should name the upstream status, got %q", body)
+	}
+}
+
+// TestScrapeMetricsWithoutToken proves the endpoint fails closed when the
+// projected service-account token is absent, instead of scraping anonymously.
+func TestScrapeMetricsWithoutToken(t *testing.T) {
+	s, ts := newTestServer(t)
+	s.scrapeTarget = "https://127.0.0.1:1/metrics"
+	s.tokenPath = filepath.Join(t.TempDir(), "absent-token")
+
+	code, body := doScrapeMetrics(t, ts)
+	if code != http.StatusServiceUnavailable {
+		t.Fatalf("code = %d, want 503", code)
+	}
+	if !strings.Contains(body, "token is not readable") {
+		t.Fatalf("error envelope should explain the missing token, got %q", body)
+	}
+}
+
+// TestScrapeMetricsRejectsNonGet pins the read-only contract of the
+// scrape-through endpoint.
+func TestScrapeMetricsRejectsNonGet(t *testing.T) {
+	_, ts := newTestServer(t)
+	resp, err := http.Post(ts.URL+"/-/scrape-metrics", "text/plain", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusMethodNotAllowed {
+		t.Fatalf("code = %d, want 405", resp.StatusCode)
 	}
 }

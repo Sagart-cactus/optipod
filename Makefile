@@ -394,6 +394,19 @@ test-e2e-labels: ## Run the new Kind suite with a Ginkgo label filter (E2E_LABEL
 	@echo "Running the new Kind suite (package: $(E2E_SUITE)) with label filter: $(E2E_LABELS)"
 	go test $(E2E_SUITE) -count=1 -timeout=$(E2E_SUITE_TIMEOUT) -v -ginkgo.v -ginkgo.label-filter="$(E2E_LABELS)"
 
+# Full conformance deliberately INCLUDES the smoke coverage: the label filter
+# selects every smoke AND every conformance spec over one owned installed
+# cluster, so the conformance command cannot pass by bypassing smoke
+# (VAL-CROSS-003). Nothing skipped here is silently dropped - diagnostics,
+# canary and deliberate-failure harness self-checks keep their own opt-in
+# label invocations.
+E2E_CONFORMANCE_TIMEOUT ?= 60m
+
+.PHONY: test-e2e-conformance
+test-e2e-conformance: ## Run the hermetic installed-controller conformance suite end to end: smoke plus all conformance labels (one command; owns and removes its Kind cluster)
+	@echo "Running the hermetic installed-controller conformance suite (label filter: smoke || conformance)..."
+	go test $(E2E_SUITE) -count=1 -timeout=$(E2E_CONFORMANCE_TIMEOUT) -v -ginkgo.v -ginkgo.label-filter="smoke || conformance"
+
 .PHONY: test-e2e-reuse
 test-e2e-reuse: ## Focused rerun against a retained harness cluster (OPTIPOD_E2E_REUSE_CLUSTER/OPTIPOD_E2E_REUSE_KUBECONFIG from a KEEP_CLUSTER=1 run; the retained install is kept, not rebuilt)
 	@if [ -z "$$OPTIPOD_E2E_REUSE_CLUSTER" ] || [ -z "$$OPTIPOD_E2E_REUSE_KUBECONFIG" ]; then \

@@ -52,8 +52,9 @@ type RenderedManifests struct {
 // config/default tree plus harness webhook/fixture manifests and renders it to
 // a single temporary manifest file. The overlay:
 //   - retags the controller image to the freshly built unique tag (matching the
-//     image under both its original "controller" name and the tracked
-//     "optipod-controller" override so no source-tree edit is needed),
+//     image under the scaffold-default "controller" name the tracked
+//     config/manager kustomization carries, with the historical
+//     "optipod-controller" override name kept for older checkouts),
 //   - applies the shipped manager webhook patch (args + serving-cert volume),
 //   - points the deployed controller at the in-cluster metrics fixture through
 //     the supported optipod-config ConfigMap keys,
@@ -163,9 +164,10 @@ resources:
 - metrics-fixture.yaml
 
 # Retag the controller image to the freshly built unique tag. Both names are
-# listed: the shipped config/manager kustomization currently carries a tracked
-# override to "optipod-controller", and kustomize image matching applies to the
-# current name.
+# listed: the tracked config/manager kustomization uses the scaffold default
+# "controller" (a historical "optipod-controller" override was reset in M3),
+# and kustomize image matching applies to the current name, so the second
+# entry keeps renders correct on checkouts that still carry the old override.
 images:
 - name: controller
   newName: %s
@@ -281,7 +283,17 @@ webhooks:
 }
 
 // metricsFixtureManifest deploys the deterministic Prometheus-compatible
-// fixture behind a ClusterIP Service inside the owned cluster.
+// fixture behind a ClusterIP Service inside the owned cluster. The fixture
+// runs under its own service account, which the harness binds to the shipped
+// metrics-reader ClusterRole (the shipped manifests define that role and
+// deliberately leave it unbound; binding it to the scraping identity is the
+// documented operator step). That identity powers the fixture's
+// /-/scrape-metrics endpoint: an in-cluster HTTPS scrape of the deployed
+// controller's shipped metrics Service with the pod's projected bearer token,
+// mirroring the shipped ServiceMonitor (config/prometheus/monitor.yaml),
+// because the API server strips caller credentials from service-proxy
+// requests and a Prometheus-shaped scrape of the filtered endpoint can only
+// happen in-cluster.
 func metricsFixtureManifest(fixtureImageRef string) string {
 	return fmt.Sprintf(`apiVersion: v1
 kind: Namespace
@@ -290,6 +302,31 @@ metadata:
   labels:
     app.kubernetes.io/name: optipod
     app.kubernetes.io/component: metrics-fixture
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: %s
+  namespace: %s
+  labels:
+    app.kubernetes.io/name: optipod
+    app.kubernetes.io/component: metrics-fixture
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: %s
+  labels:
+    app.kubernetes.io/name: optipod
+    app.kubernetes.io/component: metrics-fixture
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: %s
+subjects:
+- kind: ServiceAccount
+  name: %s
+  namespace: %s
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -309,6 +346,7 @@ spec:
       labels:
         app.kubernetes.io/component: metrics-fixture
     spec:
+      serviceAccountName: %s
       securityContext:
         runAsNonRoot: true
         seccompProfile:
@@ -320,6 +358,9 @@ spec:
         - containerPort: %d
           name: http
           protocol: TCP
+        env:
+        - name: CONTROLLER_METRICS_URL
+          value: %q
         securityContext:
           readOnlyRootFilesystem: true
           allowPrivilegeEscalation: false
@@ -357,7 +398,10 @@ spec:
     targetPort: %d
     protocol: TCP
   type: ClusterIP
-`, FixtureNamespace, FixtureServiceName, FixtureNamespace, fixtureImageRef,
-		FixturePort, FixturePort, FixtureServiceName, FixtureNamespace,
-		FixturePort, FixturePort)
+`, FixtureNamespace, FixtureServiceAccountName, FixtureNamespace,
+		FixtureMetricsReaderBindingName, MetricsReaderClusterRoleName,
+		FixtureServiceAccountName, FixtureNamespace,
+		FixtureServiceName, FixtureNamespace, FixtureServiceAccountName,
+		fixtureImageRef, FixturePort, ControllerMetricsURL(), FixturePort,
+		FixtureServiceName, FixtureNamespace, FixturePort, FixturePort)
 }

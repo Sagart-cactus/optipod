@@ -85,7 +85,7 @@ var _ = Describe("Webhook onNextRestart rollout timing does not restart running 
 		By("asserting the completed reconcile restarted no pods and edited no template")
 		expectSteadyWorkload(ctx, steady, ns.Name, workloadName, podSelector,
 			"the completed onNextRestart reconcile")
-		expectNoTemplateRestartMarker(ctx, optipodv1alpha1.WorkloadTypeDeployment, ns.Name, workloadName,
+		expectNoTemplateRestartMarker(ctx, ns.Name, workloadName,
 			"the workload under the default onNextRestart rollout")
 		livePods, err := env.Clients.Kube.CoreV1().Pods(ns.Name).List(ctx,
 			metav1.ListOptions{LabelSelector: podSelector})
@@ -108,7 +108,7 @@ var _ = Describe("Webhook onNextRestart rollout timing does not restart running 
 			To(Succeed(), "read the workload after the deliberate restart")
 		expectUnappliedContainerRequests(restarted.Spec.Template.Spec.Containers, samples,
 			"the pod template after the deliberate restart (the restart was the user's, not a controller template edit)")
-		expectNoTemplateRestartMarker(ctx, optipodv1alpha1.WorkloadTypeDeployment, ns.Name, workloadName,
+		expectNoTemplateRestartMarker(ctx, ns.Name, workloadName,
 			"the workload after the deliberate restart")
 
 		By("waiting for the policy's reconciliation summary")

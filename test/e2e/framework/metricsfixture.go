@@ -109,6 +109,28 @@ func (m *MetricsFixtureClient) Trace(ctx context.Context) ([]RecordedQuery, erro
 	return reply.Queries, nil
 }
 
+// ScrapeControllerMetrics returns the deployed controller's Prometheus
+// exposition, scraped in-cluster by the fixture through the shipped metrics
+// access path (HTTPS against the shipped metrics service with the fixture's
+// service-account token bound to the shipped metrics-reader ClusterRole — the
+// shipped ServiceMonitor's shape). Any fixture-side failure, including an
+// authentication/authorization rejection relayed from the controller's
+// metrics endpoint, propagates to the caller.
+func (m *MetricsFixtureClient) ScrapeControllerMetrics(ctx context.Context) (string, error) {
+	raw, err := m.kube.CoreV1().RESTClient().Get().
+		Namespace(m.namespace).
+		Resource("services").
+		Name(fmt.Sprintf("%s:%d", m.serviceName, m.port)).
+		SubResource("proxy").
+		Suffix("-", "scrape-metrics").
+		DoRaw(ctx)
+	if err != nil {
+		return "", fmt.Errorf("scrape controller metrics through the in-cluster fixture (%s): %w",
+			ControllerMetricsURL(), err)
+	}
+	return string(raw), nil
+}
+
 // ClearTrace resets the fixture's recorded queries so per-spec traces are
 // attributable to the spec that caused them.
 func (m *MetricsFixtureClient) ClearTrace(ctx context.Context) error {

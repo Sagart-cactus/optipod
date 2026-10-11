@@ -246,3 +246,50 @@ equivalent-or-stronger assertions landed in `api/v1alpha1`
 `optimizationpolicy_envtest_test.go`), so the main-E2E `It(` count at that revision is
 80, not 86. Every remaining legacy file listed in this table still exists until its
 disposition is executed by the owning feature.
+
+**Retirement execution (M3, feature `kind-observability-compatibility-and-legacy-retirement`):**
+the following dispositions were executed, each for the reason already recorded in its row —
+
+- `test/e2e/memory_safety_integration_test.go` (S057–S062, all `replaced`) — **deleted**; the
+  file's scenarios asserted a memory-decrease guard that production deliberately no longer has
+  (commit `9dfc868`; `allowUnsafeMemoryDecrease`/`gradualDecreaseConfig` are schema-validated but
+  consumed by no production code) and referenced fixture manifests
+  (`test-memory-safety-workloads.yaml`, `test-memory-safety-policies.yaml`) that no longer exist
+  in the tree. Replacement proof: `internal/application` `TestApplyMemoryDecreaseCharacterization`,
+  `internal/recommendation/engine_math_test.go` and the conformance `safety` spec
+  (`test/e2e/suite/conformance_bounds_test.go`, VAL-CONF-004 amended).
+- `test/e2e/run_memory_safety_tests.sh` — **deleted**; runner for the deleted integration file
+  (kubectl sleeps against the developer's current context).
+- `hack/test-memory-decrease-safety.sh` — **deleted**; kubectl script asserting the removed
+  decrease guard (S043/S044 territory) against the current context.
+- `test/e2e/error_handling_test.go` — "Memory Decrease Safety Scenarios" context (S043/S044)
+  **retired in place** with a pointer comment: both specs substituted setup checks for the
+  claimed prevention/threshold behavior (explicit "For now" notes) and asserted the removed
+  guard; the amended behavior is pinned by `TestApplyMemoryDecreaseCharacterization` and the
+  conformance `safety` spec.
+- `test/clusterless/workflows/safety_test.go` — "Memory Safety" context (S133–S135)
+  **retired in place** with a pointer comment: fake-harness fixture assertions whose behavioral
+  claims were deferred to TODOs and whose premise (decrease prevention / gradual steps) no
+  longer exists in production.
+- Unreferenced fixtures of the retired artifacts — **deleted**: `hack/test-policy-memory-*.yaml`
+  (increase, safe-decrease, unsafe-decrease, safety), `hack/test-workload-memory-*.yaml` (high,
+  no-limits, safe-decrease, unsafe-decrease), `hack/test-policy-safety-factor.yaml` and
+  `hack/test-workload-safety-factor.yaml` (referenced only by the retired S044 spec).
+- Superseded legacy runner scripts — **deleted**: `hack/test-policy-modes.sh`,
+  `hack/test-resource-bounds-enforcement.sh`, `hack/test-update-strategies.sh`,
+  `hack/test-error-handling.sh`, `hack/test-dry-run-mode.sh`, `hack/test-limit-configuration.sh`,
+  `hack/test-rbac-permissions.sh`, `hack/test-workload-types.sh`, `hack/test-comprehensive-final.sh`,
+  `test/e2e/run_policy_tests.sh`, `test/e2e/run_resource_bounds_tests.sh` and
+  `test/e2e/simple_policy_test.sh`. Every scenario they drove is `replaced`/`removed` above; the
+  new Make tiers (`test-e2e-smoke`, `test-e2e-labels`, `test-e2e-conformance`) supersede them, and
+  no tracked file referenced them. The remaining legacy Make targets and CI workflow wiring for
+  the old suites are the M4 CI-topology feature's scope, not this feature's.
+- `website/src/content/doc/doc/**` (17 tracked files) — **deleted**: an orphaned doc tree never
+  loaded by Astro (`website/src/content/config.ts` reads `src/content/docs`, singular tree
+  `docs/`); it documented an obsolete `safetyConfig`/`preventOOMKills` memory-protection API
+  that production does not implement, so no shipped tracked file may keep asserting it.
+
+The conformance suite gained the final two M3 areas: `conformance`/`observability`
+(`test/e2e/suite/conformance_observability_test.go`, VAL-CONF-013 — the S065 replacement) and
+`conformance`/`compatibility` (`test/e2e/suite/conformance_compatibility_test.go`, VAL-CONF-014 —
+the S061/S095/S113 installed-behavior replacements).

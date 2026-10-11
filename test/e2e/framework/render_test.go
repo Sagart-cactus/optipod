@@ -62,6 +62,10 @@ func TestRenderManifestsProducesInstallableOverlay(t *testing.T) {
 		{"production admission path", "path: " + WebhookPath},
 		{"fixture namespace", "name: " + FixtureNamespace},
 		{"fixture service", "name: " + FixtureServiceName},
+		{"fixture runs under its own service account", "serviceAccountName: " + FixtureServiceAccountName},
+		{"fixture knows the shipped controller metrics URL", "value: " + ControllerMetricsURL()},
+		{"shipped metrics-reader role bound to the fixture identity", "name: " + MetricsReaderClusterRoleName},
+		{"harness binding for the fixture scraping identity", "name: " + FixtureMetricsReaderBindingName},
 	}
 	for _, check := range checks {
 		if check.want == "" {

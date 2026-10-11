@@ -10,13 +10,16 @@
 package main
 
 import (
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
 	"regexp"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -72,14 +75,45 @@ type recordedQuery struct {
 
 const maxTraceEntries = 4096
 
+// Controller-metrics scrape-through configuration. The target defaults to the
+// shipped, name-prefixed metrics Service of the deployed controller
+// (config/default/metrics_service.yaml) in the harness-owned cluster; main()
+// lets the fixture manifest pin it explicitly through CONTROLLER_METRICS_URL.
+// The token path is the projected service-account token, the same
+// bearerTokenFile the shipped ServiceMonitor (config/prometheus/monitor.yaml)
+// configures for a real Prometheus.
+const (
+	defaultControllerMetricsURL = "https://optipod-controller-manager-metrics-service.optipod-system.svc:8443/metrics"
+	defaultTokenPath            = "/var/run/secrets/kubernetes.io/serviceaccount/token"
+)
+
 type server struct {
 	mu     sync.Mutex
 	series map[seriesKey]Series
 	trace  []recordedQuery
+
+	// scrapeTarget and tokenPath are configuration, not request input, so the
+	// scrape-through endpoint is not an open proxy. scrapeClient mirrors the
+	// shipped ServiceMonitor's tlsConfig: the deployed controller serves
+	// metrics with a self-signed certificate, so the shipped monitor scrapes
+	// with insecureSkipVerify and the bearer token is the identity anchor.
+	scrapeTarget string
+	tokenPath    string
+	scrapeClient *http.Client
 }
 
 func newServer() *server {
-	return &server{series: map[seriesKey]Series{}}
+	return &server{
+		series:       map[seriesKey]Series{},
+		scrapeTarget: defaultControllerMetricsURL,
+		tokenPath:    defaultTokenPath,
+		scrapeClient: &http.Client{
+			Timeout: 10 * time.Second,
+			Transport: &http.Transport{
+				TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // mirrors shipped ServiceMonitor tlsConfig
+			},
+		},
+	}
 }
 
 func (s *server) mux() *http.ServeMux {
@@ -88,6 +122,7 @@ func (s *server) mux() *http.ServeMux {
 	mux.HandleFunc("/api/v1/status/buildinfo", s.handleBuildinfo)
 	mux.HandleFunc("/-/series", s.handleSeries)
 	mux.HandleFunc("/-/trace", s.handleTrace)
+	mux.HandleFunc("/-/scrape-metrics", s.handleScrapeMetrics)
 	mux.HandleFunc("/healthz", handleOK)
 	mux.HandleFunc("/readyz", handleOK)
 	return mux
@@ -310,18 +345,80 @@ func (s *server) handleTrace(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// handleScrapeMetrics scrapes the deployed controller's metrics endpoint from
+// inside the cluster and relays the Prometheus exposition verbatim. It mirrors
+// the shipped ServiceMonitor (config/prometheus/monitor.yaml): HTTPS against
+// the shipped metrics Service, the pod's projected service-account token as
+// the bearer credential, and no serving-certificate verification (the endpoint
+// presents a self-signed certificate; authentication and authorization happen
+// in the endpoint's own filter against the token identity). An out-of-cluster
+// caller cannot present that bearer token through the API server's service
+// proxy — the API server strips the caller's Authorization header after
+// authenticating it — so a Prometheus-shaped scrape of the filtered endpoint
+// can only happen in-cluster, exactly where a real Prometheus agent runs. The
+// token is read from the projected volume per request and never logged.
+func (s *server) handleScrapeMetrics(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, apiResponse{
+			Status: statusError, ErrorType: errorTypeBadData, Error: "GET required",
+		})
+		return
+	}
+	token, err := os.ReadFile(s.tokenPath)
+	if err != nil {
+		writeJSON(w, http.StatusServiceUnavailable, apiResponse{
+			Status: statusError, ErrorType: errorTypeInternal,
+			Error: "the fixture's projected service-account token is not readable",
+		})
+		return
+	}
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, s.scrapeTarget, nil)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, apiResponse{
+			Status: statusError, ErrorType: errorTypeInternal,
+			Error: "build the metrics scrape request",
+		})
+		return
+	}
+	req.Header.Set("Authorization", "Bearer "+strings.TrimSpace(string(token)))
+	req.Header.Set("Accept", "text/plain")
+	resp, err := s.scrapeClient.Do(req)
+	if err != nil {
+		writeJSON(w, http.StatusBadGateway, apiResponse{
+			Status: statusError, ErrorType: errorTypeInternal,
+			Error: fmt.Sprintf("scrape the controller metrics endpoint: %v", err),
+		})
+		return
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		writeJSON(w, resp.StatusCode, apiResponse{
+			Status: statusError, ErrorType: errorTypeInternal,
+			Error: fmt.Sprintf("the controller metrics endpoint answered HTTP %d", resp.StatusCode),
+		})
+		return
+	}
+	w.Header().Set("Content-Type", "text/plain; version=0.0.4")
+	w.WriteHeader(http.StatusOK)
+	_, _ = io.Copy(w, resp.Body)
+}
+
 func main() {
 	port := os.Getenv("FIXTURE_PORT")
 	if port == "" {
 		port = "9090"
 	}
-	srv := &http.Server{
+	srv := newServer()
+	if target := os.Getenv("CONTROLLER_METRICS_URL"); target != "" {
+		srv.scrapeTarget = target
+	}
+	httpSrv := &http.Server{
 		Addr:              ":" + port,
-		Handler:           newServer().mux(),
+		Handler:           srv.mux(),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	log.Printf("optipod metrics fixture listening on :%s", port)
-	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+	if err := httpSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatalf("fixture server failed: %v", err)
 	}
 }

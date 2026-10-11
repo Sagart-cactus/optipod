@@ -140,7 +140,7 @@ var _ = Describe("SSA and webhook strategy boundaries on the installed workload"
 		Expect(err).NotTo(HaveOccurred(), "read the workload while the changed recommendations are stored")
 		expectContainerRequestsEqual(changedView.containers, applied,
 			"the pod template while the changed recommendations are stored (webhook edits no template resources)")
-		expectNoTemplateRestartMarker(ctx, optipodv1alpha1.WorkloadTypeDeployment, ns.Name, workloadName,
+		expectNoTemplateRestartMarker(ctx, ns.Name, workloadName,
 			"the workload under the webhook strategy with the default rollout")
 
 		By("deliberately restarting the pod so the naturally regenerated pod is admitted with the changed values")

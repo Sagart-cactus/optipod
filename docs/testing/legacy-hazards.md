@@ -5,6 +5,22 @@ behavior that motivate the refactor. It fulfills validation assertion VAL-DESIGN
 finding cites a source `path:line`. These suites were **not executed unchanged** (see
 `baseline.md`); the hazards below are exactly why.
 
+> **M3 retirement status (feature `kind-observability-compatibility-and-legacy-retirement`).**
+> The memory-safety artifacts are deleted (`test/e2e/memory_safety_integration_test.go`,
+> `test/e2e/run_memory_safety_tests.sh`, `hack/test-memory-decrease-safety.sh` and their
+> now-unreferenced `hack/test-*memory*`/`test-*safety-factor*` fixtures), the decrease-guard
+> contexts in `test/e2e/error_handling_test.go` and `test/clusterless/workflows/safety_test.go`
+> are retired in place, the superseded runner scripts (`hack/test-*.sh` test wrappers,
+> `test/e2e/run_policy_tests.sh`, `run_resource_bounds_tests.sh`, `simple_policy_test.sh`) are
+> deleted, and the orphaned `website/src/content/doc/doc/**` tree claiming the obsolete
+> memory-protection API is removed (see `inventory.md`, retirement-execution note). The tracked
+> `config/manager/kustomization.yaml` image override that an H5-style tracked-file edit leaked
+> (`optipod-controller:contract-e2e`) is reset to the scaffold default `controller:latest`; the
+> new harness renders into temporary copies and never edits tracked config. The remaining legacy
+> suite files, their Make targets and the CI workflow wiring stay until the M4 CI-topology
+> feature removes them; every one of their scenarios is already `replaced`/`removed` in
+> `inventory.md`.
+
 ## 1. Legacy main E2E suite — `test/e2e` (`e2e_suite_test.go`)
 
 The suite's `BeforeSuite` (`e2e_suite_test.go:28`) performs cluster/image/install work with

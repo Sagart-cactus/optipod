@@ -92,14 +92,16 @@ func waitForTemplateRestartMarker(ctx context.Context, kind optipodv1alpha1.Work
 	return observed
 }
 
-// expectNoTemplateRestartMarker asserts the workload's pod template carries
+// expectNoTemplateRestartMarker asserts the Deployment's pod template carries
 // no immediate-rollout restart marker: the onNextRestart negative. Call it
 // only after the relevant reconcile's completion was observed, so the absence
-// is a decided outcome rather than an instantaneous check.
-func expectNoTemplateRestartMarker(ctx context.Context, kind optipodv1alpha1.WorkloadType, namespace, name, what string) {
-	annotations, err := readTemplateAnnotations(ctx, kind, namespace, name)
-	Expect(err).NotTo(HaveOccurred(), "read the %s %s/%s pod template for the restart-marker check",
-		kind, namespace, name)
+// is a decided outcome rather than an instantaneous check. (Every current
+// caller checks a Deployment; the kind-specific reader stays shared with the
+// positive marker helpers.)
+func expectNoTemplateRestartMarker(ctx context.Context, namespace, name, what string) {
+	annotations, err := readTemplateAnnotations(ctx, optipodv1alpha1.WorkloadTypeDeployment, namespace, name)
+	Expect(err).NotTo(HaveOccurred(), "read the Deployment %s/%s pod template for the restart-marker check",
+		namespace, name)
 	Expect(annotations).NotTo(HaveKey(restartMarkerKey()),
 		"%s: the pod template unexpectedly carries the immediate-rollout restart marker %q", what, restartMarkerKey())
 }

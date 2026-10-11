@@ -29,7 +29,8 @@ commands.
 | Command | Purpose |
 | --- | --- |
 | `make test-e2e-smoke` | The one-command smoke entry point (M2): runs the smoke-labelled specs of the new suite end to end from a clean checkout — preflight → owned cluster → one build/load/install → specs → diagnostics on failure → teardown. |
-| `make test-e2e-labels E2E_LABELS="diagnostics"` | Run the new suite filtered by Ginkgo label (also `E2E_LABELS="smoke"`, `"smoke && webhook"`, `"webhook"`, `"failure-recovery"`, ...). `E2E_SUITE_TIMEOUT` (default `45m`) bounds the `go test` timeout. |
+| `make test-e2e-labels E2E_LABELS="diagnostics"` | Run the new suite filtered by Ginkgo label (also `E2E_LABELS="smoke"`, `"smoke && webhook"`, `"conformance && observability"`, `"conformance && compatibility"`, ...). `E2E_SUITE_TIMEOUT` (default `45m`) bounds the `go test` timeout. |
+| `make test-e2e-conformance` | The one-command full-conformance entry point (M3): label filter `smoke || conformance`, so the smoke coverage and every conformance label (`modes`, `selectors`, `policy`, `safety`, `multi-container`, `metrics-fault`, `webhook`, `rollout`, `strategy`, `concurrency`, `rbac`, `observability`, `compatibility`) run over one owned installed cluster in a single invocation — conformance cannot pass by bypassing smoke (VAL-CROSS-003). `E2E_CONFORMANCE_TIMEOUT` (default `60m`) bounds the `go test` timeout. |
 | `make test-e2e-reuse` | Explicit focused rerun against a retained harness cluster: set `OPTIPOD_E2E_REUSE_CLUSTER` and `OPTIPOD_E2E_REUSE_KUBECONFIG` (printed by a `KEEP_CLUSTER=1` run) plus `E2E_LABELS`. The retained install is verified ready and kept — not rebuilt, reinstalled or deleted; only the printed disposal command removes the cluster. |
 | `make test-e2e-deliberate-failure` | Opt-in spec that fails one deliberate assertion to exercise pre-teardown redacted diagnostics; a nonzero exit and a redacted bundle are the expected outcome, not a product defect. |
 
@@ -55,8 +56,23 @@ validation). The `failure-recovery` label covers controller restart recovery (VA
 recommendation the installed controller pod is deleted, and the replacement pod — ready, on the same image and
 shipped service account — must consume changed deterministic fixture input through a fresh reconcile and rewrite
 the workload's recommendation annotations (with an advanced resourceVersion and a fresh reconciliation status);
-a ready pod or a stale annotation alone fails the spec. `conformance`, `rbac`, `observability` and friends arrive
-with M3.
+a ready pod or a stale annotation alone fails the spec. With M3 complete, the conformance labels are all live:
+`modes` (VAL-CONF-001), `selectors` (VAL-CONF-002), `policy` (VAL-CONF-003), `safety` (VAL-CONF-004, including the
+amended memory-decrease-applies-in-full behavior), `multi-container` (VAL-CONF-005), `metrics-fault`
+(VAL-CONF-006), `webhook` rollout timing (VAL-CONF-007), `rollout` per-kind immediate admission (VAL-CONF-008),
+`strategy` SSA↔webhook boundary (VAL-CONF-009), `concurrency` (VAL-CONF-010), `rbac` shipped-roles least privilege
+(VAL-CONF-011), `webhook` TLS/failure policy (VAL-CONF-012), `observability` (VAL-CONF-013) and `compatibility`
+(VAL-CONF-014).
+
+The M3 observability scenario scrapes the installed controller's metrics in the shipped ServiceMonitor's shape:
+an **in-cluster** HTTPS scrape of the shipped metrics Service from the metrics fixture, whose service account the
+harness binds to the shipped (deliberately unbound) metrics-reader ClusterRole and whose projected bearer token the
+metrics endpoint's own authentication/authorization filter validates. A scrape through the API server's service
+proxy cannot present that token — the API server removes the caller's `Authorization` header after authenticating
+it — so the filtered endpoint is scraped from inside the cluster, exactly where a real Prometheus agent runs. The
+spec proves named processing (policy-labeled series absent before the policy, present after its completed
+reconcile, named counter strictly increasing across a further reconcile) and parseable structured log records
+tying the policy/workload to the outcome (VAL-CONF-013).
 
 **Retained-cluster inspection, focused reuse and disposal.** A `KEEP_CLUSTER=1` run keeps its owned cluster and
 prints the retained cluster's name, its private kubeconfig path and copy-pasteable commands to (1) inspect the
@@ -84,5 +100,29 @@ Every invocation — success or failure — writes into a git-ignored
 Honesty boundaries that apply across all M1 docs: local timings are warm, single-host
 measurements (not universal cold-start numbers); pending/skipped/simulator-only/fixture-only
 legacy checks are never credited as deployed-behaviour proof; `make test-e2e-smoke` exists
-as of M2 while `make test-e2e-conformance` first exists in M3, and every coverage-matrix row
+as of M2 and `make test-e2e-conformance` as of M3, and every coverage-matrix row
 claims only what its named, executing test proves.
+
+**M3 legacy retirement (feature `kind-observability-compatibility-and-legacy-retirement`).**
+The tracked `config/manager/kustomization.yaml` no longer carries the leftover
+`optipod-controller:contract-e2e` image override — it is reset to the scaffold default
+`controller:latest`; the harness render retags the image by name on temporary copies either
+way, and the render unit test plus a live `make test-e2e-smoke` run prove the reset green
+(the tracked `config/webhook` manifests are untouched; their corrections remain a deferred
+production follow-up). The legacy memory-safety decrease-guard artifacts are retired because
+production deliberately has no such guard (commit `9dfc868`): `hack/test-memory-decrease-safety.sh`,
+`test/e2e/memory_safety_integration_test.go`, `test/e2e/run_memory_safety_tests.sh`, the
+"Memory Decrease Safety Scenarios" context in `test/e2e/error_handling_test.go` (S043/S044),
+the "Memory Safety" context in `test/clusterless/workflows/safety_test.go` (S133–S135) and the
+now-unreferenced `hack/test-*memory*`/`test-*safety-factor*` fixtures; the amended
+VAL-FAST-005/VAL-CONF-004 behavior is pinned by `internal/application`
+`TestApplyMemoryDecreaseCharacterization` and the conformance `safety` spec. The superseded
+legacy runner scripts (`hack/test-policy-modes.sh`, `test-resource-bounds-enforcement.sh`,
+`test-update-strategies.sh`, `test-error-handling.sh`, `test-dry-run-mode.sh`,
+`test-limit-configuration.sh`, `test-rbac-permissions.sh`, `test-workload-types.sh`,
+`test-comprehensive-final.sh`, `test/e2e/run_policy_tests.sh`, `run_resource_bounds_tests.sh`,
+`simple_policy_test.sh`) are removed; every scenario they drove is `replaced`/`removed` in
+`inventory.md` and their remaining Make/workflow wiring belongs to the M4 CI-topology feature.
+The orphaned tracked `website/src/content/doc/doc/**` tree (never loaded by Astro, which reads
+`website/src/content/docs`) is deleted: it documented an obsolete `safetyConfig`/
+`preventOOMKills` API with a memory-protection guard that production does not have.

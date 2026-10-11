@@ -284,59 +284,15 @@ var _ = Describe("Error Handling and Edge Cases", func() {
 		})
 	})
 
-	Context("Memory Decrease Safety Scenarios", func() {
-		It("should detect potentially unsafe memory decreases", func() {
-			By("Creating policy with memory bounds")
-			err := policyHelper.CreatePolicyFromFile("hack/test-policy-memory-safety.yaml")
-			Expect(err).NotTo(HaveOccurred())
-
-			By("Creating workload with high memory usage")
-			err = workloadHelper.CreateWorkloadFromFile("hack/test-workload-memory-high.yaml")
-			Expect(err).NotTo(HaveOccurred())
-
-			By("Waiting for workload to be ready")
-			err = workloadHelper.WaitForWorkloadReady("memory-safety-test", "default", 3*time.Minute)
-			Expect(err).NotTo(HaveOccurred())
-
-			By("Verifying workload has high memory allocation")
-			cmd := exec.Command("kubectl", "get", "deployment", "memory-safety-test", "-n", "default", "-o", "jsonpath={.spec.template.spec.containers[0].resources.requests.memory}")
-			output, err := utils.Run(cmd)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(strings.TrimSpace(output)).To(Equal("2Gi"))
-
-			By("Simulating memory decrease recommendation")
-			// In a real scenario, OptipPod would detect this as potentially unsafe
-			// For now, we just verify the configuration is set up correctly
-			cmd = exec.Command("kubectl", "get", "optimizationpolicy", "memory-safety-test", "-n", "optipod-system", "-o", "jsonpath={.spec.resourceBounds.memory.min}")
-			output, err = utils.Run(cmd)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(strings.TrimSpace(output)).To(Equal("512Mi"))
-
-			GinkgoWriter.Println("✓ Memory decrease safety test completed successfully")
-		})
-
-		It("should handle memory safety thresholds", func() {
-			By("Creating policy with safety factor")
-			err := policyHelper.CreatePolicyFromFile("hack/test-policy-safety-factor.yaml")
-			Expect(err).NotTo(HaveOccurred())
-
-			By("Verifying safety factor configuration")
-			cmd := exec.Command("kubectl", "get", "optimizationpolicy", "safety-factor-test", "-n", "optipod-system", "-o", "jsonpath={.spec.metricsConfig.safetyFactor}")
-			output, err := utils.Run(cmd)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(strings.TrimSpace(output)).To(MatchRegexp(`\d+(\.\d+)?`)) // Should be a number
-
-			By("Creating workload to test safety factor application")
-			err = workloadHelper.CreateWorkloadFromFile("hack/test-workload-safety-factor.yaml")
-			Expect(err).NotTo(HaveOccurred())
-
-			By("Waiting for workload to be ready")
-			err = workloadHelper.WaitForWorkloadReady("safety-factor-test", "default", 3*time.Minute)
-			Expect(err).NotTo(HaveOccurred())
-
-			GinkgoWriter.Println("✓ Memory safety thresholds test completed successfully")
-		})
-	})
+	// The legacy "Memory Decrease Safety Scenarios" context (S043/S044) was
+	// retired: it asserted a memory-decrease prevention guard that production
+	// deliberately no longer has (commit 9dfc868 removed it;
+	// allowUnsafeMemoryDecrease/gradualDecreaseConfig are schema-validated but
+	// consumed by no production code). The amended VAL-FAST-005/VAL-CONF-004
+	// behavior — a recommended memory decrease applies in full like any other
+	// recommendation — is pinned by internal/application
+	// TestApplyMemoryDecreaseCharacterization and the conformance safety
+	// scenarios. See docs/testing/inventory.md S043/S044.
 
 	Context("Network and Connectivity Issues", func() {
 		It("should handle API server connectivity issues gracefully", func() {

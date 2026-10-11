@@ -88,6 +88,16 @@ const (
 	FixtureNamespace   = "optipod-e2e-metrics"
 	FixtureServiceName = "optipod-metrics-fixture"
 	FixturePort        = 9090
+	// FixtureServiceAccountName is the fixture pod's own service account. The
+	// harness binds it to the shipped metrics-reader ClusterRole so the
+	// in-cluster controller-metrics scrape authenticates with exactly the
+	// identity shape the shipped ServiceMonitor configures for Prometheus.
+	FixtureServiceAccountName = "optipod-metrics-fixture"
+	// FixtureMetricsReaderBindingName is the harness ClusterRoleBinding from
+	// the fixture service account to the shipped metrics-reader ClusterRole
+	// (the shipped manifests define that role and deliberately leave it
+	// unbound; binding it is the documented operator step).
+	FixtureMetricsReaderBindingName = "optipod-e2e-metrics-fixture-reader"
 )
 
 // WorkloadImage returns the fully pinned workload image reference.

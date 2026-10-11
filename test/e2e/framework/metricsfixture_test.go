@@ -35,6 +35,11 @@ func (f *fixtureAPIServer) handler() http.Handler {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"status":"success"}`))
 	})
+	mux.HandleFunc(prefix+"scrape-metrics", func(w http.ResponseWriter, r *http.Request) {
+		f.lastPath = r.URL.Path
+		w.Header().Set("Content-Type", "text/plain; version=0.0.4")
+		_, _ = w.Write([]byte("optipod_workloads_monitored 1\n"))
+	})
 	mux.HandleFunc(prefix+"trace", func(w http.ResponseWriter, r *http.Request) {
 		f.lastPath = r.URL.Path
 		w.Header().Set("Content-Type", "application/json")
@@ -112,6 +117,43 @@ func TestTraceAndClearTrace(t *testing.T) {
 	}
 	if fake.trace != nil {
 		t.Fatalf("trace not cleared: %+v", fake.trace)
+	}
+}
+
+// TestScrapeControllerMetricsThroughServiceProxy pins the harness-side path of
+// the in-cluster controller metrics scrape: the fixture's scrape-through
+// endpoint behind the API server's service proxy.
+func TestScrapeControllerMetricsThroughServiceProxy(t *testing.T) {
+	fake := &fixtureAPIServer{t: t}
+	srv := httptest.NewServer(fake.handler())
+	t.Cleanup(srv.Close)
+	client := newFixtureTestClient(t, srv)
+
+	exposition, err := client.ScrapeControllerMetrics(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantPath := "/api/v1/namespaces/optipod-e2e-metrics/services/optipod-metrics-fixture:9090/proxy/-/scrape-metrics"
+	if fake.lastPath != wantPath {
+		t.Fatalf("proxy path = %q, want %q", fake.lastPath, wantPath)
+	}
+	if !strings.Contains(exposition, "optipod_workloads_monitored 1") {
+		t.Fatalf("exposition = %q", exposition)
+	}
+}
+
+// TestScrapeControllerMetricsPropagatesFailures pins that a fixture-side
+// failure (including a relayed 401/403 from the controller's filtered
+// endpoint) reaches the caller instead of being mistaken for a scrape.
+func TestScrapeControllerMetricsPropagatesFailures(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(`{"status":"error","error":"the controller metrics endpoint answered HTTP 403"}`))
+	}))
+	t.Cleanup(srv.Close)
+	client := newFixtureTestClient(t, srv)
+	if _, err := client.ScrapeControllerMetrics(context.Background()); err == nil {
+		t.Fatal("expected propagated scrape failure")
 	}
 }
 
