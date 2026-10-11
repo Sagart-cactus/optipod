@@ -293,3 +293,41 @@ The conformance suite gained the final two M3 areas: `conformance`/`observabilit
 (`test/e2e/suite/conformance_observability_test.go`, VAL-CONF-013 — the S065 replacement) and
 `conformance`/`compatibility` (`test/e2e/suite/conformance_compatibility_test.go`, VAL-CONF-014 —
 the S061/S095/S113 installed-behavior replacements).
+
+**Retirement execution (M4, feature `safe-make-and-actions-topology`):** the remaining legacy
+cluster suites are deleted; every scenario row they contained is already dispositioned
+`replaced`/`removed` above with its per-row reason (the only `retained` rows, S051–S056, belonged
+to `test/e2e/invalid_config_unit_test.go`, deleted in M3 after re-homing). Deleted files:
+
+- Legacy main E2E root suite (`test/e2e/*.go`, 14 files) — **deleted**:
+  `e2e_suite_test.go` (hazardous `BeforeSuite`: default-context mutation, fixed cluster name,
+  `@latest` installers, tracked `config/manager`/CRD edits — hazards H1–H10 in
+  `legacy-hazards.md`), `ci_integration_unit_test.go` (S001–S004, removed), `error_handling_test.go`
+  (S036–S045, replaced; its S043/S044 decrease-guard context was already retired in place in M3),
+  `error_handling_unit_test.go` (S046–S050, removed), `observability_test.go` (S063–S066, removed;
+  observability is re-proven by the conformance `observability` spec, VAL-CONF-013),
+  `observability_unit_test.go` (S067–S074, removed), `policy_modes_test.go` (S075–S078, replaced),
+  `resource_bounds_test.go` (S079–S083, replaced), `resource_bounds_unit_test.go` (S084–S087,
+  removed), `simple_unit_test.go` (S088–S090, removed), `webhook_integration_test.go` (S091–S096,
+  replaced), `webhook_lifecycle_test.go` (S097–S105, replaced), `webhook_performance_test.go`
+  (S106–S110, removed) and `workload_type_selector_test.go` (S111–S117, replaced).
+- Legacy contract E2E suite (`test/e2e/contract/`, 13 files) — **deleted**: S005–S035 and
+  S151–S155, all replaced/removed; hazards C1–C6 (tracked-file edits, fixed cluster name,
+  ambient default-kubeconfig install targeting, setup-only assertions) in `legacy-hazards.md`
+  §2. Its narrow install/CR-acceptance/Ready scope is superseded by the smoke install,
+  policy-admission and readiness gate (VAL-HARNESS-003, VAL-SMOKE-001).
+- `test/e2e/helpers/` — **deleted**: the legacy `CleanupHelper` shared only by the deleted
+  suites (its `kubectl delete ... --all` behaviour is hazard H10).
+- `hack/verify-release-separation.sh` — **deleted**: it asserted the retired CI topology
+  (that `e2e.yml` never gates code and that `release.yml` runs the legacy `make test-e2e`);
+  the new topology deliberately runs smoke on PRs/pushes and no target named `test-e2e` exists.
+  Nothing referenced the script.
+
+With these deletions no legacy suite remains under `test/e2e`, so the
+`go test ./test/e2e/...` glob hazard (accidentally running the context-mutating suites) no
+longer exists: the glob now selects only the hermetic `suite`, `framework` and
+`metricsfixture` packages. The legacy Make targets (`setup-e2e`, `test-e2e`, `test-e2e-focus`,
+`e2e-cluster`, `test-e2e-contract`, `cleanup-e2e`, `cleanup-contract-e2e`) are removed from the
+Makefile in the same change, and `.github/workflows/e2e.yml` (the empty-`env:` zero-job fault)
+and `test.yml` (the mutating `make test` gate) are rewritten to the smoke/conformance/fast-gate
+topology of `design.md` §7.

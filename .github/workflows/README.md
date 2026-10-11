@@ -1,92 +1,58 @@
 # GitHub Actions Workflows
 
-This directory contains automated workflows for the OptipOd project.
+This directory contains the CI workflows for the OptiPod project. Local
+equivalents for every test tier are discoverable via `make help`; see
+[docs/testing/README.md](../../docs/testing/README.md) for the test
+architecture.
 
-## Website Deployment Workflows
+## Test tiers
 
-### deploy-website.yml
-Automatically deploys the landing page to GitHub Pages when changes are made to the `website/` directory.
+### test.yml — Tests (fast gate)
 
-**Triggers:**
-- Push to main branch with changes in `website/` directory
-- Pull requests to main branch with changes in `website/` directory
-- Manual workflow dispatch
+Runs on every push and pull request. Executes `make test-fast` (short unit,
+envtest and clusterless tests) and `go vet`. The gate never regenerates,
+formats or otherwise mutates tracked files.
 
-**Features:**
-- Validates HTML, CSS, and JavaScript (with warnings for non-critical issues)
-- Runs Lighthouse CI for performance auditing
-- Builds and optimizes website assets
-- Deploys to GitHub Pages (main branch only)
-- Provides deployment status notifications
+### e2e.yml — Kind E2E (smoke and conformance)
 
-### rollback-website.yml
-Provides manual rollback capability for the website deployment.
+Runs the hermetic installed-controller Kind suite (`test/e2e/suite`). Each
+hosted run owns one uniquely named Kind cluster with a private kubeconfig,
+builds/loads/installs the checkout controller once and removes only its own
+cluster.
 
-**Usage:**
-- Can be triggered manually from GitHub Actions UI
-- Allows specifying a commit SHA to rollback to (defaults to previous commit)
-- Validates target commit before rollback
-- Rebuilds and deploys the specified version
+- **Smoke job**: every pull request and push touching controller (`internal/`,
+  `cmd/`), API (`api/`), chart (`charts/`), manifest (`config/`), test
+  (`test/`), Make (`Makefile`), build (`Dockerfile`, `go.mod`/`go.sum`) or
+  workflow inputs. Runs `make test-e2e-smoke`; a test failure fails the job.
+- **Conformance job**: nightly schedule (`0 2 * * *`) and manual dispatch.
+  Runs `make test-e2e-conformance`, which includes all smoke coverage.
 
-### website-health-check.yml
-Monitors the deployed website health and performance.
+Both jobs install pinned Kind/kubectl/kustomize binaries (version- and
+SHA256-verified), cache Go modules/build outputs via `actions/setup-go`, and
+unconditionally upload the run's JUnit, phase-timing and redacted failure
+diagnostics from `test/e2e/artifacts/` while preserving the test's exit code.
 
-**Schedule:**
-- Runs every 6 hours automatically
-- Can be triggered manually
+### lint.yml — Lint
 
-**Checks:**
-- Website availability (HTTP status)
-- Critical page elements presence
-- Basic performance metrics
-- Response time validation
+Runs pinned `golangci-lint` on every push and pull request.
 
-## Usage Instructions
+### ci.yml — CI
 
-### Deploying Changes
-1. Make changes to files in the `website/` directory
-2. Commit and push to main branch
-3. The deployment workflow will automatically trigger
-4. Monitor the workflow progress in the Actions tab
-5. Check deployment status notifications
+Builds the manager binary and the production Docker image (no push) on pushes
+to `main`/`feature/**`/`fix/**` and on pull requests.
 
-### Rolling Back
-1. Go to Actions tab in GitHub
-2. Select "Rollback Landing Page" workflow
-3. Click "Run workflow"
-4. Optionally specify a commit SHA to rollback to
-5. Confirm the rollback operation
+### pre-commit.yml — Pre-commit Checks
 
-### Monitoring Health
-- Health checks run automatically every 6 hours
-- View results in the Actions tab under "Website Health Check"
-- Manual health checks can be triggered as needed
+Runs the pre-commit hooks plus formatting, lint, secrets and YAML checks on
+pushes and pull requests to `main`/`develop`.
 
-## Configuration
+### release.yml — Release
 
-### Required Secrets
-- `LHCI_GITHUB_APP_TOKEN`: Optional token for Lighthouse CI GitHub integration
+Tag (`v*.*.*`) and manual-dispatch only. Runs the fast gate and clusterless
+tests, then builds, scans, signs and publishes images, the Helm chart and the
+GitHub release. Never triggered by the test workflows.
 
-### Permissions
-The workflows require the following permissions:
-- `contents: read` - To checkout repository code
-- `pages: write` - To deploy to GitHub Pages
-- `id-token: write` - For GitHub Pages deployment authentication
+### static.yml — Deploy Website to Pages
 
-## Troubleshooting
-
-### Deployment Failures
-- Check the workflow logs for specific error messages
-- Verify all required files exist in the website directory
-- Ensure build process completes successfully locally
-- Use the rollback workflow if needed
-
-### Validation Warnings
-- CSS and JavaScript validation issues are treated as warnings
-- The deployment will continue even with linting issues
-- Fix validation issues for better code quality
-
-### Performance Issues
-- Lighthouse CI may fail if performance thresholds aren't met
-- Check the Lighthouse report for specific recommendations
-- Optimize assets and code as needed
+Deploys the `website/` tree to GitHub Pages on pushes to `main` that touch
+`website/`, and on manual dispatch.

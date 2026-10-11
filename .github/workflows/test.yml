@@ -1,13 +1,21 @@
 name: Tests
 
+# Fast gate: short unit, envtest and clusterless tests plus go vet. It never
+# regenerates, formats or otherwise mutates tracked files (the old `make test`
+# gate did), so a green run implies a clean checkout.
+
 on:
   push:
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   test:
-    name: Run on Ubuntu
+    name: Fast gate (unit, envtest, clusterless)
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Clone the code
         uses: actions/checkout@v4
@@ -16,8 +24,10 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+          cache: true
 
-      - name: Running Tests
-        run: |
-          go mod tidy
-          make test
+      - name: Run fast gate tests
+        run: make test-fast
+
+      - name: Run go vet
+        run: go vet ./api/... ./internal/... ./cmd/... ./test/...

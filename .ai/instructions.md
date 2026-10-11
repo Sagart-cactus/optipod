@@ -107,9 +107,10 @@ Only push to current branch when:
 
 ### Testing
 ```bash
-make test           # Unit tests
-make test-e2e       # E2E tests
-make lint           # Linting
+make test-fast          # Fast gate: unit + envtest + clusterless (non-mutating)
+make test-e2e-smoke     # Kind E2E smoke suite (owns and removes its cluster)
+make test-e2e-conformance  # Full Kind conformance suite
+make lint               # Linting
 ./scripts/ci-checks-local.sh  # All CI checks
 ```
 
@@ -135,8 +136,8 @@ optipod/
 ## Development Commands
 
 ```bash
-make test              # Run unit tests
-make test-e2e          # Run E2E tests
+make test-fast         # Run the fast gate (unit + envtest + clusterless)
+make test-e2e-smoke    # Run the Kind E2E smoke suite
 make build             # Build binary
 make docker-build      # Build Docker image
 make install           # Install CRDs

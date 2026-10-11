@@ -16,11 +16,13 @@ and `coverage-matrix.md` for what each future test must prove and which legacy s
 supersedes, then `baseline.md` and `legacy-hazards.md` for measured context and the hazards
 being removed.
 
-## New hermetic Kind suite (M2, now executable)
+## Hermetic Kind suite (M2/M3, executable; legacy suites retired in M4)
 
-The new installed-controller suite lives in `test/e2e/suite` and is the only package the
-targets below run — the legacy suites (`test/e2e` root package, `test/e2e/contract`) are
-never invoked by them, and `go test ./test/e2e/...` is never used. Each invocation owns one
+The installed-controller suite lives in `test/e2e/suite` and is the only package the
+targets below run. The legacy suites (`test/e2e` root package, `test/e2e/contract`,
+`test/e2e/helpers`) and their Make targets were retired in M4 (see `inventory.md`,
+retirement-execution notes), so `test/e2e` now contains only this suite, the `framework`
+and `metricsfixture` packages and the git-ignored `artifacts/` output tree. Each invocation owns one
 uniquely named Kind cluster with a private kubeconfig, builds/loads/installs the checkout
 controller once, and removes only its own cluster. `KEEP_CLUSTER=1` retains the owned
 cluster and prints private-kubeconfig inspection, explicit focused-reuse and disposal
@@ -122,7 +124,20 @@ legacy runner scripts (`hack/test-policy-modes.sh`, `test-resource-bounds-enforc
 `test-limit-configuration.sh`, `test-rbac-permissions.sh`, `test-workload-types.sh`,
 `test-comprehensive-final.sh`, `test/e2e/run_policy_tests.sh`, `run_resource_bounds_tests.sh`,
 `simple_policy_test.sh`) are removed; every scenario they drove is `replaced`/`removed` in
-`inventory.md` and their remaining Make/workflow wiring belongs to the M4 CI-topology feature.
+`inventory.md`.
+
+**M4 CI-topology retirement (feature `safe-make-and-actions-topology`).** The remaining legacy
+root suite (14 `test/e2e/*.go` files), the `test/e2e/contract/` suite and `test/e2e/helpers/`
+are deleted with per-row reasons recorded in `inventory.md`; the legacy Make targets
+(`setup-e2e`, `test-e2e`, `test-e2e-focus`, `e2e-cluster`, `test-e2e-contract`, `cleanup-e2e`,
+`cleanup-contract-e2e`) are removed. A non-mutating fast gate is exposed as `make test-fast`.
+`.github/workflows/e2e.yml` is rewritten to the approved topology — a smoke job on PRs/pushes
+that touch controller, API, chart, manifest, test, Make or workflow inputs (test failure fails
+the job) and a conformance job on the nightly schedule and manual dispatch — with pinned,
+checksum-verified Kind/kubectl/kustomize installs, Go build caching and unconditional
+JUnit/timing/redacted-diagnostics upload that preserves the test exit code. `test.yml` now runs
+`make test-fast` plus `go vet` instead of the mutating `make test`, and `release.yml`'s test
+job does the same. Pinned actionlint v1.7.7 accepts every workflow in `.github/workflows/`.
 The orphaned tracked `website/src/content/doc/doc/**` tree (never loaded by Astro, which reads
 `website/src/content/docs`) is deleted: it documented an obsolete `safetyConfig`/
 `preventOOMKills` API with a memory-protection guard that production does not have.

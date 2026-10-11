@@ -329,8 +329,37 @@ OptiPod has core functionality implemented and tested, and is in active developm
 git clone https://github.com/Sagart-cactus/optipod.git
 cd optipod
 make setup-pre-commit
-make test
+make test-fast   # non-mutating fast gate: unit + envtest + clusterless
 ```
+
+### Testing
+
+All test entry points are discoverable via `make help`. None of them mutate
+tracked files, switch your kubectl context, or touch existing clusters.
+
+| Command | What it runs |
+| --- | --- |
+| `make test-fast` | Fast gate: short unit, envtest (real local API server) and clusterless tests. Never regenerates or formats tracked files. |
+| `make vet` / `make lint` | `go vet` and pinned `golangci-lint`. |
+| `make test-e2e-smoke` | One-command installed-controller smoke suite on an ephemeral, uniquely named Kind cluster: preflight, build/load/install the checkout controller once, smoke specs, teardown. |
+| `make test-e2e-conformance` | Full conformance suite (includes all smoke coverage) over the same hermetic harness. |
+| `make test-e2e-labels E2E_LABELS="smoke && webhook"` | Focused run of the Kind suite by Ginkgo label (`smoke`, `conformance`, `webhook`, `rbac`, `observability`, `failure-recovery`, ...). |
+
+Kind suite prerequisites: Docker, Kind v0.31.0, kubectl, and kustomize v5.8.1
+on `PATH` (all other inputs are pinned by the harness; preflight fails early
+with a remedy if one is missing). Every run writes JUnit (`junit.xml`), phase
+timings (`timings.json`) and, on failure, a redacted diagnostics bundle to the
+git-ignored `test/e2e/artifacts/run-<id>/`. Normal runs delete only their own
+cluster; `KEEP_CLUSTER=1 make test-e2e-smoke` retains it and prints
+private-kubeconfig inspection, focused-reuse (`make test-e2e-reuse`) and
+disposal commands. See [docs/testing/README.md](docs/testing/README.md) for
+the full architecture, coverage matrix and debugging guide.
+
+CI mirrors these tiers: pull requests and pushes that touch controller, API,
+chart, manifest, test, Make or workflow inputs run the smoke job
+(`.github/workflows/e2e.yml`); the full conformance suite runs nightly and on
+manual dispatch; the fast gate runs on every push and pull request
+(`.github/workflows/test.yml`).
 
 ### Building from source (development)
 

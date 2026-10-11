@@ -81,7 +81,7 @@ jobs:
           version: v2.13.2
 
   test:
-    name: Run Unit Tests
+    name: Run Fast Gate Tests
     runs-on: ubuntu-latest
     needs: setup
     steps:
@@ -92,11 +92,13 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+          cache: true
 
-      - name: Run unit tests
-        run: |
-          go mod tidy
-          make test
+      - name: Run fast gate tests
+        run: make test-fast
+
+      - name: Run go vet
+        run: go vet ./api/... ./internal/... ./cmd/... ./test/...
 
   clusterless-e2e-test:
     name: Run Clusterless E2E Tests
@@ -830,7 +832,7 @@ jobs:
           fi
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.setup.outputs.version }}
           name: Release ${{ needs.setup.outputs.version }}

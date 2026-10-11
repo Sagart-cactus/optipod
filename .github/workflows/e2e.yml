@@ -1,28 +1,76 @@
-name: Contract E2E Tests
+name: Kind E2E
+
+# Hermetic installed-controller tiers (test/e2e/suite via test/e2e/framework).
+# Each run owns one uniquely named Kind cluster with a private kubeconfig,
+# builds/loads/installs the checkout controller once and removes only its own
+# cluster. See docs/testing/design.md section 7 for the CI topology contract.
+#
+# Tiers:
+#   - smoke: every pull request and push that touches controller, API, chart,
+#     manifest, test, Make or workflow inputs. A test failure fails the job.
+#   - conformance: nightly schedule and manual dispatch run the full
+#     conformance suite (which includes the smoke coverage) over the same
+#     harness.
 
 on:
-  workflow_dispatch:
-    inputs:
-      timeout:
-        description: 'Test timeout in minutes (default: 10)'
-        required: false
-        default: '10'
-        type: string
+  pull_request:
+    paths:
+      - 'api/**'
+      - 'cmd/**'
+      - 'internal/**'
+      - 'charts/**'
+      - 'config/**'
+      - 'test/**'
+      - 'Makefile'
+      - 'go.mod'
+      - 'go.sum'
+      - 'Dockerfile'
+      - '.github/workflows/e2e.yml'
+  push:
+    paths:
+      - 'api/**'
+      - 'cmd/**'
+      - 'internal/**'
+      - 'charts/**'
+      - 'config/**'
+      - 'test/**'
+      - 'Makefile'
+      - 'go.mod'
+      - 'go.sum'
+      - 'Dockerfile'
+      - '.github/workflows/e2e.yml'
   schedule:
-    # Run contract E2E tests daily at 2 AM UTC
+    # Full conformance nightly at 2 AM UTC
     - cron: '0 2 * * *'
+  workflow_dispatch:
 
 permissions:
   contents: read
-  actions: read
+
+# Bound CI resource use: one Kind run per ref at a time; superseded PR runs
+# are cancelled instead of stacking clusters on a fresh runner.
+concurrency:
+  group: kind-e2e-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
+  # Pinned harness inputs (must match test/e2e/framework/pins.go). The suite
+  # preflight verifies the Kind CLI version and refuses to run otherwise.
+  KIND_VERSION: v0.31.0
+  KIND_SHA256_AMD64: eb244cbafcc157dff60cf68693c14c9a75c4e6e6fedaf9cd71c58117cb93e3fa
+  KUBECTL_VERSION: v1.34.1
+  KUBECTL_SHA256_AMD64: 7721f265e18709862655affba5343e85e1980639395d5754473dafaadcaa69e3
+  KUSTOMIZE_VERSION: v5.8.1
+  KUSTOMIZE_SHA256_AMD64: 029a7f0f4e1932c52a0476cf02a0fd855c0bb85694b82c338fc648dcb53a819d
 
 jobs:
-  contract-e2e:
-    name: Contract E2E Tests
+  smoke:
+    name: Kind smoke suite
+    if: github.event_name == 'pull_request' || github.event_name == 'push'
     runs-on: ubuntu-latest
-    timeout-minutes: 15  # Hard timeout slightly above test timeout
+    timeout-minutes: 30
+    env:
+      E2E_SUITE_TIMEOUT: 25m
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -31,92 +79,103 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+          cache: true
 
-      - name: Install Kind
+      - name: Install pinned Kind, kubectl and kustomize
         run: |
-          # Install Kind v0.20.0 for consistency
-          curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.20.0/kind-linux-amd64
-          chmod +x ./kind
-          sudo mv ./kind /usr/local/bin/kind
-          kind version
+          set -euo pipefail
+          curl -fsSLo kind "https://kind.sigs.k8s.io/dl/${KIND_VERSION}/kind-linux-amd64"
+          echo "${KIND_SHA256_AMD64}  kind" | sha256sum -c -
+          chmod +x kind
+          sudo mv kind /usr/local/bin/kind
 
-      - name: Install kubectl
-        run: |
-          # Install latest stable kubectl
-          curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+          curl -fsSLo kubectl "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl"
+          echo "${KUBECTL_SHA256_AMD64}  kubectl" | sha256sum -c -
           chmod +x kubectl
           sudo mv kubectl /usr/local/bin/kubectl
+
+          curl -fsSLo kustomize.tar.gz "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2F${KUSTOMIZE_VERSION}/kustomize_${KUSTOMIZE_VERSION#v}_linux_amd64.tar.gz"
+          echo "${KUSTOMIZE_SHA256_AMD64}  kustomize.tar.gz" | sha256sum -c -
+          tar -xzf kustomize.tar.gz kustomize
+          chmod +x kustomize
+          sudo mv kustomize /usr/local/bin/kustomize
+
+          kind version
           kubectl version --client
+          kustomize version
 
       - name: Verify Docker is running
-        run: |
-          docker version
-          docker info
+        run: docker info --format '{{.ServerVersion}}'
 
-      - name: Set test timeout
-        id: timeout
-        run: |
-          TIMEOUT="${{ github.event.inputs.timeout || '10' }}"
-          echo "timeout=${TIMEOUT}m" >> $GITHUB_OUTPUT
-          echo "Test timeout set to: ${TIMEOUT} minutes"
+      - name: Run Kind smoke suite
+        run: make test-e2e-smoke
 
-      - name: Run contract E2E tests
-        run: |
-          echo "Running contract E2E tests..."
-          echo "Environment: CI"
-          echo "Timeout: ${{ steps.timeout.outputs.timeout }}"
-
-          # Run contract tests with specified timeout
-          make test-e2e-contract
-        env:
-          CI: true
-        timeout-minutes: ${{ fromJSON(github.event.inputs.timeout || '10') }}
-
-      - name: Upload test results
+      - name: Upload JUnit, timing and redacted diagnostics
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: contract-e2e-test-results
+          name: kind-smoke-artifacts
           path: |
-            test/e2e/contract/test-results.xml
-            test/e2e/contract/coverage.out
-          retention-days: 7
+            test/e2e/artifacts/**/junit.xml
+            test/e2e/artifacts/**/timings.json
+            test/e2e/artifacts/**/failures.txt
+            test/e2e/artifacts/**/diagnostics/**
+          retention-days: 14
+          if-no-files-found: warn
 
-      - name: Cleanup on failure
-        if: failure()
-        run: |
-          echo "Contract E2E tests failed. Cleaning up..."
-          make cleanup-contract-e2e || true
-
-      - name: Report test status
-        if: always()
-        run: |
-          if [ "${{ job.status }}" = "success" ]; then
-            echo "✅ Contract E2E tests passed successfully"
-          else
-            echo "❌ Contract E2E tests failed"
-            echo "This failure does NOT block releases - contract tests are for validation only"
-          fi
-
-  notify-results:
-    name: Notify Test Results
+  conformance:
+    name: Kind conformance suite
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
-    needs: contract-e2e
-    if: always()
+    timeout-minutes: 70
     steps:
-      - name: Report final status
-        run: |
-          if [ "${{ needs.contract-e2e.result }}" = "success" ]; then
-            echo "✅ Contract E2E test suite completed successfully"
-            echo "All user-visible behavior contracts are validated"
-          else
-            echo "❌ Contract E2E test suite failed"
-            echo "Contract test failures indicate potential user-visible behavior issues"
-            echo "These failures do NOT block releases but should be investigated"
-          fi
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-          echo "Contract E2E tests validate:"
-          echo "- Controller installation and readiness"
-          echo "- Custom resource acceptance by API server"
-          echo "- Status convergence to Ready=True condition"
-          echo "- Test execution completes within 10 minutes"
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install pinned Kind, kubectl and kustomize
+        run: |
+          set -euo pipefail
+          curl -fsSLo kind "https://kind.sigs.k8s.io/dl/${KIND_VERSION}/kind-linux-amd64"
+          echo "${KIND_SHA256_AMD64}  kind" | sha256sum -c -
+          chmod +x kind
+          sudo mv kind /usr/local/bin/kind
+
+          curl -fsSLo kubectl "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl"
+          echo "${KUBECTL_SHA256_AMD64}  kubectl" | sha256sum -c -
+          chmod +x kubectl
+          sudo mv kubectl /usr/local/bin/kubectl
+
+          curl -fsSLo kustomize.tar.gz "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2F${KUSTOMIZE_VERSION}/kustomize_${KUSTOMIZE_VERSION#v}_linux_amd64.tar.gz"
+          echo "${KUSTOMIZE_SHA256_AMD64}  kustomize.tar.gz" | sha256sum -c -
+          tar -xzf kustomize.tar.gz kustomize
+          chmod +x kustomize
+          sudo mv kustomize /usr/local/bin/kustomize
+
+          kind version
+          kubectl version --client
+          kustomize version
+
+      - name: Verify Docker is running
+        run: docker info --format '{{.ServerVersion}}'
+
+      - name: Run Kind conformance suite
+        run: make test-e2e-conformance
+
+      - name: Upload JUnit, timing and redacted diagnostics
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: kind-conformance-artifacts
+          path: |
+            test/e2e/artifacts/**/junit.xml
+            test/e2e/artifacts/**/timings.json
+            test/e2e/artifacts/**/failures.txt
+            test/e2e/artifacts/**/diagnostics/**
+          retention-days: 14
+          if-no-files-found: warn

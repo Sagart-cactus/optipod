@@ -270,21 +270,11 @@ webhook-manual: ## Install OptipPod with webhook support using manual certificat
 	@echo "Installing OptipPod with manual certificates..."
 	CERT_MANAGER=manual ./config/webhook/install.sh
 
-##@ E2E Tests
+##@ Fast Gate
 
-.PHONY: setup-e2e
-setup-e2e: ## Set up Kind cluster for e2e tests
-	@echo "Setting up e2e test environment..."
-	@command -v kind >/dev/null 2>&1 || { \
-		echo "Kind is not installed. Please install Kind manually."; \
-		exit 1; \
-	}
-	@if ! kind get clusters | grep -q "optipod-e2e-test"; then \
-		echo "Creating Kind cluster for e2e tests..."; \
-		kind create cluster --name optipod-e2e-test; \
-	else \
-		echo "Kind cluster optipod-e2e-test already exists"; \
-	fi
+.PHONY: test-fast
+test-fast: setup-envtest ## Run the non-mutating fast gate: short unit, envtest and clusterless tests (never regenerates or formats tracked files)
+	KUBEBUILDER_ASSETS="$(shell "$(ENVTEST)" use $(ENVTEST_K8S_VERSION) --bin-dir "$(LOCALBIN)" -p path)" go test -short -count=1 ./api/... ./internal/... ./cmd/... ./test/clusterless/workflows/...
 
 ##@ Cluster-Free E2E Tests
 
@@ -319,57 +309,10 @@ test-clusterless-focus: ## Run focused cluster-free tests
 test-all: test test-clusterless ## Run all tests (unit + cluster-free E2E)
 	@echo "✅ All tests completed"
 
-##@ Traditional E2E Tests (Cluster-Based)
+##@ Kind E2E (hermetic suite)
 
-.PHONY: test-e2e
-test-e2e: setup-e2e manifests generate fmt vet ## Run e2e tests
-	@echo "Running comprehensive e2e tests..."
-	KIND_CLUSTER_NAME=optipod-e2e-test go test ./test/e2e/... -v -ginkgo.v -timeout=30m
-
-.PHONY: test-e2e-focus
-test-e2e-focus: setup-e2e manifests generate fmt vet ## Run focused e2e tests
-	@echo "Running focused e2e tests..."
-	KIND_CLUSTER_NAME=optipod-e2e-test go test ./test/e2e/... -v -ginkgo.v -ginkgo.focus="$(FOCUS)" -timeout=30m
-
-.PHONY: e2e-cluster
-e2e-cluster: kustomize ## Create clean Kind cluster for contract testing with consistent configuration
-	@echo "Creating clean Kind cluster for contract testing with consistent configuration..."
-	@echo "Cluster name: optipod-contract-e2e"
-	@command -v kind >/dev/null 2>&1 || { \
-		echo "Kind is not installed. Please install Kind manually."; \
-		exit 1; \
-	}
-	@command -v docker >/dev/null 2>&1 || { \
-		echo "Docker is not installed or not running. Please ensure Docker is available."; \
-		exit 1; \
-	}
-	@kind delete cluster --name optipod-contract-e2e || true
-	@kind create cluster --name optipod-contract-e2e
-
-.PHONY: test-e2e-contract
-test-e2e-contract: ## Run contract-based E2E tests with consistent configuration
-	@echo "Running contract E2E tests with consistent configuration..."
-	@echo "Environment: $(shell if [ "$$CI" = "true" ]; then echo "CI"; else echo "local"; fi)"
-	@echo "Cluster: optipod-contract-e2e"
-	@echo "Timeout: 10 minutes"
-	@echo "Note: Cluster creation is handled by the test suite BeforeSuite"
-	KIND_CLUSTER_NAME=optipod-contract-e2e go test ./test/e2e/contract/... -v -ginkgo.v -timeout=10m
-
-.PHONY: cleanup-e2e
-cleanup-e2e: ## Clean up e2e test environment
-	@echo "Cleaning up e2e test environment..."
-	@kind delete cluster --name optipod-e2e-test || true
-
-.PHONY: cleanup-contract-e2e
-cleanup-contract-e2e: ## Clean up contract e2e test environment
-	@echo "Cleaning up contract e2e test environment..."
-	@kind delete cluster --name optipod-contract-e2e || true
-
-##@ Hermetic Kind Suite (new harness)
-
-# The new suite lives ONLY in test/e2e/suite: these targets never invoke the
-# legacy suites (test/e2e root package or test/e2e/contract) and never touch
-# the default kubeconfig, tracked config or existing clusters. `make
+# The Kind suite lives ONLY in test/e2e/suite: these targets never touch the
+# default kubeconfig, tracked config or existing clusters. `make
 # test-e2e-smoke` is the one-command entry point from a clean checkout: it
 # preflights, creates its own uniquely named Kind cluster, builds and loads the
 # checkout controller once, installs it together with the webhook and the
@@ -390,8 +333,8 @@ test-e2e-smoke: ## Run the hermetic installed-controller smoke suite end to end 
 	go test $(E2E_SUITE) -count=1 -timeout=$(E2E_SUITE_TIMEOUT) -v -ginkgo.v -ginkgo.label-filter="smoke"
 
 .PHONY: test-e2e-labels
-test-e2e-labels: ## Run the new Kind suite with a Ginkgo label filter (E2E_LABELS="smoke && webhook")
-	@echo "Running the new Kind suite (package: $(E2E_SUITE)) with label filter: $(E2E_LABELS)"
+test-e2e-labels: ## Run the Kind suite with a Ginkgo label filter (E2E_LABELS="smoke && webhook")
+	@echo "Running the Kind suite (package: $(E2E_SUITE)) with label filter: $(E2E_LABELS)"
 	go test $(E2E_SUITE) -count=1 -timeout=$(E2E_SUITE_TIMEOUT) -v -ginkgo.v -ginkgo.label-filter="$(E2E_LABELS)"
 
 # Full conformance deliberately INCLUDES the smoke coverage: the label filter

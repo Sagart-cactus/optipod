@@ -16,10 +16,19 @@ finding cites a source `path:line`. These suites were **not executed unchanged**
 > memory-protection API is removed (see `inventory.md`, retirement-execution note). The tracked
 > `config/manager/kustomization.yaml` image override that an H5-style tracked-file edit leaked
 > (`optipod-controller:contract-e2e`) is reset to the scaffold default `controller:latest`; the
-> new harness renders into temporary copies and never edits tracked config. The remaining legacy
-> suite files, their Make targets and the CI workflow wiring stay until the M4 CI-topology
-> feature removes them; every one of their scenarios is already `replaced`/`removed` in
-> `inventory.md`.
+> new harness renders into temporary copies and never edits tracked config.
+>
+> **M4 retirement status (feature `safe-make-and-actions-topology`).** The remaining legacy
+> suites are now deleted: the 14-file `test/e2e` root suite (Section 1, hazards H1–H10), the
+> `test/e2e/contract/` suite (Section 2, hazards C1–C6) and `test/e2e/helpers/` (the shared
+> `--all` cleanup helper). Their Make targets (`setup-e2e`, `test-e2e`, `test-e2e-focus`,
+> `e2e-cluster`, `test-e2e-contract`, `cleanup-e2e`, `cleanup-contract-e2e`) are removed, and
+> `hack/verify-release-separation.sh` (which asserted the retired CI topology) is deleted with
+> them. `.github/workflows/e2e.yml` is rewritten to the smoke-on-PR/push plus
+> nightly/manual-conformance topology (the empty root `env:` fault of Section 4.3 is gone with
+> the old file), `test.yml` now runs the non-mutating fast gate instead of `make test`, and
+> `release.yml`'s test job does the same. Every retired scenario's per-row disposition and
+> reason is in `inventory.md`.
 
 ## 1. Legacy main E2E suite — `test/e2e` (`e2e_suite_test.go`)
 

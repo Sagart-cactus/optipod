@@ -174,8 +174,11 @@ golangci-lint run --timeout=4m
 ```
 
 `make test` is **not** used as a gate while it regenerates manifests/CRDs and formats tracked
-files (see `baseline.md`). `go test ./test/e2e/...` is never used as a focused new-harness
-command because it still includes the legacy suites.
+files (see `baseline.md`); the non-mutating gate is `make test-fast`. Until M4 retired the
+legacy suites, `go test ./test/e2e/...` was never used as a focused harness command because it
+included them; after the retirement the glob selects only the hermetic `suite`, `framework` and
+`metricsfixture` packages, but the label-filtered Make targets remain the documented entry
+points.
 
 ## 7. CI topology
 
