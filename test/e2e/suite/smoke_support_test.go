@@ -363,68 +363,108 @@ func registerContainerSeries(ctx context.Context, namespace string, deployment *
 // Prometheus queries for the given targets, proving the fixture was consumed
 // by the controller rather than merely deployed.
 func expectFixtureQueried(ctx context.Context, series []framework.FixtureSeries) {
-	trace, err := env.Fixture.Trace(ctx)
-	Expect(err).NotTo(HaveOccurred(), "read fixture query trace")
+	trace, attempts, err := env.Fixture.TraceWithRetry(ctx, traceReadAttempts, traceReadBackoff)
+	Expect(err).NotTo(HaveOccurred(),
+		"fixture trace read failed after %d attempts (last error: %v)", attempts, err)
 	Expect(trace).NotTo(BeEmpty(), "the deployed controller never queried the metrics fixture")
-	for _, s := range series {
-		matchers := []string{
-			fmt.Sprintf("namespace=%q", s.Namespace),
-			fmt.Sprintf("pod=%q", s.Pod),
-			fmt.Sprintf("container=%q", s.Container),
-		}
-		var found []string
-		for _, q := range trace {
-			if strings.Contains(q.Query, matchers[0]) &&
-				strings.Contains(q.Query, matchers[1]) &&
-				strings.Contains(q.Query, matchers[2]) {
-				found = append(found, q.Query)
-				break
-			}
-		}
-		Expect(found).NotTo(BeEmpty(),
-			"the deployed controller never issued a metrics query for %s/%s (expected a Prometheus query matching %s)",
-			s.Pod, s.Container, strings.Join(matchers, " "))
-	}
+	missing := fixtureTargetsMissing(trace, series, time.Time{})
+	Expect(missing).To(BeEmpty(),
+		"the deployed controller never issued a metrics query for targets [%s] "+
+			"(expected a Prometheus query matching each namespace/container pair for one of its registered pods)",
+		strings.Join(missing, ", "))
 }
 
-// expectFixtureQueriedAfter waits (bounded) until the deployed controller has
-// issued a Prometheus query for every given target at or after the supplied
-// time. A missing-metrics reconcile still records a query, so pairing a
+// traceReadAttempts/traceReadBackoff bound every fixture-trace read in the
+// suite. Every expectFixtureQueriedAfter call site anchors on an
+// already-completed reconcile (a WorkloadSkipped event, the stored
+// recommendation annotations, or an observed next reconciliation), and the
+// fixture records a query before the controller finishes the reconcile that
+// issued it — so the queries are already recorded when the helper runs. Reads
+// are one-shot verifications with a small retry budget for transient
+// API-server proxy errors, never a minutes-long re-poll that would swallow
+// the real transport error behind a timeout (the M3 VAL-CONF-005 incident).
+const (
+	traceReadAttempts = 3
+	traceReadBackoff  = 5 * time.Second
+)
+
+// expectFixtureQueriedAfter asserts the deployed controller issued a
+// Prometheus query for every given target at or after the supplied time. A
+// missing-metrics reconcile still records a query, so pairing a
 // post-registration timestamp with the re-registered series proves a reconcile
 // that ran after the samples were registered consumed them, rather than the
 // workload being skipped for missing data.
+//
+// The two failure modes are reported distinctly: a transport failure surfaces
+// as "fixture trace read failed after N attempts (last error: ...)", while a
+// successful read without a matching query reports "the fixture trace read
+// succeeded but recorded no matching query" — real read errors are never
+// discarded into a behavioral-looking timeout.
 func expectFixtureQueriedAfter(ctx context.Context, series []framework.FixtureSeries, after time.Time) {
-	err := framework.WaitForCondition(ctx, framework.WaitOptions{
-		Timeout: policyStatusTimeout,
-		Description: fmt.Sprintf("the deployed controller to re-query %d fixture targets at or after %s",
-			len(series), after.Format(time.RFC3339)),
-	}, func(ctx context.Context) (bool, error) {
-		trace, err := env.Fixture.Trace(ctx)
-		if err != nil {
-			return false, err
-		}
-		for _, s := range series {
-			if !fixtureTraceQueried(trace, s, after) {
-				return false, nil
-			}
-		}
-		return true, nil
-	})
+	trace, attempts, err := env.Fixture.TraceWithRetry(ctx, traceReadAttempts, traceReadBackoff)
 	Expect(err).NotTo(HaveOccurred(),
-		"the deployed controller never re-queried the replacement pod's series after the samples were registered")
+		"fixture trace read failed after %d attempts (last error: %v); the completed-reconcile signal was "+
+			"already observed, so this is a harness/transport failure, not evidence the controller skipped the targets",
+		attempts, err)
+	missing := fixtureTargetsMissing(trace, series, after)
+	Expect(missing).To(BeEmpty(),
+		"the fixture trace read succeeded (%d queries recorded) but recorded no matching query for targets [%s] "+
+			"at or after %s; the anchored reconcile completed, so the controller never queried these targets",
+		len(trace), strings.Join(missing, ", "), after.Format(time.RFC3339))
 }
 
-// fixtureTraceQueried reports whether the fixture recorded a query matching the
-// target at or after the given instant.
-func fixtureTraceQueried(trace []framework.RecordedQuery, s framework.FixtureSeries, after time.Time) bool {
+// fixtureTargetsMissing returns the namespace/container targets (one entry per
+// distinct pair in series) with no recorded query at or after `after`.
+//
+// The controller samples ONE of the workload's live pods per container per
+// reconcile: getFirstPodName (internal/controller/workload_processor.go)
+// lists pods through the informer cache, whose iteration order is
+// unspecified, so with two or more replicas the sampled pod is arbitrary (and
+// can differ between containers of one reconcile). The harness registers
+// series for every live pod of the workload, so a target is proven queried
+// when the trace holds a query matching its namespace/container for ANY of
+// its registered pods. A zero `after` matches every recorded query.
+func fixtureTargetsMissing(trace []framework.RecordedQuery, series []framework.FixtureSeries, after time.Time) []string {
+	type target struct {
+		namespace string
+		container string
+	}
+	podsByTarget := make(map[target]map[string]bool)
+	var order []target
+	for _, s := range series {
+		t := target{namespace: s.Namespace, container: s.Container}
+		if podsByTarget[t] == nil {
+			podsByTarget[t] = make(map[string]bool)
+			order = append(order, t)
+		}
+		podsByTarget[t][s.Pod] = true
+	}
+	var missing []string
+	for _, t := range order {
+		if !fixtureTargetQueried(trace, t.namespace, t.container, podsByTarget[t], after) {
+			missing = append(missing, t.namespace+"/"+t.container)
+		}
+	}
+	return missing
+}
+
+// fixtureTargetQueried reports whether the trace holds a query at or after
+// `after` matching the namespace/container pair for any of the given pods.
+func fixtureTargetQueried(trace []framework.RecordedQuery, namespace, container string, pods map[string]bool, after time.Time) bool {
+	namespaceMatcher := fmt.Sprintf("namespace=%q", namespace)
+	containerMatcher := fmt.Sprintf("container=%q", container)
 	for _, q := range trace {
 		if q.Time.Before(after) {
 			continue
 		}
-		if strings.Contains(q.Query, fmt.Sprintf("namespace=%q", s.Namespace)) &&
-			strings.Contains(q.Query, fmt.Sprintf("pod=%q", s.Pod)) &&
-			strings.Contains(q.Query, fmt.Sprintf("container=%q", s.Container)) {
-			return true
+		if !strings.Contains(q.Query, namespaceMatcher) ||
+			!strings.Contains(q.Query, containerMatcher) {
+			continue
+		}
+		for pod := range pods {
+			if strings.Contains(q.Query, fmt.Sprintf("pod=%q", pod)) {
+				return true
+			}
 		}
 	}
 	return false

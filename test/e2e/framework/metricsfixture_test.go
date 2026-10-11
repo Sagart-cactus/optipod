@@ -3,11 +3,14 @@ package framework
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -166,5 +169,147 @@ func TestSetSeriesPropagatesAPIErrors(t *testing.T) {
 	client := newFixtureTestClient(t, srv)
 	if err := client.SetSeries(context.Background(), nil); err == nil {
 		t.Fatal("expected propagated API error")
+	}
+}
+
+// TestNewMetricsFixtureClientDedicatedRateLimiter pins the VAL-CONF-005
+// harness fix: the fixture-proxy path runs on its own clientset with a raised
+// QPS/Burst instead of sharing the suite-wide default 5/10 CoreV1 token
+// bucket, so a proxy-read retry burst cannot starve unrelated suite waits.
+func TestNewMetricsFixtureClientDedicatedRateLimiter(t *testing.T) {
+	cfg := &rest.Config{Host: "https://127.0.0.1:1"}
+	sharedKube, err := kubernetes.NewForConfig(cfg)
+	if err != nil {
+		t.Fatalf("build shared clientset: %v", err)
+	}
+	clients := &Clients{Kube: sharedKube, restConfig: cfg}
+	fixture, err := NewMetricsFixtureClient(clients)
+	if err != nil {
+		t.Fatalf("NewMetricsFixtureClient: %v", err)
+	}
+	shared := clients.Kube.CoreV1().RESTClient().GetRateLimiter()
+	dedicated := fixture.kube.CoreV1().RESTClient().GetRateLimiter()
+	if dedicated == nil || shared == nil {
+		t.Fatal("expected rate limiters on both clientsets")
+	}
+	if dedicated == shared {
+		t.Fatal("the fixture client shares the suite-wide rate limiter instance")
+	}
+	// flowcontrol.RateLimiter exposes QPS() but no Burst() accessor; the QPS
+	// delta plus the separate instance pin the dedicated raised bucket, and
+	// the constructor sets both QPS and Burst from the same constants.
+	if dedicated.QPS() != fixtureClientQPS {
+		t.Fatalf("fixture limiter = %v QPS, want %v (burst %d is set from the same constructor constants)",
+			dedicated.QPS(), fixtureClientQPS, fixtureClientBurst)
+	}
+	if fixtureClientQPS <= rest.DefaultQPS || fixtureClientBurst <= rest.DefaultBurst {
+		t.Fatalf("fixture limiter %v/%d must exceed the client-go default %v/%d",
+			fixtureClientQPS, fixtureClientBurst, rest.DefaultQPS, rest.DefaultBurst)
+	}
+	if shared.QPS() != rest.DefaultQPS {
+		t.Fatalf("the shared suite clientset must keep the client-go default limiter, got %v QPS",
+			shared.QPS())
+	}
+}
+
+func TestNewMetricsFixtureClientRequiresClients(t *testing.T) {
+	if _, err := NewMetricsFixtureClient(nil); err == nil {
+		t.Fatal("expected an error for nil clients")
+	}
+	if _, err := NewMetricsFixtureClient(&Clients{}); err == nil {
+		t.Fatal("expected an error for clients without a rest.Config")
+	}
+}
+
+// flakyTraceServer fails the fixture trace read until failuresRemaining hits
+// zero, then serves a one-query trace.
+type flakyTraceServer struct {
+	failuresRemaining int32
+}
+
+func (f *flakyTraceServer) handler() http.Handler {
+	prefix := "/api/v1/namespaces/" + FixtureNamespace + "/services/" + FixtureServiceName + ":9090/proxy/-/trace"
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != prefix || r.Method != http.MethodGet {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		if atomic.AddInt32(&f.failuresRemaining, -1) >= 0 {
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = w.Write([]byte(`{"status":"error","error":"transient proxy failure"}`))
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"queries": []RecordedQuery{{Query: `rate(container_cpu_usage_seconds_total{namespace="n",pod="p",container="c"}[24h])`}},
+		})
+	})
+}
+
+func TestTraceWithRetryRetriesTransientFailures(t *testing.T) {
+	flaky := &flakyTraceServer{failuresRemaining: 2}
+	srv := httptest.NewServer(flaky.handler())
+	t.Cleanup(srv.Close)
+	client := newFixtureTestClient(t, srv)
+
+	trace, attempts, err := client.TraceWithRetry(context.Background(), 3, time.Millisecond)
+	if err != nil {
+		t.Fatalf("TraceWithRetry: %v", err)
+	}
+	if attempts != 3 {
+		t.Fatalf("attempts = %d, want 3 (two transient failures, then success)", attempts)
+	}
+	if len(trace) != 1 || !strings.Contains(trace[0].Query, "container_cpu_usage_seconds_total") {
+		t.Fatalf("trace = %+v", trace)
+	}
+}
+
+func TestTraceWithRetryExhaustsBudgetAndSurfacesLastError(t *testing.T) {
+	flaky := &flakyTraceServer{failuresRemaining: 100}
+	srv := httptest.NewServer(flaky.handler())
+	t.Cleanup(srv.Close)
+	client := newFixtureTestClient(t, srv)
+
+	_, attempts, err := client.TraceWithRetry(context.Background(), 3, time.Millisecond)
+	if err == nil {
+		t.Fatal("expected the budget to exhaust with an error")
+	}
+	if attempts != 3 {
+		t.Fatalf("attempts = %d, want 3", attempts)
+	}
+	if !strings.Contains(err.Error(), "read fixture trace") {
+		t.Fatalf("the surfaced error must be the real last read error, got: %v", err)
+	}
+}
+
+func TestTraceWithRetrySingleAttemptWhenBudgetIsOne(t *testing.T) {
+	flaky := &flakyTraceServer{failuresRemaining: 100}
+	srv := httptest.NewServer(flaky.handler())
+	t.Cleanup(srv.Close)
+	client := newFixtureTestClient(t, srv)
+
+	_, attempts, err := client.TraceWithRetry(context.Background(), 1, time.Millisecond)
+	if err == nil || attempts != 1 {
+		t.Fatalf("attempts = %d, err = %v; want exactly one attempt with the read error", attempts, err)
+	}
+}
+
+func TestTraceWithRetryStopsWhenContextEndsDuringBackoff(t *testing.T) {
+	flaky := &flakyTraceServer{failuresRemaining: 100}
+	srv := httptest.NewServer(flaky.handler())
+	t.Cleanup(srv.Close)
+	client := newFixtureTestClient(t, srv)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	_, attempts, err := client.TraceWithRetry(ctx, 3, 5*time.Second)
+	if err == nil {
+		t.Fatal("expected the context deadline to cut the backoff short")
+	}
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("err = %v, want it to wrap context.DeadlineExceeded", err)
+	}
+	if attempts != 1 {
+		t.Fatalf("attempts = %d, want 1 (the context ended during the first backoff)", attempts)
 	}
 }

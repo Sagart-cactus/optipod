@@ -249,7 +249,11 @@ func SetupEnvironment(ctx context.Context, opts EnvironmentOptions) (*Environmen
 
 	env.Installation = installation
 	env.Factory = NewFactory(env.Clients)
-	env.Fixture = NewMetricsFixtureClient(env.Clients)
+	fixture, err := NewMetricsFixtureClient(env.Clients)
+	if err != nil {
+		return fail(err)
+	}
+	env.Fixture = fixture
 	return env, nil
 }
 

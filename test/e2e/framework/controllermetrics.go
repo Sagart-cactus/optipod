@@ -61,7 +61,11 @@ func NewControllerMetricsScraper(clients *Clients) (*ControllerMetricsScraper, e
 	if clients == nil || clients.Kube == nil {
 		return nil, fmt.Errorf("controller metrics scraper: clients are required")
 	}
-	return &ControllerMetricsScraper{fixture: NewMetricsFixtureClient(clients)}, nil
+	fixture, err := NewMetricsFixtureClient(clients)
+	if err != nil {
+		return nil, fmt.Errorf("controller metrics scraper: %w", err)
+	}
+	return &ControllerMetricsScraper{fixture: fixture}, nil
 }
 
 // Scrape returns the controller's full Prometheus exposition verbatim, scraped

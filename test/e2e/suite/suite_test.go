@@ -40,12 +40,16 @@ var (
 type runRecord struct {
 	failed       bool
 	failureTexts []string
-	specs        []framework.SpecTiming
-	specSeconds  float64
-	specsRan     bool
-	setupSeconds float64
-	diagnostics  framework.PhaseTiming
-	teardown     framework.PhaseTiming
+	// snapshotErrors records per-spec forensic snapshot failures. They are
+	// diagnostics about diagnostics: they are reported alongside the bundle
+	// and never mask the original spec failure.
+	snapshotErrors []string
+	specs          []framework.SpecTiming
+	specSeconds    float64
+	specsRan       bool
+	setupSeconds   float64
+	diagnostics    framework.PhaseTiming
+	teardown       framework.PhaseTiming
 }
 
 func newRunRecord() runRecord {
@@ -109,6 +113,7 @@ var _ = ReportAfterEach(func(sr types.SpecReport) {
 	if sr.State.Is(types.SpecStateFailureStates) {
 		run.failed = true
 		run.failureTexts = append(run.failureTexts, specFailureText(sr))
+		snapshotFixtureTraceOnFailure(sr)
 	}
 	if sr.State != types.SpecStateInvalid &&
 		!sr.State.Is(types.SpecStateSkipped|types.SpecStatePending) {
@@ -132,6 +137,35 @@ func specFailureText(sr types.SpecReport) string {
 	return b.String()
 }
 
+// snapshotFixtureTraceOnFailure captures the fixture's recorded queries
+// immediately after a spec fails, BEFORE any later spec's ClearTrace can wipe
+// the failing window (the M3 VAL-CONF-005 forensics gap). The snapshot lands
+// in the run's diagnostics directory through the framework's redaction
+// pipeline. It is error-isolated: a snapshot failure is recorded (and joins
+// the bundle's collection errors) but never fails a spec or masks the
+// original failure.
+func snapshotFixtureTraceOnFailure(sr types.SpecReport) {
+	if env == nil || artifacts == nil {
+		return
+	}
+	// A short independent bound: the report path must not hang, and the run
+	// context may already be cancelled when a spec fails on interruption.
+	sctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	// The failure-count prefix keeps snapshot file names unique when several
+	// specs fail in one run.
+	name := fmt.Sprintf("%02d-%s", len(run.failureTexts), sr.FullText())
+	path, redactions, err := framework.SnapshotFixtureTrace(sctx, env.Clients, artifacts.DiagnosticsDir(), name)
+	if err != nil {
+		note := fmt.Sprintf("fixture-trace failure snapshot for spec %q failed (the original failure remains primary): %s",
+			sr.FullText(), framework.Redact(err.Error()))
+		run.snapshotErrors = append(run.snapshotErrors, note)
+		fmt.Printf("=== %s\n", note)
+		return
+	}
+	fmt.Printf("=== fixture-trace failure snapshot: %s (%d redactions)\n", path, redactions)
+}
+
 // AfterSuite collects failure diagnostics BEFORE tearing the owned cluster
 // down, then tears down with a bounded context independent of any cancelled
 // run context. Ginkgo runs this even when BeforeSuite failed or the suite was
@@ -152,6 +186,9 @@ var _ = AfterSuite(func() {
 			FailureSummary: strings.Join(run.failureTexts, "\n\n"),
 			Pins:           framework.PinManifest(),
 			Namespaces:     names,
+			// Per-spec snapshot failures (if any) stay visible in the bundle
+			// without ever masking the original failure.
+			PreRecordedErrors: run.snapshotErrors,
 		}
 		dctx, cancel := framework.DiagnosticsContext()
 		defer cancel()

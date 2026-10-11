@@ -491,33 +491,6 @@ func expectNoFixtureQuerySince(ctx context.Context, namespace string, since time
 	}
 }
 
-// sampledPodName returns the name of the workload's pod the production
-// processor samples metrics for: it lists the workload's pods with Limit(1)
-// against the same selector, and API list results are name-sorted, so the
-// lexicographically first pod is the one whose series a reconcile must query.
-func sampledPodName(ctx context.Context, namespace, workloadName string) string {
-	pods, err := env.Clients.Kube.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{
-		LabelSelector: "app=" + workloadName,
-	})
-	Expect(err).NotTo(HaveOccurred(), "list pods of workload %s", workloadName)
-	Expect(pods.Items).NotTo(BeEmpty(), "workload %s has no pods to sample", workloadName)
-	return pods.Items[0].Name
-}
-
-// seriesForPod filters a registered series set down to one pod's series, so
-// trace assertions target exactly the targets a reconcile must have queried
-// (the processor samples the workload's first pod only).
-func seriesForPod(series []framework.FixtureSeries, pod string) []framework.FixtureSeries {
-	out := make([]framework.FixtureSeries, 0, len(series))
-	for _, s := range series {
-		if s.Pod == pod {
-			out = append(out, s)
-		}
-	}
-	Expect(out).NotTo(BeEmpty(), "no registered series target pod %s", pod)
-	return out
-}
-
 // waitForReconcileAfter waits (bounded) until the named policy reports a
 // completed reconciliation strictly after the reference time and returns the
 // observed policy. Unlike waitForNextReconcile's fixed bound, the caller

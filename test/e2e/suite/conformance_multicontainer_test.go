@@ -110,8 +110,9 @@ var _ = Describe("Multi-container outcomes and partial metrics on installed stra
 		expectAppliedContainerRequests(fresh[0].Spec.Containers, samples, "the naturally admitted pod")
 		expectUnappliedContainerRequests(kept[0].Spec.Containers, samples,
 			"the pre-existing pod under onNextRestart rollout")
-		// Register series for the new pod too: the processor samples the
-		// workload's first pod, so all pods need series for determinism.
+		// Register series for the new pod too: the processor samples one
+		// arbitrary live pod per container (its cache list order is
+		// unspecified), so all pods need series for determinism.
 		registerWorkloadSeries(ctx, ns.Name, workloadName, samples)
 		beforeEditUIDs := podUIDs(ctx, ns.Name, podSelector)
 
@@ -194,9 +195,10 @@ var _ = Describe("Multi-container outcomes and partial metrics on installed stra
 		Expect(podUIDs(ctx, ns.Name, podSelector)).To(Equal(afterEditUIDs),
 			"the partial-data reconcile rolled workload pods")
 		// The controller queried the two containers that DO have data (it
-		// samples the workload's first pod), so the skip is the production
-		// decision, not an absence of collection.
-		expectFixtureQueriedAfter(ctx, seriesForPod(partialSeries, sampledPodName(ctx, ns.Name, workloadName)), skipPhase)
+		// samples one live pod per container; the registered series cover
+		// every live pod), so the skip is the production decision, not an
+		// absence of collection.
+		expectFixtureQueriedAfter(ctx, partialSeries, skipPhase)
 
 		By("registering the sidecar's own metrics so the workload has complete data again")
 		complete := buildWorkloadSeries(ctx, ns.Name, workloadName, changed)
@@ -245,7 +247,7 @@ var _ = Describe("Multi-container outcomes and partial metrics on installed stra
 			"the sidecar's own recommendation must be stored once its metrics are complete")
 		Expect(sidecarAnnotationCPU).NotTo(Equal(samples[0].expectedCPU),
 			"the sidecar must not inherit the app container's recommendation")
-		expectFixtureQueriedAfter(ctx, seriesForPod(complete, sampledPodName(ctx, ns.Name, workloadName)), completePhase)
+		expectFixtureQueriedAfter(ctx, complete, completePhase)
 
 		By("scaling again so a naturally admitted pod proves every container's outcome")
 		scaleDeployment(ctx, ns.Name, workloadName, 3)

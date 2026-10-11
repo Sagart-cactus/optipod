@@ -70,6 +70,11 @@ type DiagnosticsScope struct {
 	ClusterName string
 	// Pins records the pinned tool/image inputs for provenance.
 	Pins []Pin
+	// PreRecordedErrors are collection errors recorded before the sweep runs
+	// (for example a failed per-spec forensic snapshot). They join the
+	// bundle's collection errors so an evidence gap stays visible alongside
+	// the original failure, which remains primary.
+	PreRecordedErrors []string
 }
 
 // DiagnosticBundle reports what was collected. Collection errors are recorded
@@ -104,6 +109,9 @@ func CollectDiagnostics(ctx context.Context, clients *Clients, scope Diagnostics
 		clients: clients,
 		scope:   scope,
 		bundle:  &DiagnosticBundle{Dir: outDir},
+	}
+	for _, pre := range scope.PreRecordedErrors {
+		c.recordError("%s", pre)
 	}
 
 	// The original failure stays identifiable at the top of the bundle.
@@ -235,10 +243,17 @@ func (c *collector) collectSystemState(ctx context.Context) {
 	c.getToYAML("fixture-endpoints", func() (interface{}, error) {
 		return c.clients.Kube.CoreV1().Endpoints(FixtureNamespace).Get(ctx, FixtureServiceName, metav1.GetOptions{})
 	})
+	// The fixture pod's own state (restarts, conditions) explains
+	// service-proxy read failures the trace alone cannot.
+	c.listToYAML("system", "fixture-pods", func() (interface{}, error) {
+		return c.clients.Kube.CoreV1().Pods(FixtureNamespace).List(ctx, metav1.ListOptions{})
+	})
 
 	// What the deployed controller actually asked the fixture for.
-	trace, err := NewMetricsFixtureClient(c.clients).Trace(ctx)
+	fixture, err := NewMetricsFixtureClient(c.clients)
 	if err != nil {
+		c.recordError("build the fixture client for diagnostics: %v", err)
+	} else if trace, err := fixture.Trace(ctx); err != nil {
 		c.recordError("read metrics fixture trace: %v", err)
 	} else {
 		c.writeJSON(filepath.Join("system", "metrics-fixture-trace.json"), trace)
