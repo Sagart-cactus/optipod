@@ -184,7 +184,7 @@ spec:
       {
         title: 'Policy-driven safety',
         description:
-          'Conservative defaults, configurable bounds, controlled change rates, and memory safeguards.',
+          'Conservative defaults, configurable bounds, controlled change rates, and a tunable safety factor.',
         icon: 'tabler:shield-check',
       },
       {
@@ -213,8 +213,9 @@ spec:
         icon: 'tabler:git-branch',
       },
       {
-        title: 'Will not blindly reduce memory',
-        description: 'Memory safeguards prevent dangerous reductions',
+        title: 'Will not exceed your bounds',
+        description:
+          'Every recommendation is clamped by your configured resource bounds and safety factor',
         icon: 'tabler:shield-check',
       },
       {

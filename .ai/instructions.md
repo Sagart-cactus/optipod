@@ -151,9 +151,15 @@ make lint              # Lint code
 ### What OptiPod Will NOT Do
 - ❌ Mutate workloads without explicit opt-in
 - ❌ Override GitOps ownership
-- ❌ Blindly reduce memory (OOMKill risk)
+- ❌ Apply recommendations outside configured resource bounds and safety factor
 - ❌ Require SaaS backend
 - ❌ Make unexplainable recommendations
+
+> **Memory-decrease reality**: OptiPod has **no memory-decrease guard**. A recommended
+> memory decrease is applied in full, like any other recommendation, constrained only by
+> `resourceBounds` and the safety factor. The `allowUnsafeMemoryDecrease` and
+> `gradualDecreaseConfig` fields are schema-validated but **inert** — no production code
+> reads them, so setting them has no effect (see `docs/CRD_REFERENCE.md`).
 
 ### Safety Guarantees
 - Default to recommend mode
