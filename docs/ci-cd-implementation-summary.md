@@ -1,5 +1,20 @@
 # CI/CD Pipeline Implementation Summary
 
+> **Historical record — not the current pipeline.** This document records the initial CI/CD
+> bring-up (December 2024) and is kept for archaeology only. Two corrections for present-day
+> readers:
+>
+> 1. The `test-e2e` job shown under the release workflow in the "Workflow Architecture"
+>    diagram below never existed in the tracked `.github/workflows/release.yml`.
+> 2. The contract-E2E pipeline this era shipped (`make test-e2e-contract`, `make e2e-cluster`,
+>    the `test/e2e/contract/` suite and the old `e2e.yml` contract job) was **retired and
+>    deleted** in the 2026-10 test-architecture refactor; the narrow contract checks were
+>    replaced by the hermetic Kind smoke/conformance suites.
+>
+> Current pipeline truth lives in `.github/workflows/README.md`, the root README "Testing"
+> section and `docs/testing/README.md` (architecture, coverage matrix, timings and the final
+> mission report).
+
 ## Overview
 
 This document summarizes the complete CI/CD pipeline implementation for the OptiPod Kubernetes operator.

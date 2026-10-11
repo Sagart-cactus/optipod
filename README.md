@@ -353,7 +353,9 @@ git-ignored `test/e2e/artifacts/run-<id>/`. Normal runs delete only their own
 cluster; `KEEP_CLUSTER=1 make test-e2e-smoke` retains it and prints
 private-kubeconfig inspection, focused-reuse (`make test-e2e-reuse`) and
 disposal commands. See [docs/testing/README.md](docs/testing/README.md) for
-the full architecture, coverage matrix and debugging guide.
+the full architecture, coverage matrix and debugging guide, and
+[docs/testing/final-report.md](docs/testing/final-report.md) for the measured
+final mission report (commands, timings, reliability ledger, follow-ups).
 
 CI mirrors these tiers: pull requests and pushes that touch controller, API,
 chart, manifest, test, Make or workflow inputs run the smoke job

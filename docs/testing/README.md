@@ -1,16 +1,18 @@
 # OptiPod test-architecture documentation
 
 Versioned documentation for the behaviour-preserving test refactor. The milestone-1 (M1)
-baseline, inventory and design are authored before any test implementation.
+baseline, inventory and design were authored before any test implementation; the M4 timings
+ledger and final report close the mission with measured evidence.
 
 | Document | Fulfils | Purpose |
 | --- | --- | --- |
 | [`baseline.md`](./baseline.md) | VAL-DESIGN-001 | Measured, reproducible baseline: commands, exits, timings, machine/cache state, counts and deliberately unexecuted paths. |
 | [`inventory.md`](./inventory.md) | VAL-DESIGN-002 | One disposition row for each legacy scenario S001–S155 (old `path:line`/title, new layer/location, retained/replaced/removed, reason). |
-| [`coverage-matrix.md`](./coverage-matrix.md) | VAL-DESIGN-003 | Behaviour-group → named (planned) test → observable → milestone → legacy cross-reference. |
+| [`coverage-matrix.md`](./coverage-matrix.md) | VAL-DESIGN-003 | Behaviour-group → named test → observable → milestone → legacy cross-reference; every row B01–B20 is `Landed` against executing proof. |
 | [`design.md`](./design.md) | VAL-DESIGN-003 | Framework interfaces, suite lifecycle/ownership, metrics fixture, pins, labels, Make targets, CI topology and executable acceptance checks. |
 | [`legacy-hazards.md`](./legacy-hazards.md) | VAL-DESIGN-004 | Legacy `BeforeSuite` hazards, unpinned installers, tracked-file edits, context mutation, and the reproduced zero-job workflow syntax fault. |
 | [`timings-reliability.md`](./timings-reliability.md) | VAL-CI-005 | Measured M4 phase timings (local cold/warm, hosted explicitly unmeasured), the ten-run smoke ledger, focused-reuse timings with uniform skipped-phase markers, and goal-vs-measured verdicts. |
+| [`final-report.md`](./final-report.md) | VAL-CI-006 | Concise final mission report: old→new paths, changed/removed files, exact verified commands and results, before/after timings, the 10/10 reliability denominator, hosted-verification status (pending the authorized PR feature) and the unresolved limits/follow-ups. |
 
 **Reading order for a new worker:** `design.md` for the target architecture, `inventory.md`
 and `coverage-matrix.md` for what each future test must prove and which legacy scenario it
@@ -33,7 +35,7 @@ commands.
 | --- | --- |
 | `make test-e2e-smoke` | The one-command smoke entry point (M2): runs the smoke-labelled specs of the new suite end to end from a clean checkout — preflight → owned cluster → one build/load/install → specs → diagnostics on failure → teardown. |
 | `make test-e2e-labels E2E_LABELS="diagnostics"` | Run the new suite filtered by Ginkgo label (also `E2E_LABELS="smoke"`, `"smoke && webhook"`, `"conformance && observability"`, `"conformance && compatibility"`, ...). `E2E_SUITE_TIMEOUT` (default `45m`) bounds the `go test` timeout. |
-| `make test-e2e-conformance` | The one-command full-conformance entry point (M3): label filter `smoke || conformance`, so the smoke coverage and every conformance label (`modes`, `selectors`, `policy`, `safety`, `multi-container`, `metrics-fault`, `webhook`, `rollout`, `strategy`, `concurrency`, `rbac`, `observability`, `compatibility`) run over one owned installed cluster in a single invocation — conformance cannot pass by bypassing smoke (VAL-CROSS-003). `E2E_CONFORMANCE_TIMEOUT` (default `60m`) bounds the `go test` timeout. |
+| `make test-e2e-conformance` | The one-command full-conformance entry point (M3): label filter `smoke \|\| conformance`, so the smoke coverage and every conformance label (`modes`, `selectors`, `policy`, `safety`, `multi-container`, `metrics-fault`, `webhook`, `rollout`, `strategy`, `concurrency`, `rbac`, `observability`, `compatibility`) run over one owned installed cluster in a single invocation — conformance cannot pass by bypassing smoke (VAL-CROSS-003). `E2E_CONFORMANCE_TIMEOUT` (default `60m`) bounds the `go test` timeout. |
 | `make test-e2e-reuse` | Explicit focused rerun against a retained harness cluster: set `OPTIPOD_E2E_REUSE_CLUSTER` and `OPTIPOD_E2E_REUSE_KUBECONFIG` (printed by a `KEEP_CLUSTER=1` run) plus `E2E_LABELS`. The retained install is verified ready and kept — not rebuilt, reinstalled or deleted; only the printed disposal command removes the cluster. |
 | `make test-e2e-deliberate-failure` | Opt-in spec that fails one deliberate assertion to exercise pre-teardown redacted diagnostics; a nonzero exit and a redacted bundle are the expected outcome, not a product defect. |
 

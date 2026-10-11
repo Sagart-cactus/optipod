@@ -1,5 +1,13 @@
 # Contract E2E Testing Design Document
 
+> **Historical record — retired pipeline.** This design describes the legacy contract-E2E
+> pipeline (`make test-e2e-contract`, `make e2e-cluster`, the `test/e2e/contract/` suite and
+> its dedicated workflow), which was **retired and deleted** in the 2026-10 test-architecture
+> refactor. None of the Make targets, directories or workflow behaviors designed here exist
+> anymore. The current test architecture is documented in `docs/testing/README.md` (with
+> `design.md`, `coverage-matrix.md`, `inventory.md` and the final mission report), the root
+> README "Testing" section and `.github/workflows/README.md`.
+
 ## Overview
 
 This design outlines the implementation of a contract-based E2E testing model for OptiPod that focuses on minimal, deterministic, and fast validation of user-visible behavior. The contract-based approach validates only essential user contracts without testing internal controller behavior, timing-sensitive assertions, or exact resource values. This approach ensures stable, reproducible tests that complete in under 10 minutes and do not block releases.
