@@ -10,6 +10,7 @@ baseline, inventory and design are authored before any test implementation.
 | [`coverage-matrix.md`](./coverage-matrix.md) | VAL-DESIGN-003 | Behaviour-group → named (planned) test → observable → milestone → legacy cross-reference. |
 | [`design.md`](./design.md) | VAL-DESIGN-003 | Framework interfaces, suite lifecycle/ownership, metrics fixture, pins, labels, Make targets, CI topology and executable acceptance checks. |
 | [`legacy-hazards.md`](./legacy-hazards.md) | VAL-DESIGN-004 | Legacy `BeforeSuite` hazards, unpinned installers, tracked-file edits, context mutation, and the reproduced zero-job workflow syntax fault. |
+| [`timings-reliability.md`](./timings-reliability.md) | VAL-CI-005 | Measured M4 phase timings (local cold/warm, hosted explicitly unmeasured), the ten-run smoke ledger, focused-reuse timings with uniform skipped-phase markers, and goal-vs-measured verdicts. |
 
 **Reading order for a new worker:** `design.md` for the target architecture, `inventory.md`
 and `coverage-matrix.md` for what each future test must prove and which legacy scenario it
