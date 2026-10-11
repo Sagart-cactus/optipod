@@ -11,12 +11,13 @@ repeated-run denominator, hosted-run provenance, and the unresolved limits and f
 > pinned node image `kindest/node:v1.35.0@sha256:4613778f…6961`), taken 2026-10-12 at commit
 > `192c70b`/`c77a6d0` on branch `feature/m1-baseline-hazard-audit` — see
 > [`timings-reliability.md`](./timings-reliability.md) for the full environment table,
-> per-phase min/median/max and the per-run ledger. **No GitHub-hosted run exists at this
-> commit**: hosted smoke/conformance results are pending the authorized
-> `authorized-pr-smoke-hosted-verification` feature, which must record the real PR, run ID,
-> head SHA, job conclusion and durations from `gh run view` evidence. The nightly/manual
+> per-phase min/median/max and the per-run ledger. Hosted evidence now exists: PR #73
+> (`feature/m1-baseline-hazard-audit` → `main`) ran the real GitHub-hosted Kind smoke job
+> at the final code head `f5ec14c` (run 38183277022, job success); the full record —
+> including the two hosted failures found and fixed during PR verification — is in
+> [Hosted verification status](#hosted-verification-status). The nightly/manual
 > conformance job is *configured* in `.github/workflows/e2e.yml` but has never executed;
-> nothing here claims an unobserved hosted or scheduled success.
+> nothing here claims an unobserved hosted conformance or scheduled success.
 
 ## What changed: old → new
 
@@ -107,20 +108,81 @@ fixture-trace read timeout, "client rate limiter Wait returned an error"), fixed
 in `1395da9` (dedicated fixture client + single bounded trace read) and not seen since.
 
 **Timing goals (goals, not gates):** warm fast < 2 min — met locally (24.21s); focused
-reuse < 90s — met narrowly (89.71s); hosted smoke < 6 min and hosted conformance < 12 min —
-**unmeasured** (no hosted run exists yet). Local warm conformance (~19.1 min) exceeds the
-12-minute *hosted* goal; whether the Linux runner meets it is unknown until the authorized
-PR run, and no assertion was weakened to compensate.
+reuse < 90s — met narrowly (89.71s); hosted smoke < 6 min — **missed** (8m49s job wall,
+6m58.6s suite-internal, at PR #73 head `f5ec14c`; the cold controller image build
+(127.9s) and the specs phase (236.5s) dominate — see
+[Hosted verification status](#hosted-verification-status)); hosted conformance < 12 min —
+**unmeasured** (the nightly/manual job is configured but has never executed). Local warm
+conformance (~19.1 min) exceeds the 12-minute *hosted* goal; whether the Linux runner
+meets it is unknown until a scheduled/dispatched run, and no assertion was weakened to
+compensate.
 
 ## Hosted verification status
 
-**Pending.** The `authorized-pr-smoke-hosted-verification` feature runs after this report:
-it pushes the reviewed feature branch, opens the PR against `main`, and inspects the real
-hosted smoke job at the final PR head SHA (VAL-CI-003). That feature (or a follow-up commit
-on the same branch) must update this section with the PR number, run ID, head SHA, job
-conclusion and measured hosted durations. Until then, every hosted number in this repository
-is explicitly *unmeasured*, and the configured nightly/manual conformance schedule is not
-claimed as an executed run.
+**Executed (VAL-CI-003).** The reviewed feature branch was pushed and
+[PR #73](https://github.com/Sagart-cactus/optipod/pull/73)
+(`feature/m1-baseline-hazard-audit` → `main`) was opened on 2026-10-12 (UTC 2026-10-11/12).
+The hosted story includes two real failures found by the PR and fixed on the branch —
+reported here rather than hidden, per the no-silent-retry rule:
+
+1. **Head `58e3783` — smoke failed in tool install.** Run
+   [38181405028](https://github.com/Sagart-cactus/optipod/actions/runs/38181405028)
+   (pull_request): the "Kind smoke suite" job failed in "Install pinned Kind, kubectl and
+   kustomize" with `curl: (22) ... 404`. Root cause: the workflow stripped the `v` prefix
+   from the kustomize release asset name (`kustomize_5.8.1_linux_amd64.tar.gz`), but the
+   published asset keeps it (`kustomize_v5.8.1_linux_amd64.tar.gz`). Fixed in `3ecaa11`;
+   the pinned SHA256 `029a7f0f…a819d` was re-verified against the real asset before the fix.
+   The suite never started, so this run says nothing about test behavior.
+2. **Head `3ecaa11` — smoke green; Lint and Pre-commit red.** Run
+   [38181590019](https://github.com/Sagart-cactus/optipod/actions/runs/38181590019):
+   smoke job success (job wall 8m07s). Separately, the Lint workflow (run 38181589953) and
+   Pre-commit Checks (run 38181589946) failed on branch-introduced issues invisible to the
+   macOS-local gate: a linux-only `unconvert` finding in
+   `test/e2e/framework/disk_linux.go` (`Statfs_t.Bavail` is already `uint64` on linux), and
+   `detect-secrets` false positives on the deliberate redaction-test canaries
+   (`redact_test.go`, `suite/canary_test.go`), the userinfo-regex comment (`redact.go`),
+   the webhook cert Secret *name* constant (`pins.go`) and the three SHA256 pin hex strings
+   (`e2e.yml`). Fixed in `f5ec14c` (conversion dropped; inline `pragma: allowlist secret`
+   markers using the tool's own comment syntax), each verified locally with
+   `GOOS=linux GOARCH=amd64 golangci-lint run ./test/...` (0 issues) and
+   `detect-secrets` 1.5.0 against the repo baseline over all tracked files (exit 0).
+3. **Final code head `f5ec14c` — all PR checks green.**
+
+**Final-head smoke evidence** (run
+[38183277022](https://github.com/Sagart-cactus/optipod/actions/runs/38183277022),
+event `pull_request`, headSha `f5ec14cd23dde085e982fd5234d36d60e700e5a2`, conclusion
+`success`; verified with `gh run view 38183277022 -R Sagart-cactus/optipod --json
+event,headSha,jobs,conclusion`):
+
+| Item | Value |
+| --- | --- |
+| Job | "Kind smoke suite" (id 114600168825), conclusion `success` |
+| Job wall time | 8m49s (2026-10-11 23:10:30Z → 23:19:19Z) |
+| `make test-e2e-smoke` step | 8m28s (23:10:47Z → 23:19:15Z) |
+| Suite-internal time (artifact `timings.json`) | 418.6s (6m58.6s), `suiteSucceeded: true` |
+| Result (artifact `junit.xml`) | 41 tests, 0 failures, 0 errors, 30 skipped (conformance/diagnostics labels excluded at smoke tier) |
+| Artifact | `kind-smoke-artifacts` (id 11719045840, 9,384 bytes, unexpired; junit.xml + timings.json, no diagnostics dir on a green run) |
+| Runner preflight | passed in 0.1s — the ≥ 10 GiB temp-dir disk check did **not** fail on `ubuntu-latest` |
+
+Hosted phase timings from the uploaded `timings.json` (run-1791760336-03581a23):
+preflight 0.1s, cluster-create 37.4s (includes the node-image pull), image-build 127.9s
+(cold, no cache), image-load 2.9s, render 0.1s, install-apply 0.4s, await-ready 12.0s,
+specs 236.5s, diagnostics SKIPPED (green run), teardown 1.2s.
+
+**Goal assessment (goals, not gates):** hosted smoke < 6 min — **missed**: 8m49s job
+wall and even the 6m58.6s suite-internal time exceed it; the cold controller image build
+(127.9s) plus the specs phase (236.5s) dominate. No coverage was cut and no timeout or
+assertion was inflated to disguise this. Hosted conformance < 12 min — **unmeasured**:
+the nightly/manual job is configured in `.github/workflows/e2e.yml` but has never
+executed, and it is not claimed as an observed run. Also recorded: the first hosted run
+failed *before* preflight on the kustomize 404, and the ≥ 10 GiB disk preflight passed
+on the real runner — the predicted disk-preflight blocker did not materialize.
+
+The commit that adds this report text touches only `docs/testing/**`, which is outside
+the `e2e.yml` path filter, so it deliberately does not schedule a new smoke run;
+`f5ec14c` is the final code head and its run above is the hosted smoke evidence for this
+PR. All other PR checks (CI, Tests, Lint, Pre-commit Checks) were also green at
+`f5ec14c`.
 
 ## Unresolved limits and follow-ups (recorded, not fixed)
 

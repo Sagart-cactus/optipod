@@ -9,9 +9,10 @@ denominator; and the measured position against the mission's timing goals.
 > "Environment and cache state", taken at commit `192c70b` on branch
 > `feature/m1-baseline-hazard-audit` (2026-10-12) unless another provenance is stated.
 > "Warm" means the host's Go build cache, Docker layer cache and the pinned Kind node image
-> were already populated; "cold" numbers say exactly which cache was emptied. **No
-> GitHub-hosted run exists yet** at this commit: hosted smoke/conformance times are
-> therefore reported as *unmeasured*, never extrapolated from local numbers. Ten
+> were already populated; "cold" numbers say exactly which cache was emptied. **Hosted
+> smoke has since been measured**: PR #73 ran the real GitHub-hosted smoke job at final
+> code head `f5ec14c` — see "Hosted (GitHub Actions) timings" below; hosted conformance
+> remains *unmeasured* (nightly/manual job configured, never executed). Ten
 > consecutive green smoke runs are evidence of stability on this host, not proof of zero
 > flakiness — the one timing-sensitive flake observed during this mission (M3 validation,
 > fixed in `1395da9`) is recorded below.
@@ -119,19 +120,40 @@ This is consistent with the M3 validation measurements (1203s at `1395da9`, 1169
 
 ## Hosted (GitHub Actions) timings
 
-**No hosted run exists at this commit.** The authorized-PR feature that publishes the
-feature branch and observes the real hosted smoke job runs after this measurement
-feature. Hosted smoke/conformance durations, runner provenance and artifact timings will
-be recorded by that feature and the final report from actual `gh run view` evidence; until
-then every hosted number is explicitly *unmeasured*.
+Measured on the authorized PR (#73) by the `authorized-pr-smoke-hosted-verification`
+feature, from `gh run view` evidence and the uploaded artifact `timings.json`; runner:
+GitHub-hosted `ubuntu-latest`, cold caches (no Go build cache reuse beyond
+`actions/setup-go` module cache, no Docker layer cache, node image pulled during cluster
+creation).
+
+**Hosted smoke, final code head `f5ec14c`** (run
+[38183277022](https://github.com/Sagart-cactus/optipod/actions/runs/38183277022),
+pull_request, job "Kind smoke suite" id 114600168825, conclusion `success`):
+
+- Job wall 8m49s (2026-10-11 23:10:30Z → 23:19:19Z); `make test-e2e-smoke` step 8m28s;
+  suite-internal 418.6s (`run-1791760336-03581a23`, `suiteSucceeded: true`).
+- Phases (artifact `timings.json`): preflight 0.1s | cluster-create 37.4s | clients 0.0s |
+  image-build 127.9s | image-load 2.9s | render 0.1s | install-apply 0.4s |
+  await-ready 12.0s | specs 236.5s | diagnostics SKIPPED (green run) | teardown 1.2s.
+- JUnit artifact: 41 tests, 0 failures, 30 skipped; artifact `kind-smoke-artifacts`
+  (id 11719045840) uploaded by the `if: always()` step with the failing-exit-preserving
+  wiring verified locally.
+- The ≥ 10 GiB temp-dir preflight passed on the runner; the first hosted run
+  (38181405028 at `58e3783`) instead failed earlier, in the kustomize install step (asset
+  URL 404, fixed in `3ecaa11`, SHA256 re-verified). Both failures are recorded in
+  `final-report.md` "Hosted verification status".
+
+**Hosted conformance:** *unmeasured* — the nightly/manual job is configured in
+`.github/workflows/e2e.yml` but has never executed; no hosted conformance number is
+claimed.
 
 ## Timing goals vs. measured reality
 
 | Goal (target, not a gate) | Measured | Verdict |
 | --- | --- | --- |
 | Warm fast layer < 2 min | 24.21s warm local (`make test-fast`) | met locally |
-| Hosted smoke < 6 min | hosted: **unmeasured** (no run yet); local warm smoke 300–311s wall | unmeasured hosted; local inside the bound |
-| Hosted conformance < 12 min | hosted: **unmeasured**; local warm conformance 1144.8s wall (~19.1 min) | unmeasured hosted; local exceeds the hosted bound (macOS Docker Desktop VM vs. Linux runner — the hosted number is unknown until the PR run, no assertion weakened) |
+| Hosted smoke < 6 min | hosted: **8m49s job wall / 418.6s (6m58.6s) suite-internal** (run 38183277022, head `f5ec14c`); local warm smoke 300–311s wall | **missed hosted** (cold image build 127.9s + specs 236.5s dominate); local inside the bound |
+| Hosted conformance < 12 min | hosted: **unmeasured** (nightly/manual job configured, never executed); local warm conformance 1144.8s wall (~19.1 min) | unmeasured hosted; local exceeds the hosted bound (macOS Docker Desktop VM vs. Linux runner — the hosted number is unknown until a scheduled/dispatched run, no assertion weakened) |
 | Focused reuse < 90s | 89.71s wall / 85.1s suite | met, narrowly |
 
 ## Repeat-smoke ledger (VAL-CI-005)
