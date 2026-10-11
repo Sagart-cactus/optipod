@@ -57,11 +57,11 @@ env:
   # Pinned harness inputs (must match test/e2e/framework/pins.go). The suite
   # preflight verifies the Kind CLI version and refuses to run otherwise.
   KIND_VERSION: v0.31.0
-  KIND_SHA256_AMD64: eb244cbafcc157dff60cf68693c14c9a75c4e6e6fedaf9cd71c58117cb93e3fa
+  KIND_SHA256_AMD64: eb244cbafcc157dff60cf68693c14c9a75c4e6e6fedaf9cd71c58117cb93e3fa # pragma: allowlist secret
   KUBECTL_VERSION: v1.34.1
-  KUBECTL_SHA256_AMD64: 7721f265e18709862655affba5343e85e1980639395d5754473dafaadcaa69e3
+  KUBECTL_SHA256_AMD64: 7721f265e18709862655affba5343e85e1980639395d5754473dafaadcaa69e3 # pragma: allowlist secret
   KUSTOMIZE_VERSION: v5.8.1
-  KUSTOMIZE_SHA256_AMD64: 029a7f0f4e1932c52a0476cf02a0fd855c0bb85694b82c338fc648dcb53a819d
+  KUSTOMIZE_SHA256_AMD64: 029a7f0f4e1932c52a0476cf02a0fd855c0bb85694b82c338fc648dcb53a819d # pragma: allowlist secret
 
 jobs:
   smoke:

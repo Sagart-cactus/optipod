@@ -67,7 +67,7 @@ const (
 	OptimizationPolicyCRDName = "optimizationpolicies.optipod.optipod.io"
 	WebhookServiceName        = "optipod-webhook-service"
 	WebhookConfigurationName  = "mutating-webhook-configuration"
-	WebhookCertSecretName     = "webhook-server-certs"
+	WebhookCertSecretName     = "webhook-server-certs" // pragma: allowlist secret
 	WebhookServicePort        = 443
 	WebhookServerPort         = 9443
 	// WebhookPath is the admission path served by the production webhook server

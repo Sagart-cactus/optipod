@@ -12,11 +12,11 @@ import (
 // fence and body constants (canaryPEM) so this file contains no literal PEM
 // block; commit guards reject literal key blocks in source.
 const (
-	canaryBearerToken  = "canary-bearer-token-0123456789abcdef"
-	canaryPassword     = "canary-password-hunter2"
-	canaryJWT          = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJjYW5hcnktdG9rZW4ifQ.canary-signature-abcdef"
-	canaryPEMBodyLong  = "MIICANARYTHISISNOTAREALPRIVATEKEY0123456789abcdef=="
-	canaryPEMBodyShort = "MIICANARY0123456789abcdef=="
+	canaryBearerToken  = "canary-bearer-token-0123456789abcdef"                                        // pragma: allowlist secret
+	canaryPassword     = "canary-password-hunter2"                                                     // pragma: allowlist secret
+	canaryJWT          = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJjYW5hcnktdG9rZW4ifQ.canary-signature-abcdef" // pragma: allowlist secret
+	canaryPEMBodyLong  = "MIICANARYTHISISNOTAREALPRIVATEKEY0123456789abcdef=="                         // pragma: allowlist secret
+	canaryPEMBodyShort = "MIICANARY0123456789abcdef=="                                                 // pragma: allowlist secret
 	canaryPEMBodyTiny  = "MIICANARY0123"
 )
 
@@ -96,7 +96,7 @@ stringData:
 		t.Errorf("safe metadata wrongly redacted: %q", yamlOut)
 	}
 
-	jsonIn := `{"kind":"Secret","data":{"password":"pw","tls.key":"LS0tLS1CRUdJTiBFQyBQUklWQVRFIEtFWS0tLS0KTUlJQ0FOQVJZMDAyCg=="},"other":"fine"}`
+	jsonIn := `{"kind":"Secret","data":{"password":"pw","tls.key":"LS0tLS1CRUdJTiBFQyBQUklWQVRFIEtFWS0tLS0KTUlJQ0FOQVJZMDAyCg=="},"other":"fine"}` // pragma: allowlist secret
 	jsonOut, n2 := RedactCount(jsonIn)
 	if n2 < 2 {
 		t.Errorf("expected >=2 json redactions, got %d in %q", n2, jsonOut)

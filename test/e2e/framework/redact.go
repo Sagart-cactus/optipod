@@ -52,7 +52,7 @@ var redactors = []struct {
 		templ: RedactPlaceholder,
 	},
 	{
-		// Credentials embedded in URLs (https://user:pass@host).
+		// Credentials embedded in URLs (https://user:pass@host). // pragma: allowlist secret
 		name:  "url-userinfo",
 		re:    regexp.MustCompile(`(?i)(https?|ftp)://[^/\s:@]+:[^@\s]+@`),
 		templ: "$1://" + RedactPlaceholder + "@",

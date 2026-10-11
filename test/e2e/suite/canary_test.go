@@ -21,12 +21,12 @@ const (
 	canaryTokenAnnotation = "e2e-harness.optipod.io/canary-token"
 	canaryKeyAnnotation   = "e2e-harness.optipod.io/canary-key"
 	canaryBearerValue     = "Bearer canary-bearer-token-0123456789abcdef"
-	canarySecretName      = "canary-redaction-probe"
+	canarySecretName      = "canary-redaction-probe" // pragma: allowlist secret
 	// canaryTokenBody and canaryPEMBody are the sensitive fragments that must
 	// never appear verbatim in any artifact.
 	canaryTokenBody    = "canary-bearer-token-0123456789abcdef"
 	canaryPEMBody      = "MIICANARYNOTAREALPRIVATEKEY"
-	canaryPEMBodyValue = "MIICANARYNOTAREALPRIVATEKEY0123456789abcdef=="
+	canaryPEMBodyValue = "MIICANARYNOTAREALPRIVATEKEY0123456789abcdef==" // pragma: allowlist secret
 )
 
 // canaryPEM assembles a clearly fake PEM-shaped canary block at runtime by
