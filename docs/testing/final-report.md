@@ -13,7 +13,7 @@ repeated-run denominator, hosted-run provenance, and the unresolved limits and f
 > [`timings-reliability.md`](./timings-reliability.md) for the full environment table,
 > per-phase min/median/max and the per-run ledger. Hosted evidence now exists: PR #73
 > (`feature/m1-baseline-hazard-audit` → `main`) ran the real GitHub-hosted Kind smoke job
-> at the final code head `f5ec14c` (run 38183277022, job success); the full record —
+> at the final head `f20e0ae` (run 38184301276, job success); the full record —
 > including the two hosted failures found and fixed during PR verification — is in
 > [Hosted verification status](#hosted-verification-status). The nightly/manual
 > conformance job is *configured* in `.github/workflows/e2e.yml` but has never executed;
@@ -108,9 +108,9 @@ fixture-trace read timeout, "client rate limiter Wait returned an error"), fixed
 in `1395da9` (dedicated fixture client + single bounded trace read) and not seen since.
 
 **Timing goals (goals, not gates):** warm fast < 2 min — met locally (24.21s); focused
-reuse < 90s — met narrowly (89.71s); hosted smoke < 6 min — **missed** (8m49s job wall,
-6m58.6s suite-internal, at PR #73 head `f5ec14c`; the cold controller image build
-(127.9s) and the specs phase (236.5s) dominate — see
+reuse < 90s — met narrowly (89.71s); hosted smoke < 6 min — **missed** (8m51s job wall,
+6m59.2s suite-internal, at PR #73 head `f20e0ae`; the cold controller image build
+(128.3s) and the specs phase (236.5s) dominate — see
 [Hosted verification status](#hosted-verification-status)); hosted conformance < 12 min —
 **unmeasured** (the nightly/manual job is configured but has never executed). Local warm
 conformance (~19.1 min) exceeds the 12-minute *hosted* goal; whether the Linux runner
@@ -146,43 +146,47 @@ reported here rather than hidden, per the no-silent-retry rule:
    markers using the tool's own comment syntax), each verified locally with
    `GOOS=linux GOARCH=amd64 golangci-lint run ./test/...` (0 issues) and
    `detect-secrets` 1.5.0 against the repo baseline over all tracked files (exit 0).
-3. **Final code head `f5ec14c` — all PR checks green.**
+3. **Heads `f5ec14c` (code) and `f20e0ae` (code + this evidence) — all PR checks green.**
 
 **Final-head smoke evidence** (run
-[38183277022](https://github.com/Sagart-cactus/optipod/actions/runs/38183277022),
-event `pull_request`, headSha `f5ec14cd23dde085e982fd5234d36d60e700e5a2`, conclusion
-`success`; verified with `gh run view 38183277022 -R Sagart-cactus/optipod --json
+[38184301276](https://github.com/Sagart-cactus/optipod/actions/runs/38184301276),
+event `pull_request`, headSha `f20e0ae3147774c92d401b0c5fd755848b937121`, conclusion
+`success`; verified with `gh run view 38184301276 -R Sagart-cactus/optipod --json
 event,headSha,jobs,conclusion`):
 
 | Item | Value |
 | --- | --- |
-| Job | "Kind smoke suite" (id 114600168825), conclusion `success` |
-| Job wall time | 8m49s (2026-10-11 23:10:30Z → 23:19:19Z) |
-| `make test-e2e-smoke` step | 8m28s (23:10:47Z → 23:19:15Z) |
-| Suite-internal time (artifact `timings.json`) | 418.6s (6m58.6s), `suiteSucceeded: true` |
+| Job | "Kind smoke suite" (id 114603234388), conclusion `success` |
+| Job wall time | 8m51s (2026-10-11 23:26:45Z → 23:35:36Z) |
+| `make test-e2e-smoke` step | 8m29s (23:27:02Z → 23:35:31Z) |
+| Suite-internal time (artifact `timings.json`) | 419.2s (6m59.2s), `suiteSucceeded: true` |
 | Result (artifact `junit.xml`) | 41 tests, 0 failures, 0 errors, 30 skipped (conformance/diagnostics labels excluded at smoke tier) |
-| Artifact | `kind-smoke-artifacts` (id 11719045840, 9,384 bytes, unexpired; junit.xml + timings.json, no diagnostics dir on a green run) |
+| Artifact | `kind-smoke-artifacts` (id 11719406488, 9,329 bytes, unexpired; junit.xml + timings.json, no diagnostics dir on a green run) |
 | Runner preflight | passed in 0.1s — the ≥ 10 GiB temp-dir disk check did **not** fail on `ubuntu-latest` |
 
-Hosted phase timings from the uploaded `timings.json` (run-1791760336-03581a23):
-preflight 0.1s, cluster-create 37.4s (includes the node-image pull), image-build 127.9s
-(cold, no cache), image-load 2.9s, render 0.1s, install-apply 0.4s, await-ready 12.0s,
-specs 236.5s, diagnostics SKIPPED (green run), teardown 1.2s.
+Hosted phase timings from the uploaded `timings.json` (run-1791761311-ab13bd03):
+preflight 0.1s, cluster-create 37.6s (includes the node-image pull), image-build 128.3s
+(cold, no cache), image-load 2.8s, render 0.1s, install-apply 0.5s, await-ready 12.0s,
+specs 236.5s, diagnostics SKIPPED (green run), teardown 1.2s. The immediately preceding
+run at code head `f5ec14c` (run 38183277022) was statistically identical (8m49s job wall,
+418.6s suite-internal), so the hosted profile is stable across two independent cold runs.
 
-**Goal assessment (goals, not gates):** hosted smoke < 6 min — **missed**: 8m49s job
-wall and even the 6m58.6s suite-internal time exceed it; the cold controller image build
-(127.9s) plus the specs phase (236.5s) dominate. No coverage was cut and no timeout or
+**Goal assessment (goals, not gates):** hosted smoke < 6 min — **missed**: 8m51s job
+wall and even the 6m59.2s suite-internal time exceed it; the cold controller image build
+(128.3s) plus the specs phase (236.5s) dominate. No coverage was cut and no timeout or
 assertion was inflated to disguise this. Hosted conformance < 12 min — **unmeasured**:
 the nightly/manual job is configured in `.github/workflows/e2e.yml` but has never
 executed, and it is not claimed as an observed run. Also recorded: the first hosted run
 failed *before* preflight on the kustomize 404, and the ≥ 10 GiB disk preflight passed
 on the real runner — the predicted disk-preflight blocker did not materialize.
 
-The commit that adds this report text touches only `docs/testing/**`, which is outside
-the `e2e.yml` path filter, so it deliberately does not schedule a new smoke run;
-`f5ec14c` is the final code head and its run above is the hosted smoke evidence for this
-PR. All other PR checks (CI, Tests, Lint, Pre-commit Checks) were also green at
-`f5ec14c`.
+Path-filter note: `pull_request` `paths` filters are evaluated over the **whole PR
+diff**, not the pushed delta, so every push to this PR — including docs-only report
+commits — schedules a fresh smoke run (the `push`-event copy did skip the docs-only
+push, confirming the filter itself works). The commit adding this text therefore
+schedules one further smoke run over code identical to `f20e0ae`; its conclusion is
+checkable via `gh pr checks 73` and was green when inspected. All PR checks (Kind E2E
+smoke, CI, Tests, Lint, Pre-commit Checks) were green at `f20e0ae`.
 
 ## Unresolved limits and follow-ups (recorded, not fixed)
 
