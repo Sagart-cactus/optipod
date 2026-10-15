@@ -31,7 +31,9 @@ OptiPod is a Kubernetes operator that helps you optimize resource requests and l
     Clear recommendations with impact estimation. Understand why changes are suggested.
   </Card>
   <Card title="Safe by Default" icon="warning">
-    Conservative defaults, memory safeguards, and change-rate limits protect your workloads.
+    Conservative defaults, configurable bounds, and change-rate limits protect your workloads.
+    Note: memory decreases apply in full — OptiPod has no memory-decrease guard, so set
+    `resourceBounds` and the safety factor to the reductions you are comfortable with.
   </Card>
 </CardGrid>
 

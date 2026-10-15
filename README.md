@@ -29,8 +29,9 @@ OptiPod exists to provide a GitOps-safe, policy-driven way to *recommend first*,
 
 - Will not mutate workloads unless explicitly configured
 - Will not override GitOps ownership
-- Will not blindly reduce memory
 - Will not require a SaaS backend
+
+Note: OptiPod does not currently guard memory decreases — a recommended decrease is applied in full. See the [Safety model](docs/concepts/safety-model.md) for details.
 
 ## Quick Start (safe Recommend mode)
 
@@ -163,7 +164,7 @@ This design keeps the policy status lightweight while making individual recommen
 1. Discovers workloads selected by your policy (namespaces, labels, workload types)
 2. Reads CPU/memory usage from your metrics backend
 3. Computes recommendations (percentiles over a rolling window + safety factor)
-4. Applies **policy-driven safety** (bounds, change controls, memory safeguards)
+4. Applies **policy-driven safety** (resource bounds and safety factor; the memory-decrease and change-rate guards are not implemented yet)
 5. Either:
    - writes **explainable recommendations** as annotations on individual workloads (Recommend mode), or
    - applies changes via **Server-Side Apply (SSA)** (Auto mode)
@@ -221,8 +222,8 @@ spec:
 
 OptiPod is built around conservative defaults and explicit, policy-driven controls:
 
-- **Policy-driven safety**: min/max bounds, safety factors, and (where configured) change-rate limits.
-- **Conservative memory handling**: avoids “blind” memory reductions; requires explicit bounds/constraints.
+- **Policy-driven safety**: min/max bounds and safety factors (the memory-decrease and change-rate guards are not implemented yet).
+- **Memory handling**: recommendations are derived from observed usage and clamped to your explicit bounds; memory decreases are currently applied in full.
 - **GitOps-safe**: supports both **webhook strategy** (ArgoCD compatible) and **Server-Side Apply (SSA)** for different environments.
 - **Explainable recommendations**: usage window, percentile choice, and safety margin are visible before applying.
 - **Update strategy control**: allow/disallow in-place resize; block disruptive recreation unless you opt in.
@@ -328,8 +329,39 @@ OptiPod has core functionality implemented and tested, and is in active developm
 git clone https://github.com/Sagart-cactus/optipod.git
 cd optipod
 make setup-pre-commit
-make test
+make test-fast   # non-mutating fast gate: unit + envtest + clusterless
 ```
+
+### Testing
+
+All test entry points are discoverable via `make help`. None of them mutate
+tracked files, switch your kubectl context, or touch existing clusters.
+
+| Command | What it runs |
+| --- | --- |
+| `make test-fast` | Fast gate: short unit, envtest (real local API server) and clusterless tests. Never regenerates or formats tracked files. |
+| `make vet` / `make lint` | `go vet` and pinned `golangci-lint`. |
+| `make test-e2e-smoke` | One-command installed-controller smoke suite on an ephemeral, uniquely named Kind cluster: preflight, build/load/install the checkout controller once, smoke specs, teardown. |
+| `make test-e2e-conformance` | Full conformance suite (includes all smoke coverage) over the same hermetic harness. |
+| `make test-e2e-labels E2E_LABELS="smoke && webhook"` | Focused run of the Kind suite by Ginkgo label (`smoke`, `conformance`, `webhook`, `rbac`, `observability`, `failure-recovery`, ...). |
+
+Kind suite prerequisites: Docker, Kind v0.31.0, kubectl, and kustomize v5.8.1
+on `PATH` (all other inputs are pinned by the harness; preflight fails early
+with a remedy if one is missing). Every run writes JUnit (`junit.xml`), phase
+timings (`timings.json`) and, on failure, a redacted diagnostics bundle to the
+git-ignored `test/e2e/artifacts/run-<id>/`. Normal runs delete only their own
+cluster; `KEEP_CLUSTER=1 make test-e2e-smoke` retains it and prints
+private-kubeconfig inspection, focused-reuse (`make test-e2e-reuse`) and
+disposal commands. See [docs/testing/README.md](docs/testing/README.md) for
+the full architecture, coverage matrix and debugging guide, and
+[docs/testing/final-report.md](docs/testing/final-report.md) for the measured
+final mission report (commands, timings, reliability ledger, follow-ups).
+
+CI mirrors these tiers: pull requests and pushes that touch controller, API,
+chart, manifest, test, Make or workflow inputs run the smoke job
+(`.github/workflows/e2e.yml`); the full conformance suite runs nightly and on
+manual dispatch; the fast gate runs on every push and pull request
+(`.github/workflows/test.yml`).
 
 ### Building from source (development)
 

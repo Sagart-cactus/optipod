@@ -188,8 +188,8 @@ spec:
   updateStrategy:
     strategy: ssa  # or "webhook"
     rolloutStrategy: onNextRestart
-    allowUnsafeMemoryDecrease: false
-    # Note: gradualDecreaseConfig not yet implemented
+    # Note: allowUnsafeMemoryDecrease and gradualDecreaseConfig are not
+    # implemented; memory decreases are applied in full
 ```
 
 ### Update Strategies
@@ -249,7 +249,7 @@ Auto mode includes safety features:
 
 1. **Resource bounds**: Min/max limits prevent extreme values
 2. **Safety factor**: Adds headroom above observed usage
-3. **Memory safety**: Blocks unsafe memory decreases by default
+3. **Memory decreases apply in full**: OptiPod has no memory-decrease guard — a recommended memory decrease is applied in full like any other recommendation. The `allowUnsafeMemoryDecrease` and `gradualDecreaseConfig` fields are schema-validated but inert (no production code reads them); constrain reductions with `resourceBounds` and the safety factor
 4. **Reconciliation interval**: Limits frequency of changes
 
 ### Monitoring Auto Mode
@@ -430,8 +430,7 @@ Verify:
 Review:
 - Policy configuration (bounds, safety factor)
 - Recent metrics data
-- Safety settings (allowUnsafeMemoryDecrease)
-- Gradual decrease configuration
+- Note: `allowUnsafeMemoryDecrease` and `gradualDecreaseConfig` are not implemented and do not change behavior
 
 ## Next Steps
 

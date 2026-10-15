@@ -472,7 +472,11 @@ Allow pod recreation when in-place resize is not available.
 | **Required** | No |
 | **Default** | false |
 
-Disable memory safety checks. When false, OptiPod blocks memory decreases that could cause OOM kills.
+Work-in-progress toggle that would disable memory decrease safety gating when true.
+
+> **⚠️ Implementation Status**: The field is defined in the CRD schema and validated, but **no production code reads it**, so setting it has **no effect**.
+
+OptiPod currently has **no memory decrease guard**: a recommended memory decrease is applied in full, exactly like any other recommendation, constrained only by `resourceBounds` and the safety factor.
 
 #### spec.updateStrategy.limitConfig
 
@@ -512,7 +516,7 @@ gradualDecreaseConfig:
   maximumTotalDecrease: 70
 ```
 
-**Current Behavior**: Memory decreases are applied immediately in full.
+**Current Behavior**: Memory decreases are applied in full in a single reconciliation; `allowUnsafeMemoryDecrease` and `gradualDecreaseConfig` are inert until implemented.
 
 ### spec.reconciliationInterval
 

@@ -486,6 +486,8 @@ updateStrategy:
 
 Configure memory safety features:
 
+> **⚠️ Status**: OptiPod currently has **no memory decrease guard**. A recommended memory decrease is applied in full, like any other recommendation, and is constrained only by `resourceBounds` and the safety factor. The `allowUnsafeMemoryDecrease` and `gradualDecreaseConfig` fields are accepted and validated by the CRD but are **not implemented**, so setting them has no effect. To limit aggressive reductions, use conservative `resourceBounds` and consider `updateRequestsOnly: true`.
+
 **Gradual Memory Decrease (Not Yet Implemented):**
 
 > **⚠️ Note**: This configuration is accepted but not yet implemented. It has no effect on actual behavior.
@@ -499,10 +501,10 @@ updateStrategy:
     maximumTotalDecrease: 70          # Max 70% total decrease
 ```
 
-**Unsafe Memory Decrease (Use with Caution):**
+**Unsafe Memory Decrease (Not Yet Implemented):**
 ```yaml
 updateStrategy:
-  allowUnsafeMemoryDecrease: true  # Disable safety checks
+  allowUnsafeMemoryDecrease: true  # Accepted, but has no effect today
 ```
 
 ## Optional Fields

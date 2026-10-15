@@ -70,8 +70,11 @@ func (am *AnnotationManager) StoreRecommendations(ctx context.Context, workload 
 
 	annotations := current.GetAnnotations()
 
-	// Clear existing recommendation annotations
-	am.clearRecommendationAnnotations(annotations)
+	// Clear existing recommendation annotations for the containers being stored
+	// only. Keys belonging to other containers are preserved so consecutive
+	// per-container stores cannot prune each other's recommendations
+	// (multi-container convergence fix).
+	am.clearContainerRecommendationAnnotations(annotations, recommendations)
 
 	// Set webhook-specific annotations
 	annotations[optipodv1alpha1.AnnotationWebhookEnabled] = "true"
@@ -390,6 +393,39 @@ func (am *AnnotationManager) clearRecommendationAnnotations(annotations map[stri
 	// Delete the keys
 	for _, key := range keysToDelete {
 		delete(annotations, key)
+	}
+}
+
+// clearContainerRecommendationAnnotations removes the recommendation annotations
+// belonging only to the containers named in the recommendations being stored.
+// Recommendations for other containers are preserved so a later store cannot
+// clear an earlier container's keys (multi-container convergence fix).
+func (am *AnnotationManager) clearContainerRecommendationAnnotations(annotations map[string]string, recommendations []ResourceRecommendation) {
+	containerNames := make(map[string]struct{}, len(recommendations))
+	for _, rec := range recommendations {
+		if rec.ContainerName != "" {
+			containerNames[rec.ContainerName] = struct{}{}
+		}
+	}
+
+	prefixes := []string{
+		optipodv1alpha1.AnnotationCPURequestPrefix + ".",
+		optipodv1alpha1.AnnotationMemoryRequestPrefix + ".",
+		optipodv1alpha1.AnnotationCPULimitPrefix + ".",
+		optipodv1alpha1.AnnotationMemoryLimitPrefix + ".",
+	}
+
+	for key := range annotations {
+		for _, prefix := range prefixes {
+			if !strings.HasPrefix(key, prefix) {
+				continue
+			}
+			containerName := strings.TrimPrefix(key, prefix)
+			if _, exists := containerNames[containerName]; exists {
+				delete(annotations, key)
+			}
+			break
+		}
 	}
 }
 

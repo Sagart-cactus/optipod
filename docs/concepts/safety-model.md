@@ -27,8 +27,6 @@ Resource Bounds Enforcement (Min/Max)
     ↓
 Safety Factor Application (1.2x default)
     ↓
-Memory Safety Checks
-    ↓
 Update Strategy Validation
     ↓
 RBAC Permission Check
@@ -176,21 +174,21 @@ Memory is different from CPU:
 - **Memory OOM**: Pods are killed immediately
 - **No graceful degradation**: Memory limits are hard boundaries
 
-### Memory Safety Checks
+### Current Memory Decrease Behavior
 
-OptiPod implements special protections for memory:
+> **⚠️ Status**: OptiPod currently has **no memory decrease guard**. A recommended memory decrease is applied in full, exactly like any other recommendation, and is constrained only by `resourceBounds` and the safety factor.
 
-**1. Unsafe Memory Decrease Prevention**
-
-By default, OptiPod blocks memory decreases that could cause OOM:
+The `allowUnsafeMemoryDecrease` field is defined in the CRD schema and is validated, but **no production code reads it**, so setting it has no effect. There is no default block on memory decreases:
 
 ```yaml
 spec:
   updateStrategy:
-    allowUnsafeMemoryDecrease: false  # Default: block unsafe decreases
+    allowUnsafeMemoryDecrease: false  # Accepted, but not enforced today
 ```
 
-**2. Gradual Memory Decrease (Not Yet Implemented)**
+To limit aggressive memory reductions, constrain them with `resourceBounds` and consider `updateRequestsOnly: true` instead of relying on a guard that is not yet implemented.
+
+**Gradual Memory Decrease (Not Yet Implemented)**
 
 > **⚠️ Status**: The `gradualDecreaseConfig` field is defined in the CRD schema and validated, but **not currently implemented** in the controller. Setting this configuration has no effect on actual behavior.
 
@@ -218,9 +216,9 @@ spec:
   - Cycle 6: 1.18Gi → 1.06Gi (10% decrease)
   - Cycle 7: 1.06Gi → 1Gi (final)
 
-**Current behavior**: Memory decreases are applied immediately in full, subject to safety checks.
+**Current behavior**: Memory decreases are applied in full in a single reconciliation. Neither `allowUnsafeMemoryDecrease` nor `gradualDecreaseConfig` changes this yet, because no production code reads them.
 
-**3. Memory Limit Multipliers**
+**Memory Limit Multipliers**
 
 OptiPod calculates memory limits with a buffer above requests:
 
@@ -497,9 +495,6 @@ kubectl get events --field-selector reason=ValidationFailed
 
 # Optimization failures
 kubectl get events --field-selector reason=OptimizationFailed
-
-# Memory safety blocks
-kubectl get events --field-selector reason=UnsafeMemoryDecrease
 ```
 
 ### Logs

@@ -68,8 +68,6 @@ const (
 	MinMultiplier = 1.0
 	// MaxMultiplier is the maximum allowed multiplier value
 	MaxMultiplier = 10.0
-	// noneValue represents the absence of a resource value
-	noneValue = "none"
 )
 
 // validateMultiplier validates that a multiplier is within the allowed range
@@ -408,14 +406,65 @@ type ApplyResult struct {
 	FieldOwnership bool   // true if SSA was used
 }
 
-// Apply applies resource recommendations using the configured strategy
+// ContainerRecommendation pairs a container name with its computed
+// recommendation so one apply can carry every container's resources for a
+// workload.
+type ContainerRecommendation struct {
+	Container      string
+	Recommendation *recommendation.Recommendation
+}
+
+// containerNames returns a comma-separated list of the recommended containers.
+func containerNames(recs []ContainerRecommendation) string {
+	names := make([]string, 0, len(recs))
+	for _, cr := range recs {
+		names = append(names, cr.Container)
+	}
+	return strings.Join(names, ",")
+}
+
+// containerBeforeValues returns the container's current CPU/memory request strings.
+func containerBeforeValues(currentResources map[string]corev1.ResourceRequirements, containerName string) (cpu, memory string) {
+	cpu, memory = "0", "0"
+	reqs, ok := currentResources[containerName]
+	if ok && reqs.Requests != nil {
+		if v, exists := reqs.Requests[corev1.ResourceCPU]; exists {
+			cpu = v.String()
+		}
+		if v, exists := reqs.Requests[corev1.ResourceMemory]; exists {
+			memory = v.String()
+		}
+	}
+	return cpu, memory
+}
+
+// describeResourceChanges returns one "container beforeCPU/beforeMemory -> afterCPU/afterMemory"
+// entry per recommendation for structured logs.
+func describeResourceChanges(currentResources map[string]corev1.ResourceRequirements, recs []ContainerRecommendation) string {
+	parts := make([]string, 0, len(recs))
+	for _, cr := range recs {
+		beforeCPU, beforeMemory := containerBeforeValues(currentResources, cr.Container)
+		parts = append(parts, fmt.Sprintf("%s: %s/%s -> %s/%s",
+			cr.Container,
+			beforeCPU, beforeMemory,
+			cr.Recommendation.CPU.String(), cr.Recommendation.Memory.String()))
+	}
+	return strings.Join(parts, "; ")
+}
+
+// Apply applies the workload's full per-container recommendation set using the
+// configured strategy in a single workload-wide operation, so sibling
+// containers cannot prune each other's applied fields.
 func (e *Engine) Apply(
 	ctx context.Context,
 	workload *Workload,
-	containerName string,
-	rec *recommendation.Recommendation,
+	recs []ContainerRecommendation,
 	policy *optipodv1alpha1.OptimizationPolicy,
 ) (*ApplyResult, error) {
+	if len(recs) == 0 {
+		return nil, fmt.Errorf("no container recommendations to apply")
+	}
+
 	log := ctrl.LoggerFrom(ctx)
 
 	// Determine strategy - webhook is the default
@@ -423,14 +472,14 @@ func (e *Engine) Apply(
 
 	log.V(1).Info("Applying resource recommendations",
 		"workload", fmt.Sprintf("%s/%s", workload.Namespace, workload.Name),
-		"container", containerName,
+		"containers", containerNames(recs),
 		"strategy", strategy,
 	)
 
 	// Route to appropriate apply method based on strategy
 	switch strategy {
 	case optipodv1alpha1.StrategyWebhook:
-		return e.ApplyWithWebhook(ctx, workload, containerName, rec, policy)
+		return e.ApplyWithWebhook(ctx, workload, recs, policy)
 	case optipodv1alpha1.StrategySSA:
 		// Determine if SSA should be used (backward compatibility)
 		useSSA := true
@@ -439,7 +488,7 @@ func (e *Engine) Apply(
 		}
 
 		if useSSA {
-			err := e.ApplyWithSSA(ctx, workload, containerName, rec, policy)
+			err := e.ApplyWithSSA(ctx, workload, recs, policy)
 			if err != nil {
 				return nil, err
 			}
@@ -450,7 +499,7 @@ func (e *Engine) Apply(
 		}
 
 		// Fall back to Strategic Merge Patch
-		err := e.ApplyWithStrategicMerge(ctx, workload, containerName, rec, policy)
+		err := e.ApplyWithStrategicMerge(ctx, workload, recs, policy)
 		if err != nil {
 			return nil, err
 		}
@@ -463,14 +512,18 @@ func (e *Engine) Apply(
 	}
 }
 
-// ApplyWithStrategicMerge applies resource recommendations using Strategic Merge Patch
+// ApplyWithStrategicMerge applies the workload's full per-container recommendation
+// set using one Strategic Merge Patch
 func (e *Engine) ApplyWithStrategicMerge(
 	ctx context.Context,
 	workload *Workload,
-	containerName string,
-	rec *recommendation.Recommendation,
+	recs []ContainerRecommendation,
 	policy *optipodv1alpha1.OptimizationPolicy,
 ) error {
+	if len(recs) == 0 {
+		return fmt.Errorf("no container recommendations to apply")
+	}
+
 	log := ctrl.LoggerFrom(ctx)
 
 	// Get current resources for before/after comparison
@@ -478,61 +531,30 @@ func (e *Engine) ApplyWithStrategicMerge(
 	if err != nil {
 		log.Error(err, "Failed to get current resources for logging",
 			"workload", fmt.Sprintf("%s/%s", workload.Namespace, workload.Name),
-			"container", containerName,
+			"containers", containerNames(recs),
 		)
 		// Continue with empty current resources for logging
 		currentResources = make(map[string]corev1.ResourceRequirements)
 	}
 
-	currentReqs := currentResources[containerName]
-	beforeCPU := "0"
-	beforeMemory := "0"
-	beforeCPULimit := noneValue
-	beforeMemoryLimit := noneValue
-
-	if currentReqs.Requests != nil {
-		if cpu, exists := currentReqs.Requests[corev1.ResourceCPU]; exists {
-			beforeCPU = cpu.String()
-		}
-		if memory, exists := currentReqs.Requests[corev1.ResourceMemory]; exists {
-			beforeMemory = memory.String()
-		}
-	}
-	if currentReqs.Limits != nil {
-		if cpu, exists := currentReqs.Limits[corev1.ResourceCPU]; exists {
-			beforeCPULimit = cpu.String()
-		}
-		if memory, exists := currentReqs.Limits[corev1.ResourceMemory]; exists {
-			beforeMemoryLimit = memory.String()
-		}
-	}
-
 	log.Info("Starting optimization with Strategic Merge Patch",
 		"workload", fmt.Sprintf("%s/%s", workload.Namespace, workload.Name),
 		"kind", workload.Kind,
-		"container", containerName,
+		"containers", containerNames(recs),
 		"policy", policy.Name,
 		"updateRequestsOnly", policy.Spec.UpdateStrategy.UpdateRequestsOnly,
-		"beforeCPURequest", beforeCPU,
-		"beforeMemoryRequest", beforeMemory,
-		"beforeCPULimit", beforeCPULimit,
-		"beforeMemoryLimit", beforeMemoryLimit,
-		"afterCPURequest", rec.CPU.String(),
-		"afterMemoryRequest", rec.Memory.String(),
+		"resourceChanges", describeResourceChanges(currentResources, recs),
 		"reason", "Direct recommendation application without safety checks",
 	)
 
-	// Build JSON patch for resource requests
-	patch, err := e.buildResourcePatch(workload, containerName, rec, policy)
+	// Build one JSON patch carrying every container's recommended resources
+	patch, err := e.buildResourcePatch(workload, recs, policy)
 	if err != nil {
 		log.Error(err, "Failed to build Strategic Merge patch",
 			"workload", fmt.Sprintf("%s/%s", workload.Namespace, workload.Name),
-			"container", containerName,
+			"containers", containerNames(recs),
 			"reason", "Patch construction failed",
-			"beforeCPURequest", beforeCPU,
-			"beforeMemoryRequest", beforeMemory,
-			"targetCPURequest", rec.CPU.String(),
-			"targetMemoryRequest", rec.Memory.String(),
+			"resourceChanges", describeResourceChanges(currentResources, recs),
 		)
 		return fmt.Errorf("failed to build patch: %w", err)
 	}
@@ -548,24 +570,6 @@ func (e *Engine) ApplyWithStrategicMerge(
 		return fmt.Errorf("failed to get GVR: %w", err)
 	}
 
-	// Calculate expected limits for logging
-	expectedLimits := make(map[string]string)
-	if !policy.Spec.UpdateStrategy.UpdateRequestsOnly {
-		requests := corev1.ResourceList{
-			corev1.ResourceCPU:    rec.CPU,
-			corev1.ResourceMemory: rec.Memory,
-		}
-		limits, limitErr := e.CalculateLimitsWithDefaults(requests, policy.Spec.UpdateStrategy.LimitConfig)
-		if limitErr == nil {
-			if cpuLimit, exists := limits[corev1.ResourceCPU]; exists {
-				expectedLimits["cpu"] = cpuLimit.String()
-			}
-			if memoryLimit, exists := limits[corev1.ResourceMemory]; exists {
-				expectedLimits["memory"] = memoryLimit.String()
-			}
-		}
-	}
-
 	// Apply the patch
 	_, err = e.dynamicClient.Resource(gvr).Namespace(workload.Namespace).Patch(
 		ctx,
@@ -578,16 +582,9 @@ func (e *Engine) ApplyWithStrategicMerge(
 	if err != nil {
 		log.Error(err, "Strategic Merge Patch failed",
 			"workload", fmt.Sprintf("%s/%s", workload.Namespace, workload.Name),
-			"container", containerName,
+			"containers", containerNames(recs),
 			"reason", "Patch application failed",
-			"beforeCPURequest", beforeCPU,
-			"beforeMemoryRequest", beforeMemory,
-			"beforeCPULimit", beforeCPULimit,
-			"beforeMemoryLimit", beforeMemoryLimit,
-			"targetCPURequest", rec.CPU.String(),
-			"targetMemoryRequest", rec.Memory.String(),
-			"targetCPULimit", expectedLimits["cpu"],
-			"targetMemoryLimit", expectedLimits["memory"],
+			"resourceChanges", describeResourceChanges(currentResources, recs),
 			"updateRequestsOnly", policy.Spec.UpdateStrategy.UpdateRequestsOnly,
 		)
 		// Record failed Strategic Merge patch
@@ -615,23 +612,19 @@ func (e *Engine) ApplyWithStrategicMerge(
 		return fmt.Errorf("failed to patch workload: %w", err)
 	}
 
-	// Record resource change magnitudes
-	e.recordResourceChangeMagnitudes(policy.Name, workload.Namespace, workload.Name, beforeCPU, beforeMemory, rec)
+	// Record resource change magnitudes per container
+	for _, cr := range recs {
+		beforeCPU, beforeMemory := containerBeforeValues(currentResources, cr.Container)
+		e.recordResourceChangeMagnitudes(policy.Name, workload.Namespace, workload.Name, beforeCPU, beforeMemory, cr.Recommendation)
+	}
 
 	log.Info("Successfully applied resource changes via Strategic Merge Patch",
 		"workload", fmt.Sprintf("%s/%s", workload.Namespace, workload.Name),
-		"container", containerName,
+		"containers", containerNames(recs),
 		"method", "StrategicMergePatch",
 		"policy", policy.Name,
 		"reason", "Optimization completed successfully",
-		"beforeCPURequest", beforeCPU,
-		"beforeMemoryRequest", beforeMemory,
-		"beforeCPULimit", beforeCPULimit,
-		"beforeMemoryLimit", beforeMemoryLimit,
-		"afterCPURequest", rec.CPU.String(),
-		"afterMemoryRequest", rec.Memory.String(),
-		"afterCPULimit", expectedLimits["cpu"],
-		"afterMemoryLimit", expectedLimits["memory"],
+		"resourceChanges", describeResourceChanges(currentResources, recs),
 		"updateRequestsOnly", policy.Spec.UpdateStrategy.UpdateRequestsOnly,
 	)
 
@@ -657,14 +650,19 @@ func (e *Engine) ApplyWithStrategicMerge(
 	return nil
 }
 
-// ApplyWithSSA applies resource recommendations using Server-Side Apply
+// ApplyWithSSA applies the workload's full per-container recommendation set
+// using ONE Server-Side Apply so sibling containers cannot prune each other's
+// previously applied fields.
 func (e *Engine) ApplyWithSSA(
 	ctx context.Context,
 	workload *Workload,
-	containerName string,
-	rec *recommendation.Recommendation,
+	recs []ContainerRecommendation,
 	policy *optipodv1alpha1.OptimizationPolicy,
 ) error {
+	if len(recs) == 0 {
+		return fmt.Errorf("no container recommendations to apply")
+	}
+
 	log := ctrl.LoggerFrom(ctx)
 
 	// Get current resources for before/after comparison
@@ -672,63 +670,32 @@ func (e *Engine) ApplyWithSSA(
 	if err != nil {
 		log.Error(err, "Failed to get current resources for logging",
 			"workload", fmt.Sprintf("%s/%s", workload.Namespace, workload.Name),
-			"container", containerName,
+			"containers", containerNames(recs),
 		)
 		// Continue with empty current resources for logging
 		currentResources = make(map[string]corev1.ResourceRequirements)
 	}
 
-	currentReqs := currentResources[containerName]
-	beforeCPU := "0"
-	beforeMemory := "0"
-	beforeCPULimit := noneValue
-	beforeMemoryLimit := noneValue
-
-	if currentReqs.Requests != nil {
-		if cpu, exists := currentReqs.Requests[corev1.ResourceCPU]; exists {
-			beforeCPU = cpu.String()
-		}
-		if memory, exists := currentReqs.Requests[corev1.ResourceMemory]; exists {
-			beforeMemory = memory.String()
-		}
-	}
-	if currentReqs.Limits != nil {
-		if cpu, exists := currentReqs.Limits[corev1.ResourceCPU]; exists {
-			beforeCPULimit = cpu.String()
-		}
-		if memory, exists := currentReqs.Limits[corev1.ResourceMemory]; exists {
-			beforeMemoryLimit = memory.String()
-		}
-	}
-
 	log.Info("Starting optimization with Server-Side Apply",
 		"workload", fmt.Sprintf("%s/%s", workload.Namespace, workload.Name),
 		"kind", workload.Kind,
-		"container", containerName,
+		"containers", containerNames(recs),
 		"policy", policy.Name,
-		"fieldManager", "optipod",
+		"fieldManager", FieldManagerName,
 		"force", true,
 		"updateRequestsOnly", policy.Spec.UpdateStrategy.UpdateRequestsOnly,
-		"beforeCPURequest", beforeCPU,
-		"beforeMemoryRequest", beforeMemory,
-		"beforeCPULimit", beforeCPULimit,
-		"beforeMemoryLimit", beforeMemoryLimit,
-		"afterCPURequest", rec.CPU.String(),
-		"afterMemoryRequest", rec.Memory.String(),
+		"resourceChanges", describeResourceChanges(currentResources, recs),
 		"reason", "Direct recommendation application without safety checks",
 	)
 
-	// Build SSA patch
-	patch, err := e.buildSSAPatch(workload, containerName, rec, policy)
+	// Build one SSA patch containing every container's recommended resources
+	patch, err := e.buildSSAPatch(workload, recs, policy)
 	if err != nil {
 		log.Error(err, "Failed to build SSA patch",
 			"workload", fmt.Sprintf("%s/%s", workload.Namespace, workload.Name),
-			"container", containerName,
+			"containers", containerNames(recs),
 			"reason", "SSA patch construction failed",
-			"beforeCPURequest", beforeCPU,
-			"beforeMemoryRequest", beforeMemory,
-			"targetCPURequest", rec.CPU.String(),
-			"targetMemoryRequest", rec.Memory.String(),
+			"resourceChanges", describeResourceChanges(currentResources, recs),
 		)
 		return fmt.Errorf("failed to build SSA patch: %w", err)
 	}
@@ -744,32 +711,14 @@ func (e *Engine) ApplyWithSSA(
 		return fmt.Errorf("failed to get GVR: %w", err)
 	}
 
-	// Calculate expected limits for logging
-	expectedLimits := make(map[string]string)
-	if !policy.Spec.UpdateStrategy.UpdateRequestsOnly {
-		requests := corev1.ResourceList{
-			corev1.ResourceCPU:    rec.CPU,
-			corev1.ResourceMemory: rec.Memory,
-		}
-		limits, limitErr := e.CalculateLimitsWithDefaults(requests, policy.Spec.UpdateStrategy.LimitConfig)
-		if limitErr == nil {
-			if cpuLimit, exists := limits[corev1.ResourceCPU]; exists {
-				expectedLimits["cpu"] = cpuLimit.String()
-			}
-			if memoryLimit, exists := limits[corev1.ResourceMemory]; exists {
-				expectedLimits["memory"] = memoryLimit.String()
-			}
-		}
-	}
-
-	// Apply using Server-Side Apply
+	// Apply the workload's full per-container set using ONE Server-Side Apply
 	_, err = e.dynamicClient.Resource(gvr).Namespace(workload.Namespace).Patch(
 		ctx,
 		workload.Name,
 		types.ApplyPatchType,
 		patch,
 		metav1.PatchOptions{
-			FieldManager: "optipod",
+			FieldManager: FieldManagerName,
 			Force:        boolPtr(true),
 		},
 	)
@@ -777,17 +726,10 @@ func (e *Engine) ApplyWithSSA(
 	if err != nil {
 		log.Error(err, "Server-Side Apply failed",
 			"workload", fmt.Sprintf("%s/%s", workload.Namespace, workload.Name),
-			"fieldManager", "optipod",
-			"container", containerName,
+			"fieldManager", FieldManagerName,
+			"containers", containerNames(recs),
 			"reason", "SSA patch application failed",
-			"beforeCPURequest", beforeCPU,
-			"beforeMemoryRequest", beforeMemory,
-			"beforeCPULimit", beforeCPULimit,
-			"beforeMemoryLimit", beforeMemoryLimit,
-			"targetCPURequest", rec.CPU.String(),
-			"targetMemoryRequest", rec.Memory.String(),
-			"targetCPULimit", expectedLimits["cpu"],
-			"targetMemoryLimit", expectedLimits["memory"],
+			"resourceChanges", describeResourceChanges(currentResources, recs),
 			"updateRequestsOnly", policy.Spec.UpdateStrategy.UpdateRequestsOnly,
 		)
 		// Record failed SSA patch
@@ -811,24 +753,20 @@ func (e *Engine) ApplyWithSSA(
 		return e.handleSSAError(err)
 	}
 
-	// Record resource change magnitudes
-	e.recordResourceChangeMagnitudes(policy.Name, workload.Namespace, workload.Name, beforeCPU, beforeMemory, rec)
+	// Record resource change magnitudes per container
+	for _, cr := range recs {
+		beforeCPU, beforeMemory := containerBeforeValues(currentResources, cr.Container)
+		e.recordResourceChangeMagnitudes(policy.Name, workload.Namespace, workload.Name, beforeCPU, beforeMemory, cr.Recommendation)
+	}
 
 	log.Info("Successfully applied resource changes via SSA",
 		"workload", fmt.Sprintf("%s/%s", workload.Namespace, workload.Name),
-		"container", containerName,
+		"containers", containerNames(recs),
 		"method", "ServerSideApply",
-		"fieldManager", "optipod",
+		"fieldManager", FieldManagerName,
 		"policy", policy.Name,
 		"reason", "Optimization completed successfully",
-		"beforeCPURequest", beforeCPU,
-		"beforeMemoryRequest", beforeMemory,
-		"beforeCPULimit", beforeCPULimit,
-		"beforeMemoryLimit", beforeMemoryLimit,
-		"afterCPURequest", rec.CPU.String(),
-		"afterMemoryRequest", rec.Memory.String(),
-		"afterCPULimit", expectedLimits["cpu"],
-		"afterMemoryLimit", expectedLimits["memory"],
+		"resourceChanges", describeResourceChanges(currentResources, recs),
 		"updateRequestsOnly", policy.Spec.UpdateStrategy.UpdateRequestsOnly,
 	)
 
@@ -854,14 +792,18 @@ func (e *Engine) ApplyWithSSA(
 	return nil
 }
 
-// ApplyWithWebhook applies resource recommendations using webhook strategy
+// ApplyWithWebhook stores the workload's full per-container recommendation set
+// as annotations in ONE store operation so every container's keys persist.
 func (e *Engine) ApplyWithWebhook(
 	ctx context.Context,
 	workload *Workload,
-	containerName string,
-	rec *recommendation.Recommendation,
+	recs []ContainerRecommendation,
 	policy *optipodv1alpha1.OptimizationPolicy,
 ) (*ApplyResult, error) {
+	if len(recs) == 0 {
+		return nil, fmt.Errorf("no container recommendations to apply")
+	}
+
 	log := ctrl.LoggerFrom(ctx)
 	startTime := time.Now()
 
@@ -870,48 +812,20 @@ func (e *Engine) ApplyWithWebhook(
 	if err != nil {
 		log.Error(err, "Failed to get current resources for logging",
 			"workload", fmt.Sprintf("%s/%s", workload.Namespace, workload.Name),
-			"container", containerName,
+			"containers", containerNames(recs),
 		)
 		// Continue with empty current resources for logging
 		currentResources = make(map[string]corev1.ResourceRequirements)
 	}
 
-	currentReqs := currentResources[containerName]
-	beforeCPU := "0"
-	beforeMemory := "0"
-	beforeCPULimit := noneValue
-	beforeMemoryLimit := noneValue
-
-	if currentReqs.Requests != nil {
-		if cpu, exists := currentReqs.Requests[corev1.ResourceCPU]; exists {
-			beforeCPU = cpu.String()
-		}
-		if memory, exists := currentReqs.Requests[corev1.ResourceMemory]; exists {
-			beforeMemory = memory.String()
-		}
-	}
-	if currentReqs.Limits != nil {
-		if cpu, exists := currentReqs.Limits[corev1.ResourceCPU]; exists {
-			beforeCPULimit = cpu.String()
-		}
-		if memory, exists := currentReqs.Limits[corev1.ResourceMemory]; exists {
-			beforeMemoryLimit = memory.String()
-		}
-	}
-
 	log.Info("Starting optimization with webhook strategy",
 		"workload", fmt.Sprintf("%s/%s", workload.Namespace, workload.Name),
 		"kind", workload.Kind,
-		"container", containerName,
+		"containers", containerNames(recs),
 		"policy", policy.Name,
 		"rolloutStrategy", policy.GetRolloutStrategy(),
 		"updateRequestsOnly", policy.Spec.UpdateStrategy.UpdateRequestsOnly,
-		"beforeCPURequest", beforeCPU,
-		"beforeMemoryRequest", beforeMemory,
-		"beforeCPULimit", beforeCPULimit,
-		"beforeMemoryLimit", beforeMemoryLimit,
-		"afterCPURequest", rec.CPU.String(),
-		"afterMemoryRequest", rec.Memory.String(),
+		"resourceChanges", describeResourceChanges(currentResources, recs),
 		"reason", "Webhook strategy - storing annotations for mutating webhook",
 	)
 
@@ -920,49 +834,53 @@ func (e *Engine) ApplyWithWebhook(
 	if err != nil {
 		log.Error(err, "Failed to convert workload to client object",
 			"workload", fmt.Sprintf("%s/%s", workload.Namespace, workload.Name),
-			"container", containerName,
+			"containers", containerNames(recs),
 		)
 		return nil, fmt.Errorf("failed to convert workload: %w", err)
 	}
 
-	// Build resource recommendations for annotation storage
-	recommendations := []webhook.ResourceRecommendation{
-		{
-			ContainerName: containerName,
+	// Build the workload's full per-container recommendation set for annotation storage
+	recommendations := make([]webhook.ResourceRecommendation, 0, len(recs))
+	for _, cr := range recs {
+		rec := cr.Recommendation
+		stored := webhook.ResourceRecommendation{
+			ContainerName: cr.Container,
 			CPU:           &rec.CPU,
 			Memory:        &rec.Memory,
-		},
+		}
+
+		// Calculate limits if not updating requests only
+		if !policy.Spec.UpdateStrategy.UpdateRequestsOnly {
+			requests := corev1.ResourceList{
+				corev1.ResourceCPU:    rec.CPU,
+				corev1.ResourceMemory: rec.Memory,
+			}
+			limits, err := e.CalculateLimitsWithDefaults(requests, policy.Spec.UpdateStrategy.LimitConfig)
+			if err != nil {
+				log.Error(err, "Failed to calculate limits for webhook strategy",
+					"workload", fmt.Sprintf("%s/%s", workload.Namespace, workload.Name),
+					"container", cr.Container,
+				)
+				return nil, fmt.Errorf("failed to calculate limits: %w", err)
+			}
+
+			// Add limits to recommendation
+			if cpuLimit, exists := limits[corev1.ResourceCPU]; exists {
+				stored.CPULimit = &cpuLimit
+			}
+			if memoryLimit, exists := limits[corev1.ResourceMemory]; exists {
+				stored.MemoryLimit = &memoryLimit
+			}
+		}
+
+		recommendations = append(recommendations, stored)
 	}
 
-	// Calculate limits if not updating requests only
-	if !policy.Spec.UpdateStrategy.UpdateRequestsOnly {
-		requests := corev1.ResourceList{
-			corev1.ResourceCPU:    rec.CPU,
-			corev1.ResourceMemory: rec.Memory,
-		}
-		limits, err := e.CalculateLimitsWithDefaults(requests, policy.Spec.UpdateStrategy.LimitConfig)
-		if err != nil {
-			log.Error(err, "Failed to calculate limits for webhook strategy",
-				"workload", fmt.Sprintf("%s/%s", workload.Namespace, workload.Name),
-				"container", containerName,
-			)
-			return nil, fmt.Errorf("failed to calculate limits: %w", err)
-		}
-
-		// Add limits to recommendation
-		if cpuLimit, exists := limits[corev1.ResourceCPU]; exists {
-			recommendations[0].CPULimit = &cpuLimit
-		}
-		if memoryLimit, exists := limits[corev1.ResourceMemory]; exists {
-			recommendations[0].MemoryLimit = &memoryLimit
-		}
-	}
-
-	// Store recommendations as annotations
+	// Store every container's recommendations as annotations in one call
 	if err := e.annotationManager.StoreRecommendations(ctx, workloadObj, recommendations); err != nil {
 		log.Error(err, "Failed to store recommendations as annotations",
 			"workload", fmt.Sprintf("%s/%s", workload.Namespace, workload.Name),
-			"container", containerName,
+			"containers", containerNames(recs),
 			"reason", "Annotation storage failed",
 		)
 		// Record webhook failure
@@ -982,7 +900,7 @@ func (e *Engine) ApplyWithWebhook(
 		if err := e.rolloutController.TriggerRollingRestart(ctx, workloadObj, policy); err != nil {
 			log.Error(err, "Failed to trigger rolling restart",
 				"workload", fmt.Sprintf("%s/%s", workload.Namespace, workload.Name),
-				"container", containerName,
+				"containers", containerNames(recs),
 				"rolloutStrategy", policy.GetRolloutStrategy(),
 			)
 			// Don't fail the entire operation if rollout fails
@@ -996,37 +914,22 @@ func (e *Engine) ApplyWithWebhook(
 		}
 	}
 
-	// Record resource change magnitudes
-	e.recordResourceChangeMagnitudes(policy.Name, workload.Namespace, workload.Name, beforeCPU, beforeMemory, rec)
-
-	// Calculate expected limits for logging
-	expectedLimits := make(map[string]string)
-	if !policy.Spec.UpdateStrategy.UpdateRequestsOnly && len(recommendations) > 0 {
-		if recommendations[0].CPULimit != nil {
-			expectedLimits["cpu"] = recommendations[0].CPULimit.String()
-		}
-		if recommendations[0].MemoryLimit != nil {
-			expectedLimits["memory"] = recommendations[0].MemoryLimit.String()
-		}
+	// Record resource change magnitudes per container
+	for _, cr := range recs {
+		beforeCPU, beforeMemory := containerBeforeValues(currentResources, cr.Container)
+		e.recordResourceChangeMagnitudes(policy.Name, workload.Namespace, workload.Name, beforeCPU, beforeMemory, cr.Recommendation)
 	}
 
 	duration := time.Since(startTime).Seconds()
 	log.Info("Successfully applied resource changes via webhook strategy",
 		"workload", fmt.Sprintf("%s/%s", workload.Namespace, workload.Name),
-		"container", containerName,
+		"containers", containerNames(recs),
 		"method", "Webhook",
 		"policy", policy.Name,
 		"rolloutStrategy", policy.GetRolloutStrategy(),
 		"duration", fmt.Sprintf("%.3fs", duration),
 		"reason", "Optimization completed successfully",
-		"beforeCPURequest", beforeCPU,
-		"beforeMemoryRequest", beforeMemory,
-		"beforeCPULimit", beforeCPULimit,
-		"beforeMemoryLimit", beforeMemoryLimit,
-		"afterCPURequest", rec.CPU.String(),
-		"afterMemoryRequest", rec.Memory.String(),
-		"afterCPULimit", expectedLimits["cpu"],
-		"afterMemoryLimit", expectedLimits["memory"],
+		"resourceChanges", describeResourceChanges(currentResources, recs),
 		"updateRequestsOnly", policy.Spec.UpdateStrategy.UpdateRequestsOnly,
 	)
 
@@ -1163,11 +1066,11 @@ func multiplyQuantity(q resource.Quantity, factor float64) resource.Quantity {
 	}
 }
 
-// buildResourcePatch builds a JSON patch for updating resource requests
+// buildResourcePatch builds a JSON patch for updating the resource requests of
+// every recommended container in the workload
 func (e *Engine) buildResourcePatch(
 	workload *Workload,
-	containerName string,
-	rec *recommendation.Recommendation,
+	recs []ContainerRecommendation,
 	policy *optipodv1alpha1.OptimizationPolicy,
 ) ([]byte, error) {
 	// Extract containers
@@ -1189,8 +1092,14 @@ func (e *Engine) buildResourcePatch(
 		return nil, fmt.Errorf("failed to extract containers: %w", err)
 	}
 
-	// Find and update the target container
-	found := false
+	// Index the recommendations by container name
+	recByContainer := make(map[string]*recommendation.Recommendation, len(recs))
+	for i := range recs {
+		recByContainer[recs[i].Container] = recs[i].Recommendation
+	}
+
+	// Find and update each target container
+	updated := make(map[string]bool, len(recByContainer))
 	for i, c := range containers {
 		container, ok := c.(map[string]interface{})
 		if !ok {
@@ -1198,11 +1107,10 @@ func (e *Engine) buildResourcePatch(
 		}
 
 		name, _, _ := unstructured.NestedString(container, "name")
-		if name != containerName {
+		rec, targeted := recByContainer[name]
+		if !targeted {
 			continue
 		}
-
-		found = true
 
 		// Build new resources map with only what we want to update
 		resourcesMap := make(map[string]interface{})
@@ -1222,7 +1130,7 @@ func (e *Engine) buildResourcePatch(
 			}
 			limits, err := e.CalculateLimitsWithDefaults(requests, policy.Spec.UpdateStrategy.LimitConfig)
 			if err != nil {
-				return nil, fmt.Errorf("failed to calculate limits: %w", err)
+				return nil, fmt.Errorf("failed to calculate limits for container %s: %w", name, err)
 			}
 
 			limitsMap := make(map[string]interface{})
@@ -1237,11 +1145,14 @@ func (e *Engine) buildResourcePatch(
 
 		container["resources"] = resourcesMap
 		containers[i] = container
-		break
+		updated[name] = true
 	}
 
-	if !found {
-		return nil, fmt.Errorf("container %s not found in workload", containerName)
+	// Every requested container must exist on the workload
+	for _, cr := range recs {
+		if !updated[cr.Container] {
+			return nil, fmt.Errorf("container %s not found in workload", cr.Container)
+		}
 	}
 
 	// Build the patch
@@ -1296,47 +1207,59 @@ func (e *Engine) getKind(workloadKind string) string {
 	return workloadKind
 }
 
-// buildSSAPatch constructs a Server-Side Apply patch containing only resource fields
+// buildSSAPatch constructs a Server-Side Apply patch containing only resource
+// fields, with one containers entry per recommended container, so one apply
+// carries every container's recommended resources.
 func (e *Engine) buildSSAPatch(
 	workload *Workload,
-	containerName string,
-	rec *recommendation.Recommendation,
+	recs []ContainerRecommendation,
 	policy *optipodv1alpha1.OptimizationPolicy,
 ) ([]byte, error) {
 	// Determine kind (API version is always apps/v1 for workloads)
 	kind := e.getKind(workload.Kind)
 
-	// Build resources map
-	resources := map[string]interface{}{
-		"requests": map[string]interface{}{
-			"cpu":    rec.CPU.String(),
-			"memory": rec.Memory.String(),
-		},
+	// Build one containers entry per recommended container
+	containers := make([]map[string]interface{}, 0, len(recs))
+	for _, cr := range recs {
+		rec := cr.Recommendation
+
+		// Build resources map
+		resources := map[string]interface{}{
+			"requests": map[string]interface{}{
+				"cpu":    rec.CPU.String(),
+				"memory": rec.Memory.String(),
+			},
+		}
+
+		// Include limits if configured
+		if !policy.Spec.UpdateStrategy.UpdateRequestsOnly {
+			// Use CalculateLimitsWithDefaults for consistent limit calculation
+			requests := corev1.ResourceList{
+				corev1.ResourceCPU:    rec.CPU,
+				corev1.ResourceMemory: rec.Memory,
+			}
+			limits, err := e.CalculateLimitsWithDefaults(requests, policy.Spec.UpdateStrategy.LimitConfig)
+			if err != nil {
+				return nil, fmt.Errorf("failed to calculate limits for container %s: %w", cr.Container, err)
+			}
+
+			limitsMap := make(map[string]interface{})
+			if cpuLimit, exists := limits[corev1.ResourceCPU]; exists {
+				limitsMap["cpu"] = cpuLimit.String()
+			}
+			if memoryLimit, exists := limits[corev1.ResourceMemory]; exists {
+				limitsMap["memory"] = memoryLimit.String()
+			}
+			resources["limits"] = limitsMap
+		}
+
+		containers = append(containers, map[string]interface{}{
+			"name":      cr.Container,
+			"resources": resources,
+		})
 	}
 
-	// Include limits if configured
-	if !policy.Spec.UpdateStrategy.UpdateRequestsOnly {
-		// Use CalculateLimitsWithDefaults for consistent limit calculation
-		requests := corev1.ResourceList{
-			corev1.ResourceCPU:    rec.CPU,
-			corev1.ResourceMemory: rec.Memory,
-		}
-		limits, err := e.CalculateLimitsWithDefaults(requests, policy.Spec.UpdateStrategy.LimitConfig)
-		if err != nil {
-			return nil, fmt.Errorf("failed to calculate limits: %w", err)
-		}
-
-		limitsMap := make(map[string]interface{})
-		if cpuLimit, exists := limits[corev1.ResourceCPU]; exists {
-			limitsMap["cpu"] = cpuLimit.String()
-		}
-		if memoryLimit, exists := limits[corev1.ResourceMemory]; exists {
-			limitsMap["memory"] = memoryLimit.String()
-		}
-		resources["limits"] = limitsMap
-	}
-
-	// Build minimal patch with only resource fields
+	// Build minimal patch with only resource fields for every container
 	patch := map[string]interface{}{
 		"apiVersion": "apps/v1",
 		"kind":       kind,
@@ -1347,12 +1270,7 @@ func (e *Engine) buildSSAPatch(
 		fieldSpec: map[string]interface{}{
 			"template": map[string]interface{}{
 				fieldSpec: map[string]interface{}{
-					"containers": []map[string]interface{}{
-						{
-							"name":      containerName,
-							"resources": resources,
-						},
-					},
+					"containers": containers,
 				},
 			},
 		},

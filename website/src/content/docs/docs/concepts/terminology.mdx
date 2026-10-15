@@ -211,19 +211,15 @@ Kubernetes' built-in solution for adjusting resource requests/limits. OptiPod is
 
 ## Safety
 
-### Memory Safety
+### Memory Decrease Behavior
 
-OptiPod includes built-in protections to prevent dangerous memory reductions:
+OptiPod currently has **no memory decrease guard**: a recommended memory decrease is applied in full, exactly like any other recommendation, constrained only by resource bounds and the safety factor.
 
-**Default behavior:**
-- Memory increases are always allowed
-- Memory decreases are blocked if they could cause OOM kills
-- Checks current memory usage before reducing
+The `allowUnsafeMemoryDecrease` field is accepted and validated by the CRD but is **not implemented**, so setting it has no effect:
 
-**Override (use with caution):**
 ```yaml
 updateStrategy:
-  allowUnsafeMemoryDecrease: true
+  allowUnsafeMemoryDecrease: false  # Accepted, but not enforced today
 ```
 
 ### Gradual Memory Decrease (Not Yet Implemented)
@@ -241,7 +237,7 @@ updateStrategy:
     maximumTotalDecrease: 70          # Never decrease more than 70% total
 ```
 
-**Current behavior**: Memory decreases are applied immediately in full, subject to safety checks.
+**Current behavior**: Memory decreases are applied in full in a single reconciliation; `allowUnsafeMemoryDecrease` and `gradualDecreaseConfig` are inert until implemented.
 
 ### Resource Bounds
 

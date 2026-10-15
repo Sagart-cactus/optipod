@@ -37,9 +37,9 @@ development approach with comprehensive testing.
 
 - **Safety-First Approach**: ✅ Fully implemented
   - Resource bounds enforcement (min/max limits)
-  - Memory decrease safety thresholds
   - In-place resize support (Kubernetes 1.29+)
   - Graceful fallback for pod recreation scenarios
+  - Note: memory decreases are applied in full today; the `allowUnsafeMemoryDecrease` and `gradualDecreaseConfig` fields are schema-validated but not yet enforced by the controller
 
 ### Workload Management
 

@@ -342,46 +342,37 @@ resourceBounds:
     max: 16Gi
 ```
 
-### Memory Safety Issues
+### Memory Decrease Behavior
 
 **Symptoms:**
-- OptiPod not applying memory decreases
-- Memory recommendations being blocked
+- OptiPod applied a large memory decrease
+- Pods restarted or were OOM killed after a decrease
 
 **Diagnosis:**
 ```bash
-# Check controller logs for safety blocks
-kubectl logs -n optipod-system -l app=optipod-controller | grep -i "memory.*blocked"
-
 # Check current memory usage
 kubectl top pod -l app=<name>
 
-# Check recommendations
+# Check the recommendation annotation on the workload
 kubectl get deployment <name> -o yaml | grep "optipod.io/memory"
+
+# Check the policy's bounds and metrics settings
+kubectl get optimizationpolicy <policy-name> -o yaml
 ```
 
-**Common Causes:**
+**Explanation:**
 
-1. **Memory safety check blocking decrease**
+OptiPod currently has **no memory decrease guard**. A recommended memory decrease is applied in full, exactly like any other recommendation, constrained only by `resourceBounds` and the safety factor. The `allowUnsafeMemoryDecrease` and `gradualDecreaseConfig` fields are accepted and validated by the CRD but are **not implemented**, so they have no effect.
 
-By default, OptiPod blocks memory decreases that could cause OOM kills.
-
-**Solution:** If you're confident the decrease is safe:
-```yaml
-updateStrategy:
-  allowUnsafeMemoryDecrease: true  # Use with caution!
-```
-
-2. **Gradual decrease not yet implemented**
-
-> **⚠️ Note**: The `gradualDecreaseConfig` feature is not yet implemented. Memory decreases are applied immediately in full, subject to safety checks.
-
-If you need to slow down memory optimization, use more conservative settings:
+**Solution:** To slow down or limit memory reductions, use conservative bounds and metrics settings:
 
 ```yaml
+resourceBounds:
+  memory:
+    min: "512Mi"       # Raise the floor
 metricsConfig:
-  safetyFactor: 1.5  # Higher safety factor
-  percentile: P95    # Higher percentile
+  safetyFactor: 1.5    # Higher safety factor
+  percentile: P95      # Higher percentile
 ```
 
 ### OOM Kills After OptiPod Changes

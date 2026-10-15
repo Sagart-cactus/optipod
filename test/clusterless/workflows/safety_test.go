@@ -5,8 +5,6 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	appsv1 "k8s.io/api/apps/v1"
-	"k8s.io/apimachinery/pkg/types"
 
 	optipodv1alpha1 "github.com/optipod/optipod/api/v1alpha1"
 	"github.com/optipod/optipod/test/clusterless/harness"
@@ -23,135 +21,18 @@ var _ = Describe("Safety Mechanisms", func() {
 		h.Cleanup()
 	})
 
-	Context("Memory Safety", func() {
-		It("should prevent memory decrease when safety is enabled", func() {
-			ctx := h.Context
-
-			// Create deployment with 1Gi memory
-			deploy := harness.NewDeployment("nginx", "default").
-				WithLabels(map[string]string{"app": "nginx"}).
-				WithContainer("nginx", "nginx:latest", "500m", "1Gi").
-				Build()
-			Expect(h.Client.Create(ctx, deploy)).To(Succeed())
-
-			// Create policy with memory safety enabled
-			policy := harness.NewPolicy("safe-policy", "default").
-				WithMode(optipodv1alpha1.ModeRecommend).
-				WithLabelSelector(map[string]string{"app": "nginx"}).
-				WithSafetyConfig(true, nil). // Prevent memory decrease
-				Build()
-			Expect(h.Client.Create(ctx, policy)).To(Succeed())
-
-			// Inject metrics showing low memory usage (512Mi P90)
-			h.MetricsProvider.InjectConstantLoad(
-				"default", "nginx-pod", "nginx",
-				400,           // 400m CPU
-				512*1024*1024, // 512Mi memory (less than current 1Gi)
-				1*time.Hour,
-				1*time.Minute,
-			)
-
-			// Verify metrics show lower usage
-			containerMetrics, err := h.MetricsProvider.GetContainerMetrics(
-				ctx, "default", "nginx-pod", "nginx", 1*time.Hour)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(containerMetrics.Memory.P90).To(Equal(int64(512 * 1024 * 1024)))
-
-			// Verify current deployment has 1Gi memory
-			currentDeploy := &appsv1.Deployment{}
-			key := types.NamespacedName{Name: "nginx", Namespace: "default"}
-			Expect(h.Client.Get(ctx, key, currentDeploy)).To(Succeed())
-
-			nginxContainer := currentDeploy.Spec.Template.Spec.Containers[0]
-			currentMemory := nginxContainer.Resources.Requests.Memory()
-			Expect(currentMemory.Value()).To(Equal(int64(1 * 1024 * 1024 * 1024))) // 1Gi
-
-			// Note: In a full implementation, we would:
-			// 1. Run the recommendation engine
-			// 2. Apply safety checks
-			// 3. Verify memory was NOT decreased due to safety policy
-			// For now, we verify the foundation (metrics and policy) is correct
-		})
-
-		It("should allow memory increase even with safety enabled", func() {
-			ctx := h.Context
-
-			// Create deployment with 256Mi memory
-			deploy := harness.NewDeployment("api", "default").
-				WithLabels(map[string]string{"app": "api"}).
-				WithContainer("api", "api:v1", "200m", "256Mi").
-				Build()
-			Expect(h.Client.Create(ctx, deploy)).To(Succeed())
-
-			// Create policy with memory safety enabled
-			policy := harness.NewPolicy("safe-increase-policy", "default").
-				WithMode(optipodv1alpha1.ModeRecommend).
-				WithLabelSelector(map[string]string{"app": "api"}).
-				WithSafetyConfig(true, nil).
-				Build()
-			Expect(h.Client.Create(ctx, policy)).To(Succeed())
-
-			// Inject metrics showing high memory usage (800Mi P90)
-			h.MetricsProvider.InjectConstantLoad(
-				"default", "api-pod", "api",
-				300,           // 300m CPU
-				800*1024*1024, // 800Mi memory (more than current 256Mi)
-				1*time.Hour,
-				1*time.Minute,
-			)
-
-			// Verify metrics show higher usage
-			containerMetrics, err := h.MetricsProvider.GetContainerMetrics(
-				ctx, "default", "api-pod", "api", 1*time.Hour)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(containerMetrics.Memory.P90).To(Equal(int64(800 * 1024 * 1024)))
-
-			// Memory increase should be allowed (tested in full implementation)
-		})
-
-		It("should support gradual memory decrease", func() {
-			ctx := h.Context
-
-			// Create deployment with 2Gi memory
-			deploy := harness.NewDeployment("worker", "default").
-				WithLabels(map[string]string{"app": "worker"}).
-				WithContainer("worker", "worker:v1", "1000m", "2Gi").
-				Build()
-			Expect(h.Client.Create(ctx, deploy)).To(Succeed())
-
-			// Create policy with gradual decrease (10% per cycle)
-			gradualPercent := 0.1
-			policy := harness.NewPolicy("gradual-policy", "default").
-				WithMode(optipodv1alpha1.ModeRecommend).
-				WithLabelSelector(map[string]string{"app": "worker"}).
-				WithSafetyConfig(false, &gradualPercent).
-				Build()
-			Expect(h.Client.Create(ctx, policy)).To(Succeed())
-
-			// Inject metrics showing much lower memory usage (500Mi P90)
-			h.MetricsProvider.InjectConstantLoad(
-				"default", "worker-pod", "worker",
-				800,           // 800m CPU
-				500*1024*1024, // 500Mi memory (much less than current 2Gi)
-				1*time.Hour,
-				1*time.Minute,
-			)
-
-			// Verify metrics
-			containerMetrics, err := h.MetricsProvider.GetContainerMetrics(
-				ctx, "default", "worker-pod", "worker", 1*time.Hour)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(containerMetrics.Memory.P90).To(Equal(int64(500 * 1024 * 1024)))
-
-			// Verify policy has gradual decrease configured
-			Expect(policy.Spec.UpdateStrategy.GradualDecreaseConfig).NotTo(BeNil())
-			Expect(policy.Spec.UpdateStrategy.GradualDecreaseConfig.Enabled).To(BeTrue())
-			Expect(*policy.Spec.UpdateStrategy.GradualDecreaseConfig.MemoryDecreasePercentage).To(Equal(10))
-
-			// Note: Full implementation would test multiple reconciliation cycles
-			// showing gradual decrease from 2Gi → 1.8Gi → 1.62Gi → ... → 500Mi
-		})
-	})
+	// The legacy "Memory Safety" context (S133–S135: prevent-decrease,
+	// allow-increase-with-safety, gradual-decrease) was retired: it asserted a
+	// memory-decrease guard that production deliberately no longer has
+	// (commit 9dfc868 removed it; WithSafetyConfig's
+	// allowUnsafeMemoryDecrease/gradualDecreaseConfig fields are
+	// schema-validated but consumed by no production code, and the specs
+	// themselves deferred every behavioral assertion to a "full
+	// implementation" TODO). The amended VAL-FAST-005 behavior — a
+	// recommended memory decrease applies in full like any other
+	// recommendation — is pinned by internal/application
+	// TestApplyMemoryDecreaseCharacterization. See docs/testing/inventory.md
+	// S133–S135.
 
 	Context("Resource Bounds Safety", func() {
 		//nolint:dupl // These tests are similar but test different scenarios (min vs max bounds)

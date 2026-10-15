@@ -172,7 +172,7 @@ func TestSSAIntegration(t *testing.T) {
 	}
 
 	// Apply SSA patch
-	err = engine.ApplyWithSSA(ctx, workload, "nginx", rec, policy)
+	err = engine.ApplyWithSSA(ctx, workload, []ContainerRecommendation{{Container: "nginx", Recommendation: rec}}, policy)
 	if err != nil {
 		t.Fatalf("Failed to apply SSA patch: %v", err)
 	}
@@ -340,7 +340,7 @@ func TestSSAFieldOwnershipWithMultipleManagers(t *testing.T) {
 	}
 
 	// Apply SSA patch from optipod
-	err = engine.ApplyWithSSA(ctx, workload, "app", rec, policy)
+	err = engine.ApplyWithSSA(ctx, workload, []ContainerRecommendation{{Container: "app", Recommendation: rec}}, policy)
 	if err != nil {
 		t.Fatalf("Failed to apply SSA patch: %v", err)
 	}
@@ -436,7 +436,7 @@ func TestProperty_FieldOwnershipTracking(t *testing.T) {
 			policy.Spec.UpdateStrategy.UpdateRequestsOnly = updateRequestsOnly
 
 			// Apply with SSA
-			err := engine.ApplyWithSSA(context.Background(), workload, "test-container", rec, policy)
+			err := engine.ApplyWithSSA(context.Background(), workload, testContainerRecommendations(rec), policy)
 			if err != nil {
 				return false
 			}
@@ -556,7 +556,7 @@ func TestProperty_ConsistentFieldManager(t *testing.T) {
 				policy.Name = fmt.Sprintf("policy-%d", i)
 
 				// Apply with SSA
-				err := engine.ApplyWithSSA(context.Background(), workload, "test-container", rec, policy)
+				err := engine.ApplyWithSSA(context.Background(), workload, testContainerRecommendations(rec), policy)
 				if err != nil {
 					return false
 				}
@@ -627,7 +627,7 @@ func TestProperty_ApplyOperationType(t *testing.T) {
 			policy.Spec.UpdateStrategy.UpdateRequestsOnly = updateRequestsOnly
 
 			// Apply with SSA
-			err := engine.ApplyWithSSA(context.Background(), workload, "test-container", rec, policy)
+			err := engine.ApplyWithSSA(context.Background(), workload, testContainerRecommendations(rec), policy)
 			if err != nil {
 				return false
 			}

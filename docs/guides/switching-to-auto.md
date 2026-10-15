@@ -335,9 +335,6 @@ kubectl get events --field-selector reason=OptimizationApplied
 
 # Failed optimizations
 kubectl get events --field-selector reason=OptimizationFailed
-
-# Memory safety blocks
-kubectl get events --field-selector reason=UnsafeMemoryDecrease
 ```
 
 ### Policy Status
