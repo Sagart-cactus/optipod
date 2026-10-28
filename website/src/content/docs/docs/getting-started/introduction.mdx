@@ -28,7 +28,7 @@ OptiPod solves these problems by providing **safe, explainable, and GitOps-frien
 | Recommend-only mode | ✅ Yes | ✅ Yes |
 | Auto-apply mode | ✅ With safeguards | ✅ Yes |
 | Update strategy options | ✅ Webhook or SSA | ⚠️ Webhook only |
-| Impact estimation | ✅ Yes | ❌ No |
+| Memory safety | ⚠️ Bounds + safety factor (decreases apply in full — no decrease guard) | ⚠️ Basic |
 
 ## How It Works
 
@@ -36,7 +36,7 @@ OptiPod solves these problems by providing **safe, explainable, and GitOps-frien
 2. **Create OptimizationPolicy** CRDs to define what to optimize
 3. **Label workloads** to opt-in to optimization
 4. **Review recommendations** stored as annotations on your workloads
-5. **Apply changes** manually or let OptiPod auto-apply with safety guardrails
+5. **Apply changes** manually or let OptiPod auto-apply within your policy-defined bounds
 
 ## Operational Modes
 
@@ -62,18 +62,17 @@ OptiPod supports three operational modes:
 
 OptiPod is designed with safety as a top priority:
 
-- **Conservative defaults**: Never reduce memory below safe thresholds
+- **Conservative defaults**: Recommend mode first; Auto mode is opt-in per policy
 - **Policy-driven controls**: You define bounds and change limits
-- **Memory safeguards**: Prevents OOM kills from aggressive reductions
-- **Change-rate limits**: Prevents rapid oscillation
-- **Impact estimation**: Shows expected impact before changes
+- **Bounded recommendations**: Every recommendation is constrained by your `resourceBounds` and safety factor
+- **No memory-decrease guard**: Memory decreases apply in full like any other recommendation; the `allowUnsafeMemoryDecrease` and `gradualDecreaseConfig` fields are schema-validated but inert (no production code reads them)
 
 ## Next Steps
 
 Ready to get started? Follow our installation guide:
 
-[Install OptiPod →](/docs/getting-started/installation)
+[Install OptiPod →](/optipod/docs/getting-started/installation)
 
 Or learn more about core concepts:
 
-[Core Concepts →](/docs/concepts/terminology)
+[Core Concepts →](/optipod/docs/concepts/terminology)

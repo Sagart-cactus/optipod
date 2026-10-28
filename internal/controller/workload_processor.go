@@ -44,7 +44,7 @@ import (
 // ApplicationEngine defines the interface for applying resource changes
 type ApplicationEngine interface {
 	CanApply(ctx context.Context, workload *application.Workload, containerName string, rec *recommendation.Recommendation, policy *optipodv1alpha1.OptimizationPolicy) (*application.ApplyDecision, error)
-	Apply(ctx context.Context, workload *application.Workload, containerName string, rec *recommendation.Recommendation, policy *optipodv1alpha1.OptimizationPolicy) (*application.ApplyResult, error)
+	Apply(ctx context.Context, workload *application.Workload, recommendations []application.ContainerRecommendation, policy *optipodv1alpha1.OptimizationPolicy) (*application.ApplyResult, error)
 }
 
 // WorkloadProcessor handles the processing of individual workloads
@@ -253,24 +253,27 @@ func (wp *WorkloadProcessor) ProcessWorkload(
 
 	// In Auto mode, attempt to apply changes
 	if policy.Spec.Mode == optipodv1alpha1.ModeAuto {
-		// Track apply result for status updates
-		var lastApplyResult *application.ApplyResult
+		// Convert workload to application.Workload format
+		appWorkload, err := wp.convertToApplicationWorkload(workload)
+		if err != nil {
+			status.Status = StatusError
+			status.Reason = fmt.Sprintf("Failed to convert workload: %v", err)
+			return status, err
+		}
 
-		// For each container, apply the recommendation
-		for i, rec := range recommendations {
-			// Convert workload to application.Workload format
-			appWorkload, err := wp.convertToApplicationWorkload(workload)
-			if err != nil {
-				status.Status = StatusError
-				status.Reason = fmt.Sprintf("Failed to convert workload: %v", err)
-				return status, err
-			}
-
+		// Build the workload's full per-container recommendation set and check
+		// applicability per container before applying.
+		appRecs := make([]application.ContainerRecommendation, 0, len(recommendations))
+		for _, rec := range recommendations {
 			// Create recommendation object
 			appRec := &recommendation.Recommendation{
 				CPU:    *rec.CPU,
 				Memory: *rec.Memory,
 			}
+			appRecs = append(appRecs, application.ContainerRecommendation{
+				Container:      rec.Container,
+				Recommendation: appRec,
+			})
 
 			// Log the strategy being used for this policy
 			strategy := policy.GetStrategy()
@@ -296,23 +299,26 @@ func (wp *WorkloadProcessor) ProcessWorkload(
 				status.Reason = decision.Reason
 				return status, nil
 			}
+		}
 
-			// Apply the changes using strategy-based routing
-			applyResult, err := wp.applicationEngine.Apply(ctx, appWorkload, rec.Container, appRec, policy)
+		// Apply the workload's full per-container set in ONE workload-wide
+		// operation per strategy so sibling containers cannot prune each
+		// other's applied fields (multi-container convergence).
+		var lastApplyResult *application.ApplyResult
+		if len(appRecs) > 0 {
+			applyResult, err := wp.applicationEngine.Apply(ctx, appWorkload, appRecs, policy)
 			if err != nil {
 				status.Status = StatusError
-				status.Reason = fmt.Sprintf("Failed to apply changes to container %s: %v", rec.Container, err)
+				status.Reason = fmt.Sprintf("Failed to apply changes: %v", err)
 				return status, err
 			}
 
 			// Store the apply result
 			lastApplyResult = applyResult
 
-			// Update last applied timestamp (only once after all containers)
-			if i == len(recommendations)-1 {
-				now := metav1.Now()
-				status.LastApplied = &now
-			}
+			// Update last applied timestamp (after the workload-wide apply)
+			now := metav1.Now()
+			status.LastApplied = &now
 		}
 
 		// Update status with apply method information

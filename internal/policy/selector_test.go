@@ -39,6 +39,14 @@ const (
 	testPolicy2Name = "policy2"
 )
 
+// Unit scope note: the matcher/property tests in this file drive the
+// production selection functions over controller-runtime FAKE clients. They
+// are deterministic unit-level checks of the in-process matching logic and are
+// deliberately NOT evidence of API list semantics or of the API-persisted
+// weight default. The API-backed selection proof (real API server with the
+// checked-in CRD, persisted defaults, tie/disabled/nonmatching outcomes) lives
+// in selector_envtest_test.go (VAL-FAST-004).
+
 // Feature: workload-type-selector, Property 3: Policy Matcher Include Validation
 func TestPolicyMatcherIncludeValidation(t *testing.T) {
 	// **Validates: Requirements 1.5**

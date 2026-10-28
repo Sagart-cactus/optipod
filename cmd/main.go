@@ -19,6 +19,7 @@ package main
 import (
 	"crypto/tls"
 	"flag"
+	"fmt"
 	"os"
 	"path/filepath"
 
@@ -67,20 +68,31 @@ func init() {
 func main() {
 	// Initialize operator configuration
 	operatorConfig := config.NewOperatorConfig()
+
+	const configMountDir = "/etc/optipod"
+	if err := operatorConfig.LoadFromDir(configMountDir); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to load operator config from %s: %v\n", configMountDir, err)
+		os.Exit(1)
+	}
+	if err := operatorConfig.LoadFromEnv(); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to load operator config from environment: %v\n", err)
+		os.Exit(1)
+	}
+
 	operatorConfig.BindFlags()
 
-	var metricsAddr string
+	var metricsAddr = operatorConfig.GetMetricsAddr()
 	var metricsCertPath, metricsCertName, metricsCertKey string
 	var webhookCertPath, webhookCertName, webhookCertKey string
 	var webhookServiceName, webhookServiceNamespace string
 	var enableWebhook bool
-	var probeAddr string
+	var probeAddr = operatorConfig.GetProbeAddr()
 	var secureMetrics bool
 	var enableHTTP2 bool
 	var tlsOpts []func(*tls.Config)
-	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
+	flag.StringVar(&metricsAddr, "metrics-bind-address", metricsAddr, "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
-	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
+	flag.StringVar(&probeAddr, "health-probe-bind-address", probeAddr, "The address the probe endpoint binds to.")
 	flag.BoolVar(&secureMetrics, "metrics-secure", true,
 		"If set, the metrics endpoint is served securely via HTTPS. Use --metrics-secure=false to use HTTP instead.")
 	flag.StringVar(&webhookCertPath, "webhook-cert-path", "", "The directory that contains the webhook certificate.")
@@ -334,12 +346,19 @@ func main() {
 		mgr.GetClient(),
 	)
 
-	// Create event recorder
+	// Create event recorder.
+	// NOTE: GetEventRecorderFor is deprecated in favour of the events/v1 API
+	// (GetEventRecorder). Migrating means switching record.EventRecorder to
+	// events.EventRecorder throughout internal/observability and the reconciler,
+	// and supplying the new per-event "action" field, so it is tracked as
+	// separate follow-up work rather than folded into a dependency bump.
+	//nolint:staticcheck // SA1019: events API migration tracked separately
 	eventRecorder := observability.NewEventRecorder(mgr.GetEventRecorderFor("optimizationpolicy-controller"))
 
 	if err := (&controller.OptimizationPolicyReconciler{
-		Client:            mgr.GetClient(),
-		Scheme:            mgr.GetScheme(),
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
+		//nolint:staticcheck // SA1019: events API migration tracked separately
 		Recorder:          mgr.GetEventRecorderFor("optimizationpolicy-controller"),
 		WorkloadProcessor: workloadProcessor,
 		EventRecorder:     eventRecorder,

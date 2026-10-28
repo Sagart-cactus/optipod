@@ -18,7 +18,11 @@ package config
 
 import (
 	"flag"
+	"fmt"
 	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -91,7 +95,7 @@ func NewOperatorConfig() *OperatorConfig {
 		PrometheusTLSInsecure:            false,
 		PrometheusTimeout:                30 * time.Second,
 		LeaderElection:                   false,
-		MetricsAddr:                      ":8080",
+		MetricsAddr:                      "0",
 		ProbeAddr:                        ":8081",
 		ReconciliationInterval:           5 * time.Minute,
 		MetricsMaxSamples:                0, // 0 = use default (10 for production)
@@ -101,6 +105,193 @@ func NewOperatorConfig() *OperatorConfig {
 		MetricsServerMinSamplesRequired:  10,
 		MetricsServerTargetTTL:           15 * time.Minute,
 	}
+}
+
+// LoadFromDir loads known operator configuration keys from a mounted ConfigMap directory.
+// Missing directories or keys are treated as optional and will not return an error.
+func (c *OperatorConfig) LoadFromDir(dir string) error {
+	if dir == "" {
+		return nil
+	}
+
+	info, err := os.Stat(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("stat config directory %q: %w", dir, err)
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("config path %q is not a directory", dir)
+	}
+
+	stringKeys := map[string]*string{
+		"metrics-provider":          &c.DefaultMetricsProvider,
+		"prometheus-url":            &c.PrometheusURL,
+		"metrics-bind-address":      &c.MetricsAddr,
+		"health-probe-bind-address": &c.ProbeAddr,
+	}
+	for key, target := range stringKeys {
+		if value, ok, err := readConfigValue(dir, key); err != nil {
+			return err
+		} else if ok {
+			*target = value
+		}
+	}
+
+	boolKeys := map[string]*bool{
+		"dry-run":         &c.DryRun,
+		"leader-election": &c.LeaderElection,
+	}
+	for key, target := range boolKeys {
+		if value, ok, err := readConfigBool(dir, key); err != nil {
+			return err
+		} else if ok {
+			*target = value
+		}
+	}
+
+	durationKeys := map[string]*time.Duration{
+		"reconciliation-interval":          &c.ReconciliationInterval,
+		"metrics-server-sampling-interval": &c.MetricsServerSamplingInterval,
+		"metrics-server-target-ttl":        &c.MetricsServerTargetTTL,
+		"prometheus-timeout":               &c.PrometheusTimeout,
+	}
+	for key, target := range durationKeys {
+		if value, ok, err := readConfigDuration(dir, key); err != nil {
+			return err
+		} else if ok {
+			*target = value
+		}
+	}
+
+	intKeys := map[string]*int{
+		"metrics-server-max-samples-per-target": &c.MetricsServerMaxSamplesPerTarget,
+		"metrics-server-min-samples-required":   &c.MetricsServerMinSamplesRequired,
+		"metrics-max-samples":                   &c.MetricsMaxSamples,
+		"metrics-sample-interval":               &c.MetricsSampleInterval,
+	}
+	for key, target := range intKeys {
+		if value, ok, err := readConfigInt(dir, key); err != nil {
+			return err
+		} else if ok {
+			*target = value
+		}
+	}
+
+	return nil
+}
+
+// LoadFromEnv loads known operator configuration keys from environment variables.
+// Environment variables are optional; only explicitly set keys are applied.
+func (c *OperatorConfig) LoadFromEnv() error {
+	stringKeys := map[string]*string{
+		"OPTIPOD_METRICS_PROVIDER":          &c.DefaultMetricsProvider,
+		"OPTIPOD_PROMETHEUS_URL":            &c.PrometheusURL,
+		"OPTIPOD_METRICS_BIND_ADDRESS":      &c.MetricsAddr,
+		"OPTIPOD_HEALTH_PROBE_BIND_ADDRESS": &c.ProbeAddr,
+	}
+	for key, target := range stringKeys {
+		if value, ok := os.LookupEnv(key); ok && strings.TrimSpace(value) != "" {
+			*target = strings.TrimSpace(value)
+		}
+	}
+
+	boolKeys := map[string]*bool{
+		"OPTIPOD_DRY_RUN":         &c.DryRun,
+		"OPTIPOD_LEADER_ELECTION": &c.LeaderElection,
+	}
+	for key, target := range boolKeys {
+		if raw, ok := os.LookupEnv(key); ok && strings.TrimSpace(raw) != "" {
+			value, err := strconv.ParseBool(strings.TrimSpace(raw))
+			if err != nil {
+				return fmt.Errorf("invalid boolean value for %q: %q", key, raw)
+			}
+			*target = value
+		}
+	}
+
+	durationKeys := map[string]*time.Duration{
+		"OPTIPOD_RECONCILIATION_INTERVAL":          &c.ReconciliationInterval,
+		"OPTIPOD_METRICS_SERVER_SAMPLING_INTERVAL": &c.MetricsServerSamplingInterval,
+		"OPTIPOD_METRICS_SERVER_TARGET_TTL":        &c.MetricsServerTargetTTL,
+		"OPTIPOD_PROMETHEUS_TIMEOUT":               &c.PrometheusTimeout,
+	}
+	for key, target := range durationKeys {
+		if raw, ok := os.LookupEnv(key); ok && strings.TrimSpace(raw) != "" {
+			value, err := time.ParseDuration(strings.TrimSpace(raw))
+			if err != nil {
+				return fmt.Errorf("invalid duration value for %q: %q", key, raw)
+			}
+			*target = value
+		}
+	}
+
+	intKeys := map[string]*int{
+		"OPTIPOD_METRICS_SERVER_MAX_SAMPLES_PER_TARGET": &c.MetricsServerMaxSamplesPerTarget,
+		"OPTIPOD_METRICS_SERVER_MIN_SAMPLES_REQUIRED":   &c.MetricsServerMinSamplesRequired,
+		"OPTIPOD_METRICS_MAX_SAMPLES":                   &c.MetricsMaxSamples,
+		"OPTIPOD_METRICS_SAMPLE_INTERVAL":               &c.MetricsSampleInterval,
+	}
+	for key, target := range intKeys {
+		if raw, ok := os.LookupEnv(key); ok && strings.TrimSpace(raw) != "" {
+			value, err := strconv.Atoi(strings.TrimSpace(raw))
+			if err != nil {
+				return fmt.Errorf("invalid integer value for %q: %q", key, raw)
+			}
+			*target = value
+		}
+	}
+
+	return nil
+}
+
+func readConfigValue(dir, key string) (string, bool, error) {
+	path := filepath.Join(dir, key)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", false, nil
+		}
+		return "", false, fmt.Errorf("read config key %q: %w", key, err)
+	}
+	return strings.TrimSpace(string(data)), true, nil
+}
+
+func readConfigBool(dir, key string) (bool, bool, error) {
+	raw, ok, err := readConfigValue(dir, key)
+	if err != nil || !ok {
+		return false, ok, err
+	}
+	value, parseErr := strconv.ParseBool(raw)
+	if parseErr != nil {
+		return false, false, fmt.Errorf("invalid boolean value for %q: %q", key, raw)
+	}
+	return value, true, nil
+}
+
+func readConfigDuration(dir, key string) (time.Duration, bool, error) {
+	raw, ok, err := readConfigValue(dir, key)
+	if err != nil || !ok {
+		return 0, ok, err
+	}
+	value, parseErr := time.ParseDuration(raw)
+	if parseErr != nil {
+		return 0, false, fmt.Errorf("invalid duration value for %q: %q", key, raw)
+	}
+	return value, true, nil
+}
+
+func readConfigInt(dir, key string) (int, bool, error) {
+	raw, ok, err := readConfigValue(dir, key)
+	if err != nil || !ok {
+		return 0, ok, err
+	}
+	value, parseErr := strconv.Atoi(raw)
+	if parseErr != nil {
+		return 0, false, fmt.Errorf("invalid integer value for %q: %q", key, raw)
+	}
+	return value, true, nil
 }
 
 // BindFlags binds configuration options to command-line flags
@@ -155,6 +346,16 @@ func (c *OperatorConfig) IsDryRun() bool {
 // GetMetricsProvider returns the configured metrics provider type
 func (c *OperatorConfig) GetMetricsProvider() string {
 	return c.DefaultMetricsProvider
+}
+
+// GetMetricsAddr returns the configured metrics bind address.
+func (c *OperatorConfig) GetMetricsAddr() string {
+	return c.MetricsAddr
+}
+
+// GetProbeAddr returns the configured health probe bind address.
+func (c *OperatorConfig) GetProbeAddr() string {
+	return c.ProbeAddr
 }
 
 // GetPrometheusURL returns the Prometheus URL

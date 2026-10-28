@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "optipod.controller.configMapName" . }}
+  namespace: {{ include "optipod.namespace" . }}
+  labels:
+    {{- include "optipod.labels" . | nindent 4 }}
+    app.kubernetes.io/component: configuration
+data:
+  dry-run: {{ ternary "true" "false" .Values.controller.dryRun | quote }}
+  metrics-provider: {{ .Values.metricsProvider.type | quote }}
+  prometheus-url: {{ .Values.metricsProvider.prometheus.url | quote }}
+  prometheus-timeout: {{ .Values.metricsProvider.prometheus.timeout | quote }}
+  reconciliation-interval: {{ .Values.controller.reconciliationInterval | quote }}
+  leader-election: {{ ternary "true" "false" .Values.controller.leaderElect | quote }}
+  metrics-bind-address: {{ printf ":%v" .Values.controller.ports.metrics | quote }}
+  health-probe-bind-address: {{ printf ":%v" .Values.controller.ports.health | quote }}
+  metrics-server-sampling-interval: {{ .Values.metricsProvider.metricsServer.samplingInterval | quote }}
+  metrics-server-max-samples-per-target: {{ .Values.metricsProvider.metricsServer.maxSamplesPerTarget | quote }}
+  metrics-server-min-samples-required: {{ .Values.metricsProvider.metricsServer.minSamplesRequired | quote }}
+  metrics-server-target-ttl: {{ .Values.metricsProvider.metricsServer.targetTTL | quote }}

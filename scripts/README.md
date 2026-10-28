@@ -4,6 +4,116 @@ This directory contains utility scripts for the OptipPod project.
 
 ## 📋 Available Scripts
 
+### `optipod-recommendation-report.sh`
+
+A comprehensive script that generates HTML or JSON reports of all OptiPod recommendations across your cluster. This helps you understand the impact of recommendations before switching to Auto mode.
+
+#### 🚀 Usage
+
+```bash
+# Generate HTML report
+./scripts/optipod-recommendation-report.sh -o html -f optipod-recommendations.html
+
+# Generate JSON report for automation
+./scripts/optipod-recommendation-report.sh -o json -f optipod-recommendations.json
+
+# Filter by namespace
+./scripts/optipod-recommendation-report.sh -o html -f report.html --namespace production
+
+# Filter by workload types
+./scripts/optipod-recommendation-report.sh -o html -f report.html --kinds deploy,sts
+```
+
+#### ✅ What it shows
+
+1. **Summary Cards**
+   - Percentage of workloads with recommendations
+   - Total CPU and memory delta (replica-weighted)
+   - Aggregate impact across all pods
+
+2. **Detailed Table**
+   - Current vs recommended resources per container
+   - Replica-weighted impact calculations
+   - Warnings for potential issues
+   - Sortable and filterable interface
+
+3. **Warnings**
+   - CPU/memory requests exceeding current limits
+   - `updateRequestsOnly` conflicts
+   - Other potential issues
+
+#### 🔧 Features
+
+- **Multiple Output Formats**: HTML for humans, JSON for automation
+- **Replica-Weighted Calculations**: Shows total cluster impact
+- **Interactive HTML**: Sort, filter, and search recommendations
+- **Namespace Filtering**: Focus on specific namespaces
+- **Workload Type Filtering**: Analyze specific workload types
+- **Visual Summary**: Cards and charts for quick understanding
+
+#### 📝 Example Output
+
+The HTML report includes:
+- Visual summary cards showing optimization percentage
+- CPU and memory delta calculations
+- Interactive table with all workload recommendations
+- Filtering by namespace, workload type, and change direction
+- Warnings for potential issues
+
+![OptiPod Recommendation Report](report-html.png)
+
+#### 🎯 Use Cases
+
+1. **Before Switching to Auto Mode**
+   - Understand what will change
+   - Estimate cluster-wide impact
+   - Identify potential issues
+
+2. **Regular Reviews**
+   - Weekly/monthly optimization reviews
+   - Track recommendation trends
+   - Share with team for approval
+
+3. **Automation**
+   - Generate JSON for CI/CD pipelines
+   - Integrate with monitoring systems
+   - Automated impact analysis
+
+#### 🛠️ Prerequisites
+
+- `kubectl` configured to access your cluster
+- `jq` installed locally
+- OptiPod running in Recommend mode with recommendations generated
+
+#### 📊 Report Sections
+
+**Summary Cards:**
+- Workloads Optimized: Shows percentage and counts
+- Difference (Requests): Total CPU/memory delta
+- Requests Summary: Current vs recommended totals
+
+**Detailed Table:**
+- Workload, namespace, type, pod count
+- Container name and managing policy
+- Current → recommended resources
+- Delta calculations (per-pod and total)
+- Warnings and last recommendation time
+
+**Filters:**
+- Search by workload/container/policy name
+- Filter by namespace
+- Filter by workload type
+- Filter by change direction (increase/decrease)
+- Filter by warnings
+- Sort by various criteria
+
+#### 🔄 Integration
+
+This script is referenced in:
+- Main README.md for impact estimation
+- docs/IMPACT_REPORT.md for detailed usage
+- Website documentation for user guidance
+
 ### `ci-checks-local.sh`
 
 A comprehensive script that mirrors the exact GitHub Actions pre-commit checks locally. This ensures consistency between local development and CI environment.

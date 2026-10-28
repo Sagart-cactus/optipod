@@ -284,16 +284,22 @@ type UpdateStrategy struct {
 	// +optional
 	LimitConfig *LimitConfig `json:"limitConfig,omitempty"`
 
-	// AllowUnsafeMemoryDecrease disables memory safety checks when true
-	// When false (default), OptipPod will block memory decreases that could cause pod eviction or OOM.
-	// When true, OptipPod will apply all memory recommendations regardless of safety concerns.
-	// Use with caution in production environments.
+	// AllowUnsafeMemoryDecrease is a work-in-progress field that would disable
+	// memory safety checks when true.
+	// Status: not enforced. The field is part of the CRD schema and is validated,
+	// but no production code reads it, so setting it has no effect.
+	// Memory decreases are currently applied in full, like any other
+	// recommendation, constrained only by resource bounds and the safety factor;
+	// there is no default block on memory decreases.
 	// +kubebuilder:default=false
 	// +optional
 	AllowUnsafeMemoryDecrease *bool `json:"allowUnsafeMemoryDecrease,omitempty"`
 
-	// GradualDecreaseConfig configures gradual memory reduction for safer optimization
-	// When enabled, large memory decreases are applied incrementally over multiple reconciliations
+	// GradualDecreaseConfig is a work-in-progress field that would apply large
+	// memory decreases incrementally over multiple reconciliations.
+	// Status: not implemented. The configuration is part of the CRD schema and is
+	// validated, but no production code reads it, so setting it has no effect.
+	// Memory decreases are currently applied in full in a single reconciliation.
 	// +optional
 	GradualDecreaseConfig *GradualDecreaseConfig `json:"gradualDecreaseConfig,omitempty"`
 }
@@ -321,14 +327,16 @@ type LimitConfig struct {
 
 // GradualDecreaseConfig defines parameters for gradual memory reduction
 type GradualDecreaseConfig struct {
-	// Enabled activates gradual decrease functionality
-	// When true, large memory decreases are applied incrementally over multiple reconciliations
+	// Enabled would activate gradual decrease functionality
+	// When true, large memory decreases would be applied incrementally over multiple reconciliations
+	// Status: not implemented; no production code reads this field
 	// +kubebuilder:default=false
 	// +optional
 	Enabled bool `json:"enabled,omitempty"`
 
 	// MemoryDecreasePercentage is the maximum percentage to decrease memory per reconciliation
 	// Must be between 1 and 50. Default is 10 (10% per reconciliation).
+	// Status: not implemented; no production code reads this field
 	// +kubebuilder:default=10
 	// +kubebuilder:validation:Minimum=1
 	// +kubebuilder:validation:Maximum=50
@@ -336,14 +344,16 @@ type GradualDecreaseConfig struct {
 	MemoryDecreasePercentage *int `json:"memoryDecreasePercentage,omitempty"`
 
 	// MinimumDecreaseThreshold is the minimum decrease amount to trigger gradual reduction
-	// Decreases smaller than this threshold are applied immediately.
+	// Decreases smaller than this threshold would be applied immediately.
 	// Default is 100Mi.
+	// Status: not implemented; no production code reads this field
 	// +optional
 	MinimumDecreaseThreshold *resource.Quantity `json:"minimumDecreaseThreshold,omitempty"`
 
 	// MaximumTotalDecrease is the maximum total percentage decrease from original value
 	// Must be between 1 and 90. Default is 70 (70% maximum total decrease).
-	// This prevents excessive optimization that could destabilize workloads.
+	// This would prevent excessive optimization that could destabilize workloads.
+	// Status: not implemented; no production code reads this field
 	// +kubebuilder:default=70
 	// +kubebuilder:validation:Minimum=1
 	// +kubebuilder:validation:Maximum=90
@@ -587,10 +597,6 @@ func (r *OptimizationPolicy) IsSSAStrategy() bool {
 // IsImmediateRollout returns true if the policy uses immediate rollout strategy
 func (r *OptimizationPolicy) IsImmediateRollout() bool {
 	return r.GetRolloutStrategy() == RolloutImmediate
-}
-
-func init() {
-	SchemeBuilder.Register(&OptimizationPolicy{}, &OptimizationPolicyList{})
 }
 
 // ValidateCreate validates the OptimizationPolicy on creation

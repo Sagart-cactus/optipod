@@ -679,8 +679,8 @@ spec:
         app: test
       annotations:
         optipod.io/webhook-enabled: "true"
-        optipod.io/cpu-request.app: "200m"
-        optipod.io/memory-request.app: "256Mi"
+        optipod.io/recommendation.app.cpu-request: "200m"
+        optipod.io/recommendation.app.memory-request: "256Mi"
     spec:
       containers:
       - name: app

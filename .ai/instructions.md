@@ -107,9 +107,10 @@ Only push to current branch when:
 
 ### Testing
 ```bash
-make test           # Unit tests
-make test-e2e       # E2E tests
-make lint           # Linting
+make test-fast          # Fast gate: unit + envtest + clusterless (non-mutating)
+make test-e2e-smoke     # Kind E2E smoke suite (owns and removes its cluster)
+make test-e2e-conformance  # Full Kind conformance suite
+make lint               # Linting
 ./scripts/ci-checks-local.sh  # All CI checks
 ```
 
@@ -135,8 +136,8 @@ optipod/
 ## Development Commands
 
 ```bash
-make test              # Run unit tests
-make test-e2e          # Run E2E tests
+make test-fast         # Run the fast gate (unit + envtest + clusterless)
+make test-e2e-smoke    # Run the Kind E2E smoke suite
 make build             # Build binary
 make docker-build      # Build Docker image
 make install           # Install CRDs
@@ -151,9 +152,15 @@ make lint              # Lint code
 ### What OptiPod Will NOT Do
 - ❌ Mutate workloads without explicit opt-in
 - ❌ Override GitOps ownership
-- ❌ Blindly reduce memory (OOMKill risk)
+- ❌ Apply recommendations outside configured resource bounds and safety factor
 - ❌ Require SaaS backend
 - ❌ Make unexplainable recommendations
+
+> **Memory-decrease reality**: OptiPod has **no memory-decrease guard**. A recommended
+> memory decrease is applied in full, like any other recommendation, constrained only by
+> `resourceBounds` and the safety factor. The `allowUnsafeMemoryDecrease` and
+> `gradualDecreaseConfig` fields are schema-validated but **inert** — no production code
+> reads them, so setting them has no effect (see `docs/CRD_REFERENCE.md`).
 
 ### Safety Guarantees
 - Default to recommend mode

@@ -40,6 +40,14 @@ const (
 	testDaemonSetKind   = "DaemonSet"
 )
 
+// Unit scope note: the gopter property tests in this file drive the production
+// discovery functions over controller-runtime FAKE clients. They are
+// deterministic unit-level checks of the in-process filtering logic and are
+// deliberately NOT evidence of API list/schema semantics. The API-backed
+// discovery proof (real API server, exact included/excluded workload
+// identities, label-edit outcomes) lives in discovery_envtest_test.go
+// (VAL-FAST-003).
+
 // Feature: k8s-workload-rightsizing, Property 16: Workload discovery
 // For any OptimizationPolicy with label selectors, the system should automatically discover
 // all matching Deployments, StatefulSets, and DaemonSets in the specified namespaces.

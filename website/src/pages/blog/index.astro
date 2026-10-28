@@ -1,0 +1,25 @@
+---
+import Layout from '~/layouts/PageLayout.astro';
+import BlogList from '~/components/blog/List.astro';
+import Headline from '~/components/blog/Headline.astro';
+import { fetchPosts } from '~/utils/blog';
+
+const posts = await fetchPosts();
+
+const metadata = {
+  title: 'Blog - OptiPod',
+  description: 'Latest updates, guides, and insights about Kubernetes resource optimization with OptiPod',
+  ignoreTitleTemplate: true,
+};
+---
+
+<Layout metadata={metadata}>
+  <section class="px-4 py-16 sm:px-6 mx-auto lg:px-8 lg:py-20 max-w-6xl">
+    <Headline
+      subtitle="Stay updated with the latest OptiPod news, tutorials, and best practices"
+    >
+      OptiPod Blog
+    </Headline>
+    <BlogList posts={posts} />
+  </section>
+</Layout>

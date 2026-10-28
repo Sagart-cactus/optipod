@@ -1,0 +1,740 @@
+---
+title: GitOps Integration Guide
+description: Learn how to use OptiPod with GitOps tools like ArgoCD and Flux without sync conflicts.
+---
+
+This guide explains how to use OptiPod with GitOps tools like ArgoCD and Flux without sync conflicts.
+
+## Overview
+
+OptiPod is designed to work seamlessly with GitOps workflows. The key principle: **GitOps manages your desired state, OptiPod manages runtime resource optimization**.
+
+OptiPod supports two GitOps-friendly strategies:
+
+- **Webhook Strategy** (Recommended): Mutates pod resources at admission time without modifying GitOps-managed manifests
+- **Server-Side Apply (SSA)**: Uses Kubernetes field ownership to manage only resource requests/limits
+
+## Why GitOps Compatibility Matters
+
+Traditional resource optimization tools often conflict with GitOps:
+
+**Problem**: GitOps tool syncs manifest → Optimizer changes resources → GitOps detects drift → GitOps reverts changes → Loop continues
+
+**OptiPod Solution**: Separates concerns so both tools can coexist:
+- GitOps owns: Image, replicas, environment variables, configuration
+- OptiPod owns: CPU/memory requests and limits (runtime optimization)
+
+## Webhook Strategy (Recommended)
+
+### How It Works
+
+The webhook strategy avoids conflicts by design:
+
+1. GitOps syncs your deployment (without resource changes)
+2. Kubernetes creates pods from the deployment
+3. OptiPod webhook intercepts pod creation
+4. Webhook injects optimized resources from annotations
+5. Pod runs with optimized resources
+6. GitOps sees no drift (deployment unchanged)
+
+### Configuration
+
+**Step 1: Enable Webhook in OptiPod Policy**
+
+```yaml
+apiVersion: optipod.io/v1alpha1
+kind: OptimizationPolicy
+metadata:
+  name: production-workloads
+spec:
+  mode: Auto
+
+  selector:
+    workloadSelector:
+      matchLabels:
+        optimize: "true"
+
+  metricsConfig:
+    provider: prometheus
+    rollingWindow: 24h
+    percentile: P90
+    safetyFactor: 1.2
+
+  resourceBounds:
+    cpu:
+      min: "100m"
+      max: "4000m"
+    memory:
+      min: "256Mi"
+      max: "8Gi"
+
+  updateStrategy:
+    strategy: webhook  # Use webhook strategy
+    rolloutStrategy: onNextRestart
+    allowInPlaceResize: true
+    updateRequestsOnly: true
+```
+
+**Step 2: Label Your Workloads**
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web-app
+  labels:
+    optimize: "true"  # Match policy selector
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: web-app
+  template:
+    metadata:
+      labels:
+        app: web-app
+        optimize: "true"  # Important: Label pods too
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:1.21
+        ports:
+        - containerPort: 80
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+```
+
+**Step 3: Label Namespace for Webhook**
+
+```bash
+kubectl label namespace production optipod.io/webhook=enabled
+```
+
+### How Annotations Work
+
+OptiPod stores recommendations in deployment metadata annotations:
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web-app
+  annotations:
+    # OptiPod stores recommendations here
+    optipod.io/cpu-request.nginx: "250m"
+    optipod.io/memory-request.nginx: "512Mi"
+    optipod.io/strategy: "webhook"
+    optipod.io/webhook-enabled: "true"
+spec:
+  # ... deployment spec unchanged by OptiPod ...
+```
+
+When pods are created:
+1. Webhook reads annotations from parent deployment
+2. Injects resources into pod spec
+3. Pod runs with optimized resources
+4. Deployment spec remains unchanged (no GitOps drift)
+
+### Advantages
+
+- **Zero GitOps conflicts**: Deployment spec never changes
+- **ArgoCD/Flux agnostic**: Works with any GitOps tool
+- **No special configuration**: GitOps tools need no changes
+- **Audit trail**: Annotations show what OptiPod recommends
+- **Rollback friendly**: Delete annotations to disable
+
+## Server-Side Apply Strategy (Alternative)
+
+### How It Works
+
+SSA uses Kubernetes field ownership to allow multiple tools to manage different fields:
+
+```yaml
+Deployment: web-app
+├── spec.replicas                    [Owned by: argocd]
+├── spec.template.spec.containers[0]
+│   ├── image                        [Owned by: argocd]
+│   ├── env                          [Owned by: argocd]
+│   └── resources
+│       ├── requests.cpu             [Owned by: optipod] ✅
+│       ├── requests.memory          [Owned by: optipod] ✅
+│       ├── limits.cpu               [Owned by: optipod] ✅
+│       └── limits.memory            [Owned by: optipod] ✅
+```
+
+### Configuration
+
+**OptiPod Policy:**
+
+```yaml
+apiVersion: optipod.io/v1alpha1
+kind: OptimizationPolicy
+metadata:
+  name: production-workloads
+spec:
+  mode: Auto
+
+  selector:
+    workloadSelector:
+      matchLabels:
+        optimize: "true"
+
+  metricsConfig:
+    provider: prometheus
+    rollingWindow: 24h
+    percentile: P90
+
+  resourceBounds:
+    cpu:
+      min: "100m"
+      max: "4000m"
+    memory:
+      min: "256Mi"
+      max: "8Gi"
+
+  updateStrategy:
+    strategy: ssa  # Use Server-Side Apply
+    allowInPlaceResize: true
+    allowRecreate: false
+    updateRequestsOnly: true
+    useServerSideApply: true
+```
+
+### ArgoCD Configuration
+
+**Option 1: ArgoCD 2.5+ (Automatic)**
+
+ArgoCD 2.5+ automatically respects SSA field ownership. No configuration needed!
+
+**Option 2: Explicit Ignore (ArgoCD < 2.5)**
+
+```yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: web-app
+spec:
+  # ... other fields ...
+  ignoreDifferences:
+  - group: apps
+    kind: Deployment
+    managedFieldsManagers:
+    - optipod
+  - group: apps
+    kind: StatefulSet
+    managedFieldsManagers:
+    - optipod
+```
+
+**Option 3: Enable SSA for ArgoCD**
+
+```yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: web-app
+spec:
+  # ... other fields ...
+  syncPolicy:
+    syncOptions:
+    - ServerSideApply=true
+    - RespectIgnoreDifferences=true
+```
+
+### Flux Configuration
+
+Flux v2 supports SSA natively:
+
+```yaml
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: web-app
+spec:
+  # ... other fields ...
+  force: false  # Don't force ownership
+  prune: true
+```
+
+Flux will automatically respect OptiPod's field ownership.
+
+## Deployment Workflow
+
+### With ArgoCD
+
+**Step 1: Create Application in Git**
+
+```yaml
+# k8s/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-server
+  labels:
+    app: api-server
+    optimize: "true"
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: api-server
+  template:
+    metadata:
+      labels:
+        app: api-server
+        optimize: "true"
+    spec:
+      containers:
+      - name: api
+        image: myorg/api-server:v1.0.0
+        ports:
+        - containerPort: 8080
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+```
+
+**Step 2: Deploy with ArgoCD**
+
+```bash
+argocd app create api-server \
+  --repo https://github.com/myorg/api-server \
+  --path k8s \
+  --dest-server https://kubernetes.default.svc \
+  --dest-namespace production \
+  --sync-policy automated
+```
+
+**Step 3: Create OptiPod Policy**
+
+```yaml
+apiVersion: optipod.io/v1alpha1
+kind: OptimizationPolicy
+metadata:
+  name: production-optimizer
+spec:
+  mode: Auto
+
+  selector:
+    workloadSelector:
+      matchLabels:
+        optimize: "true"
+
+  metricsConfig:
+    provider: prometheus
+    rollingWindow: 24h
+    percentile: P90
+
+  resourceBounds:
+    cpu:
+      min: "100m"
+      max: "2000m"
+    memory:
+      min: "128Mi"
+      max: "4Gi"
+
+  updateStrategy:
+    strategy: webhook  # or ssa
+    rolloutStrategy: onNextRestart
+```
+
+```bash
+kubectl apply -f optipod-policy.yaml
+```
+
+**Step 4: Verify**
+
+```bash
+# Check ArgoCD sync status (should be "Synced")
+argocd app get api-server
+
+# Check OptiPod status
+kubectl describe optimizationpolicy production-optimizer
+
+# View recommendations (webhook strategy)
+kubectl get deployment api-server -o yaml | grep "optipod.io/"
+
+# View field ownership (SSA strategy)
+kubectl get deployment api-server -o yaml | grep -A 30 managedFields
+```
+
+### With Flux
+
+**Step 1: Create Kustomization**
+
+```yaml
+# flux/kustomization.yaml
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: api-server
+  namespace: flux-system
+spec:
+  interval: 5m
+  path: ./k8s
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: api-server
+  targetNamespace: production
+```
+
+**Step 2: Create GitRepository**
+
+```yaml
+# flux/gitrepository.yaml
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: api-server
+  namespace: flux-system
+spec:
+  interval: 1m
+  url: https://github.com/myorg/api-server
+  ref:
+    branch: main
+```
+
+**Step 3: Apply Flux Resources**
+
+```bash
+kubectl apply -f flux/gitrepository.yaml
+kubectl apply -f flux/kustomization.yaml
+```
+
+**Step 4: Create OptiPod Policy**
+
+Same as ArgoCD example above.
+
+## Verification
+
+### Check for Sync Conflicts
+
+**ArgoCD:**
+```bash
+argocd app get <app-name>
+
+# Should show:
+# Sync Status:        Synced
+# Health Status:      Healthy
+```
+
+**Flux:**
+```bash
+flux get kustomizations
+
+# Should show:
+# NAME         READY   MESSAGE
+# api-server   True    Applied revision: main/abc123
+```
+
+### Verify OptiPod is Working
+
+```bash
+# Check policy status
+kubectl get optimizationpolicy -A
+
+# Check workload annotations (webhook)
+kubectl get deployment <name> -n <namespace> \
+  -o jsonpath='{.metadata.annotations}' | jq | grep optipod.io
+
+# Check field ownership (SSA)
+kubectl get deployment <name> -n <namespace> -o yaml | grep -A 30 managedFields
+
+# Check events
+kubectl get events -n <namespace> --field-selector source=optipod
+```
+
+### Test GitOps Sync
+
+**Update image in Git:**
+```yaml
+# k8s/deployment.yaml
+spec:
+  template:
+    spec:
+      containers:
+      - name: api
+        image: myorg/api-server:v1.1.0  # Changed
+```
+
+**Verify:**
+```bash
+# Wait for GitOps sync
+sleep 30
+
+# Check image was updated
+kubectl get deployment <name> -n <namespace> \
+  -o jsonpath='{.spec.template.spec.containers[0].image}'
+
+# Check OptiPod resources are still applied
+kubectl get deployment <name> -n <namespace> \
+  -o jsonpath='{.spec.template.spec.containers[0].resources}'
+```
+
+## Troubleshooting
+
+### Issue: ArgoCD Shows OutOfSync
+
+**Symptoms:**
+- ArgoCD marks application as OutOfSync
+- Diff shows resource changes
+
+**Solutions:**
+
+**For Webhook Strategy:**
+```bash
+# Verify webhook is enabled
+kubectl get mutatingwebhookconfiguration optipod-webhook
+
+# Check namespace is labeled
+kubectl get namespace <namespace> --show-labels | grep optipod.io/webhook
+
+# Verify policy uses webhook strategy
+kubectl get optimizationpolicy <policy-name> \
+  -o jsonpath='{.spec.updateStrategy.strategy}'
+```
+
+**For SSA Strategy:**
+```bash
+# Upgrade ArgoCD to 2.5+ (recommended)
+# Or add ignoreDifferences (see SSA Configuration above)
+
+# Verify SSA is enabled
+kubectl get optimizationpolicy <policy-name> \
+  -o jsonpath='{.spec.updateStrategy.useServerSideApply}'
+```
+
+### Issue: OptiPod Changes Reverted
+
+**Symptoms:**
+- OptiPod applies changes
+- GitOps tool reverts them
+
+**Solutions:**
+
+**For Webhook Strategy:**
+```bash
+# This shouldn't happen with webhook strategy
+# Check that deployment spec is NOT being modified
+kubectl get deployment <name> -n <namespace> -o yaml | grep -A 10 "resources:"
+
+# Annotations should be on metadata, not in pod template
+kubectl get deployment <name> -n <namespace> \
+  -o jsonpath='{.metadata.annotations}' | jq | grep optipod.io
+```
+
+**For SSA Strategy:**
+```bash
+# Check field ownership
+kubectl get deployment <name> -n <namespace> -o yaml | grep -A 50 managedFields
+
+# Verify OptiPod owns resource fields
+kubectl get deployment <name> -n <namespace> -o yaml | \
+  grep -A 50 managedFields | grep -A 10 optipod
+
+# Check ArgoCD configuration
+argocd app get <app-name> -o yaml | grep -A 10 ignoreDifferences
+```
+
+### Issue: Webhook Not Mutating Pods
+
+**Symptoms:**
+- Pods created without OptiPod resources
+- No webhook events
+
+**Solutions:**
+
+```bash
+# Check webhook is deployed
+kubectl get deployment -n optipod-system optipod-webhook
+
+# Check webhook configuration
+kubectl get mutatingwebhookconfiguration optipod-webhook
+
+# Check namespace label
+kubectl label namespace <namespace> optipod.io/webhook=enabled
+
+# Check webhook logs
+kubectl logs -n optipod-system deployment/optipod-webhook
+
+# Verify policy selector matches workload
+kubectl get deployment <name> -n <namespace> --show-labels
+kubectl get optimizationpolicy <policy-name> \
+  -o jsonpath='{.spec.selector}' | jq
+```
+
+### Issue: Field Ownership Conflicts (SSA)
+
+**Symptoms:**
+- OptiPod logs show SSA conflicts
+- Events show `SSAConflict`
+
+**Solutions:**
+
+```bash
+# Check which manager owns fields
+kubectl get deployment <name> -n <namespace> -o yaml | \
+  grep -A 50 managedFields
+
+# OptiPod uses Force=true by default to take ownership
+# Verify this is enabled
+kubectl get optimizationpolicy <policy-name> \
+  -o jsonpath='{.spec.updateStrategy}' | jq
+
+# Check for conflict events
+kubectl get events -n <namespace> --field-selector reason=SSAConflict
+```
+
+## Best Practices
+
+### General
+
+1. **Start with Recommend mode**: Test OptiPod before enabling Auto mode
+2. **Use specific selectors**: Target specific workloads with labels
+3. **Set conservative bounds**: Prevent unexpected resource changes
+4. **Monitor both tools**: Watch logs from both GitOps and OptiPod
+5. **Test in staging first**: Validate integration before production
+
+### Webhook Strategy
+
+1. **Prefer webhook for GitOps**: Cleanest separation of concerns
+2. **Label namespaces**: Control which namespaces webhook processes
+3. **Use onNextRestart**: Avoid forced pod disruptions
+4. **Check annotations**: Verify recommendations are stored correctly
+5. **Monitor webhook health**: Ensure webhook is running and healthy
+
+### SSA Strategy
+
+1. **Use ArgoCD 2.5+**: Best SSA support
+2. **Enable SSA in policy**: Set `useServerSideApply: true`
+3. **Monitor field ownership**: Check managedFields regularly
+4. **Configure ignoreDifferences**: For older ArgoCD versions
+5. **Test sync behavior**: Verify no conflicts after setup
+
+## Example: Complete Setup
+
+### Application Manifest (Git)
+
+```yaml
+# k8s/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web-app
+  labels:
+    app: web-app
+    optimize: "true"
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: web-app
+  template:
+    metadata:
+      labels:
+        app: web-app
+        optimize: "true"
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:1.21
+        ports:
+        - containerPort: 80
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+```
+
+### ArgoCD Application
+
+```yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: web-app
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/myorg/web-app
+    targetRevision: main
+    path: k8s
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: production
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+```
+
+### OptiPod Policy
+
+```yaml
+apiVersion: optipod.io/v1alpha1
+kind: OptimizationPolicy
+metadata:
+  name: web-optimizer
+spec:
+  mode: Auto
+
+  selector:
+    workloadSelector:
+      matchLabels:
+        optimize: "true"
+
+  metricsConfig:
+    provider: prometheus
+    rollingWindow: 24h
+    percentile: P90
+    safetyFactor: 1.2
+
+  resourceBounds:
+    cpu:
+      min: "100m"
+      max: "2000m"
+    memory:
+      min: "128Mi"
+      max: "4Gi"
+
+  updateStrategy:
+    strategy: webhook
+    rolloutStrategy: onNextRestart
+    allowInPlaceResize: true
+    updateRequestsOnly: true
+```
+
+### Deploy
+
+```bash
+# Deploy via ArgoCD
+argocd app create web-app \
+  --repo https://github.com/myorg/web-app \
+  --path k8s \
+  --dest-server https://kubernetes.default.svc \
+  --dest-namespace production \
+  --sync-policy automated
+
+# Label namespace for webhook
+kubectl label namespace production optipod.io/webhook=enabled
+
+# Create OptiPod policy
+kubectl apply -f optipod-policy.yaml
+
+# Verify
+argocd app get web-app
+kubectl describe optimizationpolicy web-optimizer
+```
+
+## Next Steps
+
+- [Creating Policies](/docs/guides/creating-policies) - Policy configuration guide
+- [Switching to Auto Mode](/docs/guides/switching-to-auto) - Enabling automatic optimization
+- [Troubleshooting](/docs/guides/troubleshooting) - Common issues and solutions
+- [Update Strategies](/docs/concepts/update-strategies) - Understanding webhook vs SSA
+- [Safety Model](/docs/concepts/safety-model) - Understanding safety guarantees

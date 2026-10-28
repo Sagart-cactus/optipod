@@ -42,6 +42,9 @@ manager
 cover.out
 coverage.*
 
+# New hermetic Kind suite run artifacts (JUnit, timings, redacted diagnostics)
+test/e2e/artifacts/
+
 # Verification and checkpoint files
 *_VERIFICATION.md
 *_CHECKPOINT_SUMMARY.md
@@ -59,3 +62,4 @@ TEST_*.md
 # Test files and temporary artifacts
 test-*.yaml
 temp-*.yaml
+.DS_Store

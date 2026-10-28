@@ -118,8 +118,9 @@ Keep official documentation separate:
 - Use semantic versioning
 
 ### Testing
-- Unit tests: `make test`
-- E2E tests: `make test-e2e`
+- Fast gate (unit + envtest + clusterless, non-mutating): `make test-fast`
+- Kind E2E smoke: `make test-e2e-smoke`
+- Kind E2E conformance: `make test-e2e-conformance`
 - Local CI checks: `./scripts/ci-checks-local.sh`
 
 ## Project Structure
@@ -152,11 +153,11 @@ optipod/
 ## Development Commands
 
 ```bash
-# Run tests
-make test
+# Run the fast gate (unit + envtest + clusterless)
+make test-fast
 
-# Run E2E tests
-make test-e2e
+# Run the Kind E2E smoke suite
+make test-e2e-smoke
 
 # Build binary
 make build

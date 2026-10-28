@@ -376,7 +376,7 @@ func (s *Server) HandleDebugConfig(w http.ResponseWriter, r *http.Request) {
 		"timestamp":     time.Now().Format(time.RFC3339),
 		"server_port":   s.port,
 		"cert_path":     s.certPath,
-		"key_path":      s.keyPath,
+		logKeyPath:      s.keyPath,
 		"server_ready":  s.server != nil,
 		"mutator_ready": s.mutator != nil,
 	}
@@ -566,7 +566,7 @@ func (s *Server) GetDebugConfiguration() map[string]interface{} {
 		"timestamp":     time.Now().Format(time.RFC3339),
 		"server_port":   s.port,
 		"cert_path":     s.certPath,
-		"key_path":      s.keyPath,
+		logKeyPath:      s.keyPath,
 		"server_ready":  s.server != nil,
 		"mutator_ready": s.mutator != nil,
 	}

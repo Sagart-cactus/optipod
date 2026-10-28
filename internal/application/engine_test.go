@@ -376,7 +376,7 @@ func TestProperty_UpdatesPreserveLimits(t *testing.T) {
 			engine := &Engine{}
 
 			// Build patch
-			patch, err := engine.buildResourcePatch(workload, "test-container", rec, policy)
+			patch, err := engine.buildResourcePatch(workload, testContainerRecommendations(rec), policy)
 			if err != nil {
 				return false
 			}
@@ -468,7 +468,7 @@ func TestProperty_UpdatesPreserveLimits(t *testing.T) {
 			engine := &Engine{}
 
 			// Build patch
-			patch, err := engine.buildResourcePatch(workload, "test-container", rec, policy)
+			patch, err := engine.buildResourcePatch(workload, testContainerRecommendations(rec), policy)
 			if err != nil {
 				return false
 			}
@@ -565,7 +565,7 @@ func TestProperty_RBACRespect(t *testing.T) {
 			// Set strategy to SSA so the test uses the mock dynamic client
 			policy.Spec.UpdateStrategy.Strategy = stringPtr(string(optipodv1alpha1.StrategySSA))
 
-			_, err := engine.Apply(context.Background(), workload, "test-container", rec, policy)
+			_, err := engine.Apply(context.Background(), workload, testContainerRecommendations(rec), policy)
 
 			// When error code is 403, should get RBAC error
 			if errorCode == 403 {
@@ -660,7 +660,7 @@ func TestProperty_SSAPatchStructure(t *testing.T) {
 			engine := &Engine{}
 
 			// Build SSA patch
-			patch, err := engine.buildSSAPatch(workload, "test-container", rec, policy)
+			patch, err := engine.buildSSAPatch(workload, testContainerRecommendations(rec), policy)
 			if err != nil {
 				return false
 			}
@@ -787,7 +787,7 @@ func TestProperty_ContainerIdentification(t *testing.T) {
 			engine := &Engine{}
 
 			// Build SSA patch
-			patch, err := engine.buildSSAPatch(workload, containerName, rec, policy)
+			patch, err := engine.buildSSAPatch(workload, []ContainerRecommendation{{Container: containerName, Recommendation: rec}}, policy)
 			if err != nil {
 				return false
 			}
@@ -855,7 +855,7 @@ func TestProperty_ConditionalLimits(t *testing.T) {
 			engine := &Engine{}
 
 			// Build SSA patch
-			patch, err := engine.buildSSAPatch(workload, "test-container", rec, policy)
+			patch, err := engine.buildSSAPatch(workload, testContainerRecommendations(rec), policy)
 			if err != nil {
 				return false
 			}
@@ -916,7 +916,7 @@ func TestProperty_ConditionalLimits(t *testing.T) {
 			engine := &Engine{}
 
 			// Build SSA patch
-			patch, err := engine.buildSSAPatch(workload, "test-container", rec, policy)
+			patch, err := engine.buildSSAPatch(workload, testContainerRecommendations(rec), policy)
 			if err != nil {
 				return false
 			}
@@ -1023,7 +1023,7 @@ func TestProperty_JSONSerialization(t *testing.T) {
 			engine := &Engine{}
 
 			// Build SSA patch
-			patch, err := engine.buildSSAPatch(workload, "test-container", rec, policy)
+			patch, err := engine.buildSSAPatch(workload, testContainerRecommendations(rec), policy)
 			if err != nil {
 				return false
 			}
@@ -1098,7 +1098,7 @@ func TestProperty_SSAFieldManager(t *testing.T) {
 			policy.Spec.UpdateStrategy.UpdateRequestsOnly = updateRequestsOnly
 
 			// Apply with SSA
-			err := engine.ApplyWithSSA(context.Background(), workload, "test-container", rec, policy)
+			err := engine.ApplyWithSSA(context.Background(), workload, testContainerRecommendations(rec), policy)
 			if err != nil {
 				return false
 			}
@@ -1205,7 +1205,7 @@ func TestProperty_SSAForceFlag(t *testing.T) {
 			policy.Spec.UpdateStrategy.UpdateRequestsOnly = updateRequestsOnly
 
 			// Apply with SSA
-			err := engine.ApplyWithSSA(context.Background(), workload, "test-container", rec, policy)
+			err := engine.ApplyWithSSA(context.Background(), workload, testContainerRecommendations(rec), policy)
 			if err != nil {
 				return false
 			}
@@ -1322,7 +1322,7 @@ func TestSSAErrorHandlingIntegration(t *testing.T) {
 			rec := createMockRecommendation()
 			policy := createMockPolicy(true, false)
 
-			err := engine.ApplyWithSSA(context.Background(), workload, "test-container", rec, policy)
+			err := engine.ApplyWithSSA(context.Background(), workload, testContainerRecommendations(rec), policy)
 			if err == nil {
 				t.Errorf("expected error, got nil")
 				return
@@ -1480,7 +1480,7 @@ func TestProperty_ConfigurationDeterminesPatchMethod(t *testing.T) {
 			policy.Spec.UpdateStrategy.UseServerSideApply = &useSSA
 
 			// Apply
-			result, err := engine.Apply(context.Background(), workload, "test-container", rec, policy)
+			result, err := engine.Apply(context.Background(), workload, testContainerRecommendations(rec), policy)
 			if err != nil {
 				return false
 			}
@@ -1534,7 +1534,7 @@ func TestProperty_ConfigurationDeterminesPatchMethod(t *testing.T) {
 			policy.Spec.UpdateStrategy.UseServerSideApply = &useSSA
 
 			// Apply
-			result, err := engine.Apply(context.Background(), workload, "test-container", rec, policy)
+			result, err := engine.Apply(context.Background(), workload, testContainerRecommendations(rec), policy)
 			if err != nil {
 				return false
 			}
@@ -1597,7 +1597,7 @@ func TestProperty_DefaultToSSA(t *testing.T) {
 			policy.Spec.UpdateStrategy.UseServerSideApply = nil
 
 			// Apply
-			result, err := engine.Apply(context.Background(), workload, "test-container", rec, policy)
+			result, err := engine.Apply(context.Background(), workload, testContainerRecommendations(rec), policy)
 			if err != nil {
 				return false
 			}
@@ -1662,7 +1662,7 @@ func TestProperty_SSALoggingIncludesFieldManager(t *testing.T) {
 			ctx := context.Background()
 
 			// Apply with SSA - this will trigger logging
-			err := engine.ApplyWithSSA(ctx, workload, "test-container", rec, policy)
+			err := engine.ApplyWithSSA(ctx, workload, testContainerRecommendations(rec), policy)
 			if err != nil {
 				return false
 			}
@@ -1856,7 +1856,7 @@ func TestProperty_PatchContainsCalculatedLimits(t *testing.T) {
 			engine := &Engine{}
 
 			// Build SSA patch
-			patch, err := engine.buildSSAPatch(workload, "test-container", rec, policy)
+			patch, err := engine.buildSSAPatch(workload, testContainerRecommendations(rec), policy)
 			if err != nil {
 				return false
 			}
@@ -2177,7 +2177,7 @@ func TestProperty_UpdateRequestsOnlyBehavior(t *testing.T) {
 			engine := &Engine{}
 
 			// Test buildResourcePatch
-			patch, err := engine.buildResourcePatch(workload, "test-container", rec, policy)
+			patch, err := engine.buildResourcePatch(workload, testContainerRecommendations(rec), policy)
 			if err != nil {
 				return false
 			}
@@ -2213,7 +2213,7 @@ func TestProperty_UpdateRequestsOnlyBehavior(t *testing.T) {
 			}
 
 			// Test buildSSAPatch
-			ssaPatch, err := engine.buildSSAPatch(workload, "test-container", rec, policy)
+			ssaPatch, err := engine.buildSSAPatch(workload, testContainerRecommendations(rec), policy)
 			if err != nil {
 				return false
 			}
@@ -2284,7 +2284,7 @@ func TestProperty_UpdateRequestsOnlyBehavior(t *testing.T) {
 			engine := &Engine{}
 
 			// Test buildResourcePatch
-			patch, err := engine.buildResourcePatch(workload, "test-container", rec, policy)
+			patch, err := engine.buildResourcePatch(workload, testContainerRecommendations(rec), policy)
 			if err != nil {
 				return false
 			}
@@ -2342,7 +2342,7 @@ func TestProperty_UpdateRequestsOnlyBehavior(t *testing.T) {
 			}
 
 			// Test buildSSAPatch
-			ssaPatch, err := engine.buildSSAPatch(workload, "test-container", rec, policy)
+			ssaPatch, err := engine.buildSSAPatch(workload, testContainerRecommendations(rec), policy)
 			if err != nil {
 				return false
 			}
@@ -2826,7 +2826,7 @@ func TestOptimizationApplication(t *testing.T) {
 		policy := createMockPolicy(true, false)
 
 		// Apply with SSA
-		err := engine.ApplyWithSSA(context.Background(), workload, "test-container", rec, policy)
+		err := engine.ApplyWithSSA(context.Background(), workload, testContainerRecommendations(rec), policy)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -2875,7 +2875,7 @@ func TestOptimizationApplication(t *testing.T) {
 		policy.Spec.UpdateStrategy.UseServerSideApply = &useSSA
 
 		// Apply with Strategic Merge
-		err := engine.ApplyWithStrategicMerge(context.Background(), workload, "test-container", rec, policy)
+		err := engine.ApplyWithStrategicMerge(context.Background(), workload, testContainerRecommendations(rec), policy)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -2898,7 +2898,7 @@ func TestOptimizationApplication(t *testing.T) {
 		rec := createMockRecommendation()
 		policy := createMockPolicy(true, false)
 
-		err := engine.ApplyWithSSA(context.Background(), workload, "test-container", rec, policy)
+		err := engine.ApplyWithSSA(context.Background(), workload, testContainerRecommendations(rec), policy)
 		if err == nil {
 			t.Error("expected error for SSA conflict")
 		}
@@ -2921,7 +2921,7 @@ func TestOptimizationApplication(t *testing.T) {
 		rec := createMockRecommendation()
 		policy := createMockPolicy(true, false)
 
-		err := engine.ApplyWithStrategicMerge(context.Background(), workload, "test-container", rec, policy)
+		err := engine.ApplyWithStrategicMerge(context.Background(), workload, testContainerRecommendations(rec), policy)
 		if err == nil {
 			t.Error("expected error for forbidden access")
 		}
@@ -2950,7 +2950,7 @@ func TestOptimizationApplication(t *testing.T) {
 		policy := createMockPolicy(true, false)
 
 		// Apply optimization - this should trigger comprehensive logging
-		err := engine.ApplyWithSSA(context.Background(), workload, "test-container", rec, policy)
+		err := engine.ApplyWithSSA(context.Background(), workload, testContainerRecommendations(rec), policy)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -2981,7 +2981,7 @@ func TestOptimizationApplication(t *testing.T) {
 		policy.Spec.UpdateStrategy.UseServerSideApply = &useSSA
 		policy.Spec.UpdateStrategy.Strategy = &ssaStrategy
 
-		result, err := engine.Apply(context.Background(), workload, "test-container", rec, policy)
+		result, err := engine.Apply(context.Background(), workload, testContainerRecommendations(rec), policy)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -3041,7 +3041,7 @@ func TestProperty_SSACompatibilityPreservation(t *testing.T) {
 			policy.Spec.UpdateStrategy.UpdateRequestsOnly = updateRequestsOnly
 
 			// Apply using strategy routing
-			result, err := engine.Apply(context.Background(), workload, "test-container", rec, policy)
+			result, err := engine.Apply(context.Background(), workload, testContainerRecommendations(rec), policy)
 			if err != nil {
 				return false
 			}
@@ -3134,7 +3134,7 @@ func TestProperty_SSACompatibilityPreservation(t *testing.T) {
 			policy.Spec.UpdateStrategy.UseServerSideApply = &useSSA
 
 			// Apply using strategy routing
-			result, err := engine.Apply(context.Background(), workload, "test-container", rec, policy)
+			result, err := engine.Apply(context.Background(), workload, testContainerRecommendations(rec), policy)
 			if err != nil {
 				return false
 			}
@@ -3299,7 +3299,7 @@ func TestProperty_SSACompatibilityPreservation(t *testing.T) {
 			// policy.Spec.UpdateStrategy.UseServerSideApply = &useSSA
 
 			// Apply using strategy routing
-			// result, err := engine.Apply(context.Background(), workload, "test-container", rec, policy)
+			// result, err := engine.Apply(context.Background(), workload, testContainerRecommendations(rec), policy)
 			// if err != nil {
 			// return false
 			// }
@@ -3326,4 +3326,10 @@ func TestProperty_SSACompatibilityPreservation(t *testing.T) {
 // Helper function to create string pointer
 func stringPtr(s string) *string {
 	return &s
+}
+
+// testContainerRecommendations wraps a single container's recommendation in the
+// workload-wide apply input used by the production Apply path.
+func testContainerRecommendations(rec *recommendation.Recommendation) []ContainerRecommendation {
+	return []ContainerRecommendation{{Container: "test-container", Recommendation: rec}}
 }

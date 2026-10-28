@@ -380,7 +380,7 @@ func (lm *LifecycleManager) GetHealthStatus() map[string]interface{} {
 		"service_name":      lm.serviceName,
 		"service_namespace": lm.serviceNamespace,
 		"certificate_path":  lm.certPath,
-		"key_path":          lm.keyPath,
+		logKeyPath:          lm.keyPath,
 	}
 
 	// Check certificate validity

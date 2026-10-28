@@ -43,10 +43,10 @@ const comparisonRows = [
   },
   {
     feature: 'Policy-driven safety',
-    description: 'Configurable bounds, safety margins, change-rate limits, memory protection.',
+    description: 'Configurable bounds, safety margins, and workload type filtering.',
     optipod: 'yes' as const,
     vpa: 'partial' as const,
-    optipodDetails: 'Configurable min/max resource bounds, safety margins to prevent resource starvation, change-rate limits to prevent disruption, memory decrease protection, workload type filtering.',
+    optipodDetails: 'Configurable min/max resource bounds, safety margins to prevent resource starvation, and workload type filtering. Memory decreases currently apply in full; dedicated decrease guards are schema-validated but not yet enforced.',
     vpaDetails: 'Basic min/max bounds only, limited change-rate control, can cause disruptive pod restarts, less sophisticated safety logic.',
   },
 ];
@@ -184,7 +184,7 @@ spec:
       {
         title: 'Policy-driven safety',
         description:
-          'Conservative defaults, configurable bounds, controlled change rates, and memory safeguards.',
+          'Conservative defaults, configurable bounds, controlled change rates, and a tunable safety factor.',
         icon: 'tabler:shield-check',
       },
       {
@@ -213,8 +213,9 @@ spec:
         icon: 'tabler:git-branch',
       },
       {
-        title: 'Will not blindly reduce memory',
-        description: 'Memory safeguards prevent dangerous reductions',
+        title: 'Will not exceed your bounds',
+        description:
+          'Every recommendation is clamped by your configured resource bounds and safety factor',
         icon: 'tabler:shield-check',
       },
       {

@@ -152,13 +152,13 @@ spec:
         app: my-application
         environment: production
       annotations:
-        # Enable OptipPod webhook processing
+        # Enable OptiPod webhook processing
         optipod.io/webhook-enabled: "true"
         # Optional: Pre-populate with initial recommendations
-        optipod.io/cpu-request.app: "200m"
-        optipod.io/memory-request.app: "512Mi"
-        optipod.io/cpu-limit.app: "500m"
-        optipod.io/memory-limit.app: "1Gi"
+        optipod.io/recommendation.app.cpu-request: "200m"
+        optipod.io/recommendation.app.memory-request: "512Mi"
+        optipod.io/recommendation.app.cpu-limit: "500m"
+        optipod.io/recommendation.app.memory-limit: "1Gi"
     spec:
       containers:
       - name: app
@@ -410,12 +410,12 @@ spec:
       annotations:
         optipod.io/webhook-enabled: "true"
         # Container-specific recommendations
-        optipod.io/cpu-request.web: "200m"
-        optipod.io/memory-request.web: "512Mi"
-        optipod.io/cpu-request.sidecar: "50m"
-        optipod.io/memory-request.sidecar: "128Mi"
-        optipod.io/cpu-limit.web: "500m"
-        optipod.io/memory-limit.web: "1Gi"
+        optipod.io/recommendation.web.cpu-request: "200m"
+        optipod.io/recommendation.web.memory-request: "512Mi"
+        optipod.io/recommendation.sidecar.cpu-request: "50m"
+        optipod.io/recommendation.sidecar.memory-request: "128Mi"
+        optipod.io/recommendation.web.cpu-limit: "500m"
+        optipod.io/recommendation.web.memory-limit: "1Gi"
         optipod.io/cpu-limit.sidecar: "100m"
         optipod.io/memory-limit.sidecar: "256Mi"
     spec:

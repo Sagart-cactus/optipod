@@ -54,6 +54,15 @@ controller:
   leaderElect: true
   reconciliationInterval: "5m"
   enableHTTP2: false
+  # Optional external ConfigMap (created outside Helm) to inject environment variables
+  # into the controller container via envFrom.
+  # If prefix is empty, use full env keys (e.g. OPTIPOD_METRICS_PROVIDER).
+  # If prefix is "OPTIPOD_", use base keys (e.g. METRICS_PROVIDER).
+  envConfigMap:
+    enabled: false
+    name: ""
+    optional: true
+    prefix: ""
 
   # Pod configuration
   priorityClassName: ""

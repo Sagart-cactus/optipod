@@ -15,6 +15,9 @@ import (
 	"github.com/optipod/optipod/test/clusterless/harness"
 )
 
+// patchOpReplace is the JSON patch "replace" operation.
+const patchOpReplace = "replace"
+
 // WebhookSimulator simulates webhook mutations without HTTP server
 type WebhookSimulator struct {
 	harness *harness.TestHarness
@@ -140,7 +143,7 @@ func (w *WebhookSimulator) generateContainerPatches(pod *corev1.Pod, containerNa
 	// CPU request patch
 	if cpuRequest, exists := pod.Annotations[fmt.Sprintf("optipod.io/cpu-request.%s", containerName)]; exists {
 		patch := PatchOperation{
-			Op:    "replace",
+			Op:    patchOpReplace,
 			Path:  fmt.Sprintf("/spec/containers/%d/resources/requests/cpu", containerIndex),
 			Value: cpuRequest,
 		}
@@ -150,7 +153,7 @@ func (w *WebhookSimulator) generateContainerPatches(pod *corev1.Pod, containerNa
 	// Memory request patch
 	if memRequest, exists := pod.Annotations[fmt.Sprintf("optipod.io/memory-request.%s", containerName)]; exists {
 		patch := PatchOperation{
-			Op:    "replace",
+			Op:    patchOpReplace,
 			Path:  fmt.Sprintf("/spec/containers/%d/resources/requests/memory", containerIndex),
 			Value: memRequest,
 		}
@@ -160,7 +163,7 @@ func (w *WebhookSimulator) generateContainerPatches(pod *corev1.Pod, containerNa
 	// CPU limit patch
 	if cpuLimit, exists := pod.Annotations[fmt.Sprintf("optipod.io/cpu-limit.%s", containerName)]; exists {
 		patch := PatchOperation{
-			Op:    "replace",
+			Op:    patchOpReplace,
 			Path:  fmt.Sprintf("/spec/containers/%d/resources/limits/cpu", containerIndex),
 			Value: cpuLimit,
 		}
@@ -170,7 +173,7 @@ func (w *WebhookSimulator) generateContainerPatches(pod *corev1.Pod, containerNa
 	// Memory limit patch
 	if memLimit, exists := pod.Annotations[fmt.Sprintf("optipod.io/memory-limit.%s", containerName)]; exists {
 		patch := PatchOperation{
-			Op:    "replace",
+			Op:    patchOpReplace,
 			Path:  fmt.Sprintf("/spec/containers/%d/resources/limits/memory", containerIndex),
 			Value: memLimit,
 		}

@@ -1,0 +1,677 @@
+---
+title: Creating Your First Policy
+description: Step-by-step guide to creating and configuring your first OptimizationPolicy
+---
+
+This guide walks you through creating and configuring your first OptimizationPolicy. You'll learn about each field, understand the options, and create a policy tailored to your needs.
+
+## What is an OptimizationPolicy?
+
+An OptimizationPolicy is a Kubernetes Custom Resource that tells OptiPod:
+- **Which workloads** to optimize (via selectors)
+- **How to collect metrics** (provider, window, percentile)
+- **Safety constraints** (resource bounds, safety factors)
+- **How to apply changes** (Auto, Recommend, or Disabled mode)
+
+## Policy Structure
+
+Every OptimizationPolicy has five main sections:
+
+```yaml
+apiVersion: optipod.optipod.io/v1alpha1
+kind: OptimizationPolicy
+metadata:
+  name: my-policy
+  namespace: default
+spec:
+  mode: Recommend              # 1. Operational mode
+  selector: {}                 # 2. Workload selection
+  metricsConfig: {}            # 3. Metrics collection
+  resourceBounds: {}           # 4. Safety constraints
+  updateStrategy: {}           # 5. Update behavior
+```
+
+Let's build a policy step by step.
+
+## Step 1: Choose an Operational Mode
+
+The `mode` field controls what OptiPod does with recommendations:
+
+### Recommend Mode (Safe Default)
+
+Start here! OptiPod computes recommendations but doesn't apply them.
+
+```yaml
+spec:
+  mode: Recommend
+```
+
+**What happens:**
+- ✅ Recommendations are written as annotations on workloads
+- ✅ No pods are restarted
+- ✅ No resources are changed
+- ✅ Safe to try in production
+
+**Use when:**
+- Testing OptiPod for the first time
+- Evaluating recommendations before applying
+- Generating impact reports
+
+### Auto Mode (Opt-In)
+
+OptiPod automatically applies recommendations.
+
+```yaml
+spec:
+  mode: Auto
+```
+
+**What happens:**
+- ⚠️ Resources are updated automatically
+- ⚠️ Pods may be restarted (depending on update strategy)
+- ✅ Continuous optimization
+
+**Use when:**
+- You've reviewed recommendations in Recommend mode
+- You've generated and reviewed an impact report
+- You're confident in your safety constraints
+
+### Disabled Mode
+
+Stop processing workloads while preserving policy configuration.
+
+```yaml
+spec:
+  mode: Disabled
+```
+
+**Use when:**
+- Temporarily pausing optimization
+- Troubleshooting issues
+- Maintaining policy configuration without active processing
+
+## Step 2: Select Workloads
+
+The `selector` field determines which workloads the policy applies to. You can combine multiple selector types.
+
+### By Workload Labels
+
+Target specific workloads using labels:
+
+```yaml
+spec:
+  selector:
+    workloadSelector:
+      matchLabels:
+        optipod.io/enabled: "true"
+        tier: backend
+```
+
+Label your workloads:
+
+```bash
+kubectl label deployment my-app optipod.io/enabled=true
+```
+
+### By Namespace Labels
+
+Target all workloads in namespaces with specific labels:
+
+```yaml
+spec:
+  selector:
+    namespaceSelector:
+      matchLabels:
+        environment: production
+```
+
+### By Namespace Names
+
+Use allow/deny lists for namespace filtering:
+
+```yaml
+spec:
+  selector:
+    namespaces:
+      allow:
+        - production
+        - staging
+      deny:
+        - kube-system
+        - kube-public
+```
+
+**Note:** Deny takes precedence over allow.
+
+### By Workload Type
+
+Filter by workload type (Deployment, StatefulSet, DaemonSet):
+
+```yaml
+spec:
+  selector:
+    # Only optimize Deployments
+    workloadTypes:
+      include:
+        - Deployment
+```
+
+Or exclude specific types:
+
+```yaml
+spec:
+  selector:
+    # Optimize everything except StatefulSets
+    workloadTypes:
+      exclude:
+        - StatefulSet
+```
+
+**Note:** Exclude takes precedence over include.
+
+### Combined Example
+
+Combine multiple selectors for precise targeting:
+
+```yaml
+spec:
+  selector:
+    # Namespaces with environment=production label
+    namespaceSelector:
+      matchLabels:
+        environment: production
+
+    # Workloads with optimize=true label
+    workloadSelector:
+      matchLabels:
+        optipod.io/enabled: "true"
+
+    # Additional namespace filtering
+    namespaces:
+      deny:
+        - kube-system
+
+    # Only Deployments and DaemonSets
+    workloadTypes:
+      include:
+        - Deployment
+        - DaemonSet
+```
+
+## Step 3: Configure Metrics Collection
+
+The `metricsConfig` section defines how OptiPod collects and analyzes metrics.
+
+### Basic Configuration
+
+```yaml
+spec:
+  metricsConfig:
+    provider: metrics-server
+    rollingWindow: 24h
+    percentile: P90
+    safetyFactor: 1.2
+```
+
+### Provider
+
+Choose your metrics backend:
+
+```yaml
+metricsConfig:
+  provider: metrics-server  # or prometheus
+```
+
+**metrics-server:**
+- ✅ Simple setup
+- ✅ Lower resource usage
+- ✅ Built into most clusters
+- ⚠️ Limited historical data (~15 minutes)
+
+**prometheus:**
+- ✅ Rich historical data
+- ✅ Advanced queries
+- ✅ Existing monitoring infrastructure
+- ⚠️ Requires Prometheus installation
+
+### Rolling Window
+
+How far back to analyze metrics:
+
+```yaml
+metricsConfig:
+  rollingWindow: 24h  # 1 day, 48h, 7d, etc.
+```
+
+**Recommendations:**
+- **24h**: Standard for most workloads
+- **48h**: More stable for variable workloads
+- **7d**: Very conservative, includes weekly patterns
+
+### Percentile
+
+Which percentile to use for recommendations:
+
+```yaml
+metricsConfig:
+  percentile: P90  # P50, P90, or P99
+```
+
+**P50 (Median):**
+- More aggressive optimization
+- Use for stable, predictable workloads
+- Higher risk of resource exhaustion
+
+**P90 (Recommended):**
+- Balanced approach
+- Handles most spikes
+- Good for typical workloads
+
+**P99 (Conservative):**
+- Very safe
+- Handles nearly all spikes
+- Use for critical or variable workloads
+
+### Safety Factor
+
+Multiplier applied to the percentile:
+
+```yaml
+metricsConfig:
+  safetyFactor: 1.2  # 20% buffer above P90
+```
+
+**Recommendations:**
+- **1.1**: Aggressive (10% buffer)
+- **1.2**: Balanced (20% buffer) - recommended
+- **1.3-1.5**: Conservative (30-50% buffer)
+
+**Example:** If P90 CPU usage is 500m and safety factor is 1.2, the recommendation is 600m (500m × 1.2).
+
+## Step 4: Set Resource Bounds
+
+The `resourceBounds` section defines min/max constraints for recommendations.
+
+```yaml
+spec:
+  resourceBounds:
+    cpu:
+      min: "100m"
+      max: "4000m"
+    memory:
+      min: "128Mi"
+      max: "8Gi"
+```
+
+**Important:** OptiPod will NEVER recommend values outside these bounds, regardless of observed usage.
+
+### CPU Bounds
+
+```yaml
+resourceBounds:
+  cpu:
+    min: "100m"   # 0.1 CPU cores
+    max: "4000m"  # 4 CPU cores
+```
+
+**Recommendations:**
+- **min**: Set based on minimum viable performance
+- **max**: Set based on node capacity and cost constraints
+
+### Memory Bounds
+
+```yaml
+resourceBounds:
+  memory:
+    min: "128Mi"  # 128 mebibytes
+    max: "8Gi"    # 8 gibibytes
+```
+
+**Recommendations:**
+- **min**: Set based on application startup requirements
+- **max**: Set based on node capacity and OOM risk tolerance
+
+## Step 5: Configure Update Strategy
+
+The `updateStrategy` section controls how changes are applied.
+
+### Basic Configuration
+
+```yaml
+spec:
+  updateStrategy:
+    allowInPlaceResize: true
+    allowRecreate: false
+    updateRequestsOnly: true
+    useServerSideApply: true
+```
+
+### Allow In-Place Resize
+
+Enable in-place pod resize (Kubernetes 1.29+):
+
+```yaml
+updateStrategy:
+  allowInPlaceResize: true
+```
+
+**When true:**
+- Resources updated without pod restart (if supported)
+- Faster, less disruptive
+
+**When false:**
+- Changes require pod recreation
+- Only applied if `allowRecreate: true`
+
+### Allow Recreate
+
+Allow pod recreation when in-place resize isn't available:
+
+```yaml
+updateStrategy:
+  allowRecreate: false  # Safer default
+```
+
+**When true:**
+- ⚠️ Pods will be restarted to apply changes
+- Use with caution in production
+
+**When false:**
+- Changes requiring recreation are skipped
+- Safer, but some optimizations won't apply
+
+### Update Requests Only
+
+Control whether to update limits:
+
+```yaml
+updateStrategy:
+  updateRequestsOnly: true  # Recommended
+```
+
+**When true:**
+- Only resource requests are updated
+- Limits remain unchanged
+- Simpler, less risky
+
+**When false:**
+- Both requests and limits are updated
+- Limits calculated using `limitConfig` multipliers
+
+### Use Server-Side Apply
+
+Enable Server-Side Apply for GitOps compatibility:
+
+```yaml
+updateStrategy:
+  useServerSideApply: true  # Recommended
+```
+
+**When true:**
+- ✅ Compatible with ArgoCD, Flux
+- ✅ Field-level ownership tracking
+- ✅ No sync conflicts
+
+**When false:**
+- ⚠️ May conflict with GitOps tools
+- Uses Strategic Merge Patch
+
+## Complete Example
+
+Here's a complete, production-ready policy:
+
+```yaml
+apiVersion: optipod.optipod.io/v1alpha1
+kind: OptimizationPolicy
+metadata:
+  name: production-backend
+  namespace: default
+spec:
+  # Start in Recommend mode
+  mode: Recommend
+
+  # Target backend workloads in production
+  selector:
+    namespaceSelector:
+      matchLabels:
+        environment: production
+    workloadSelector:
+      matchLabels:
+        tier: backend
+        optipod.io/enabled: "true"
+    namespaces:
+      deny:
+        - kube-system
+    workloadTypes:
+      include:
+        - Deployment
+
+  # Balanced metrics configuration
+  metricsConfig:
+    provider: metrics-server
+    rollingWindow: 24h
+    percentile: P90
+    safetyFactor: 1.2
+
+  # Conservative resource bounds
+  resourceBounds:
+    cpu:
+      min: "100m"
+      max: "4000m"
+    memory:
+      min: "128Mi"
+      max: "8Gi"
+
+  # Safe update strategy
+  updateStrategy:
+    allowInPlaceResize: true
+    allowRecreate: false
+    updateRequestsOnly: true
+    useServerSideApply: true
+
+  # Check every 5 minutes
+  reconciliationInterval: 5m
+```
+
+## Applying Your Policy
+
+### Create the Policy
+
+```bash
+kubectl apply -f my-policy.yaml
+```
+
+### Verify Creation
+
+```bash
+# Check policy exists
+kubectl get optimizationpolicy
+
+# View policy details
+kubectl describe optimizationpolicy production-backend
+```
+
+### Label Workloads
+
+```bash
+# Label a single deployment
+kubectl label deployment my-app optipod.io/enabled=true
+
+# Label multiple deployments
+kubectl label deployment -l tier=backend optipod.io/enabled=true
+```
+
+### Monitor Policy Status
+
+```bash
+# Check workload counts
+kubectl get optimizationpolicy production-backend -o yaml | grep -A5 status
+
+# Watch for changes
+kubectl get optimizationpolicy -w
+```
+
+## Reviewing Recommendations
+
+### Check Policy Status
+
+```bash
+kubectl describe optimizationpolicy production-backend
+```
+
+Look for:
+- `workloadsDiscovered`: How many workloads match
+- `workloadsProcessed`: How many were successfully processed
+- `lastReconciliation`: When the policy last ran
+
+### View Workload Recommendations
+
+Recommendations are stored as annotations on each workload:
+
+```bash
+# View all annotations
+kubectl get deployment my-app -o yaml | grep optipod.io
+
+# View specific recommendations
+kubectl get deployment my-app -o jsonpath='{.metadata.annotations}' | jq
+```
+
+Example annotations:
+
+```yaml
+metadata:
+  annotations:
+    optipod.io/managed: "true"
+    optipod.io/policy: "production-backend"
+    optipod.io/last-recommendation: "2025-01-28T10:30:00Z"
+    optipod.io/recommendation.app.cpu-request: "250m"
+    optipod.io/recommendation.app.memory-request: "512Mi"
+```
+
+### Generate Impact Report
+
+Before switching to Auto mode, generate a report:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Sagart-cactus/optipod/main/scripts/optipod-recommendation-report.sh -o report.sh
+chmod +x report.sh
+./report.sh -o html -f impact-report.html
+```
+
+## Switching to Auto Mode
+
+Once you're satisfied with recommendations:
+
+```bash
+kubectl patch optimizationpolicy production-backend \
+  --type=merge \
+  -p '{"spec":{"mode":"Auto"}}'
+```
+
+**Important:** Monitor your workloads closely after switching to Auto mode.
+
+## Common Patterns
+
+### Pattern 1: Start Conservative
+
+```yaml
+spec:
+  mode: Recommend
+  metricsConfig:
+    percentile: P99
+    safetyFactor: 1.3
+  updateStrategy:
+    allowRecreate: false
+```
+
+### Pattern 2: Gradual Adoption
+
+```yaml
+# Week 1: Recommend mode, review
+mode: Recommend
+
+# Week 2: Auto mode, no recreation
+mode: Auto
+updateStrategy:
+  allowRecreate: false
+
+# Week 3: Allow recreation if needed
+updateStrategy:
+  allowRecreate: true
+```
+
+### Pattern 3: Environment-Specific
+
+```yaml
+# Development: Aggressive
+metricsConfig:
+  percentile: P50
+  safetyFactor: 1.1
+updateStrategy:
+  allowRecreate: true
+
+# Production: Conservative
+metricsConfig:
+  percentile: P99
+  safetyFactor: 1.3
+updateStrategy:
+  allowRecreate: false
+```
+
+## Troubleshooting
+
+### No Workloads Discovered
+
+**Check:**
+1. Workload labels match selector
+2. Namespace is not in deny list
+3. Workload type is not excluded
+
+```bash
+# Verify labels
+kubectl get deployment my-app --show-labels
+
+# Check policy selector
+kubectl get optimizationpolicy production-backend -o yaml | grep -A10 selector
+```
+
+### Recommendations Not Appearing
+
+**Check:**
+1. Policy is in Recommend or Auto mode
+2. Sufficient metrics data collected
+3. Controller logs for errors
+
+```bash
+# Check mode
+kubectl get optimizationpolicy production-backend -o jsonpath='{.spec.mode}'
+
+# Check controller logs
+kubectl logs -n optipod-system -l app.kubernetes.io/component=controller --tail=50
+```
+
+### Changes Not Applied (Auto Mode)
+
+**Check:**
+1. `allowRecreate` setting if in-place resize unavailable
+2. Recommendations within resource bounds
+3. Controller logs for skip reasons
+
+```bash
+# Check update strategy
+kubectl get optimizationpolicy production-backend -o yaml | grep -A5 updateStrategy
+
+# Check logs
+kubectl logs -n optipod-system -l app.kubernetes.io/component=controller | grep -i skip
+```
+
+## Next Steps
+
+- [Architecture Overview](../../concepts/architecture) - Understand how OptiPod works
+- [Operational Modes](../../concepts/modes) - Deep dive into Auto, Recommend, and Disabled modes
+- [Update Strategies](../../concepts/update-strategies) - Learn about SSA vs Webhook strategies
+- [CRD Reference](../../reference/crd-spec) - Complete field documentation
+
+---
+
+*For advanced configuration options, see the [CRD Reference](../../reference/crd-spec).*

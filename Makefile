@@ -37,7 +37,7 @@ all: build
 
 .PHONY: help
 help: ## Display this help.
-	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make \033[36m<target>\033[0m\n"} /^[a-zA-Z_0-9-]+:.*?##/ { printf "  \033[36m%-15s\033[0m %s\n", $1, $2 } /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($0, 5) } ' $(MAKEFILE_LIST)
+	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make \033[36m<target>\033[0m\n"} /^[a-zA-Z_0-9-]+:.*?##/ { printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2 } /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
 
 ##@ Code Quality
 
@@ -152,6 +152,13 @@ manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and Cust
 .PHONY: generate
 generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
 	"$(CONTROLLER_GEN)" object:headerFile="hack/boilerplate.go.txt" paths="./..."
+	@# controller-gen v0.22 emits the meta/v1 import without its `v1` alias, which the
+	@# goimports check in CI rejects. Normalise here so `make generate` stays clean.
+	@if command -v goimports >/dev/null 2>&1; then \
+		goimports -w api/v1alpha1/zz_generated.deepcopy.go; \
+	else \
+		echo "goimports not found; run 'make format' before committing generated code"; \
+	fi
 
 .PHONY: fmt
 fmt: ## Run go fmt against code.
@@ -263,21 +270,11 @@ webhook-manual: ## Install OptipPod with webhook support using manual certificat
 	@echo "Installing OptipPod with manual certificates..."
 	CERT_MANAGER=manual ./config/webhook/install.sh
 
-##@ E2E Tests
+##@ Fast Gate
 
-.PHONY: setup-e2e
-setup-e2e: ## Set up Kind cluster for e2e tests
-	@echo "Setting up e2e test environment..."
-	@command -v kind >/dev/null 2>&1 || { \
-		echo "Kind is not installed. Please install Kind manually."; \
-		exit 1; \
-	}
-	@if ! kind get clusters | grep -q "optipod-e2e-test"; then \
-		echo "Creating Kind cluster for e2e tests..."; \
-		kind create cluster --name optipod-e2e-test; \
-	else \
-		echo "Kind cluster optipod-e2e-test already exists"; \
-	fi
+.PHONY: test-fast
+test-fast: setup-envtest ## Run the non-mutating fast gate: short unit, envtest and clusterless tests (never regenerates or formats tracked files)
+	KUBEBUILDER_ASSETS="$(shell "$(ENVTEST)" use $(ENVTEST_K8S_VERSION) --bin-dir "$(LOCALBIN)" -p path)" go test -short -count=1 ./api/... ./internal/... ./cmd/... ./test/clusterless/workflows/...
 
 ##@ Cluster-Free E2E Tests
 
@@ -312,51 +309,60 @@ test-clusterless-focus: ## Run focused cluster-free tests
 test-all: test test-clusterless ## Run all tests (unit + cluster-free E2E)
 	@echo "✅ All tests completed"
 
-##@ Traditional E2E Tests (Cluster-Based)
+##@ Kind E2E (hermetic suite)
 
-.PHONY: test-e2e
-test-e2e: setup-e2e manifests generate fmt vet ## Run e2e tests
-	@echo "Running comprehensive e2e tests..."
-	KIND_CLUSTER_NAME=optipod-e2e-test go test ./test/e2e/... -v -ginkgo.v -timeout=30m
+# The Kind suite lives ONLY in test/e2e/suite: these targets never touch the
+# default kubeconfig, tracked config or existing clusters. `make
+# test-e2e-smoke` is the one-command entry point from a clean checkout: it
+# preflights, creates its own uniquely named Kind cluster, builds and loads the
+# checkout controller once, installs it together with the webhook and the
+# deterministic in-cluster metrics fixture, runs the smoke-labelled specs and
+# removes only its own cluster. Per-spec JUnit (junit.xml), measured phase/spec timings
+# (timings.json) and, on failure, a redacted pre-teardown diagnostics bundle
+# are written under test/e2e/artifacts/run-<id>/ (git-ignored). KEEP_CLUSTER=1
+# retains the owned cluster and prints private-kubeconfig inspection, explicit
+# focused-reuse (make test-e2e-reuse) and disposal commands; a reused cluster
+# keeps the retained install and is never deleted by a run.
+E2E_SUITE ?= ./test/e2e/suite/
+E2E_SUITE_TIMEOUT ?= 45m
+E2E_LABELS ?= smoke
 
-.PHONY: test-e2e-focus
-test-e2e-focus: setup-e2e manifests generate fmt vet ## Run focused e2e tests
-	@echo "Running focused e2e tests..."
-	KIND_CLUSTER_NAME=optipod-e2e-test go test ./test/e2e/... -v -ginkgo.v -ginkgo.focus="$(FOCUS)" -timeout=30m
+.PHONY: test-e2e-smoke
+test-e2e-smoke: ## Run the hermetic installed-controller smoke suite end to end (one command; owns and removes its Kind cluster)
+	@echo "Running the hermetic installed-controller smoke suite (label filter: smoke)..."
+	go test $(E2E_SUITE) -count=1 -timeout=$(E2E_SUITE_TIMEOUT) -v -ginkgo.v -ginkgo.label-filter="smoke"
 
-.PHONY: e2e-cluster
-e2e-cluster: kustomize ## Create clean Kind cluster for contract testing with consistent configuration
-	@echo "Creating clean Kind cluster for contract testing with consistent configuration..."
-	@echo "Cluster name: optipod-contract-e2e"
-	@command -v kind >/dev/null 2>&1 || { \
-		echo "Kind is not installed. Please install Kind manually."; \
-		exit 1; \
-	}
-	@command -v docker >/dev/null 2>&1 || { \
-		echo "Docker is not installed or not running. Please ensure Docker is available."; \
-		exit 1; \
-	}
-	@kind delete cluster --name optipod-contract-e2e || true
-	@kind create cluster --name optipod-contract-e2e
+.PHONY: test-e2e-labels
+test-e2e-labels: ## Run the Kind suite with a Ginkgo label filter (E2E_LABELS="smoke && webhook")
+	@echo "Running the Kind suite (package: $(E2E_SUITE)) with label filter: $(E2E_LABELS)"
+	go test $(E2E_SUITE) -count=1 -timeout=$(E2E_SUITE_TIMEOUT) -v -ginkgo.v -ginkgo.label-filter="$(E2E_LABELS)"
 
-.PHONY: test-e2e-contract
-test-e2e-contract: ## Run contract-based E2E tests with consistent configuration
-	@echo "Running contract E2E tests with consistent configuration..."
-	@echo "Environment: $(shell if [ "$$CI" = "true" ]; then echo "CI"; else echo "local"; fi)"
-	@echo "Cluster: optipod-contract-e2e"
-	@echo "Timeout: 10 minutes"
-	@echo "Note: Cluster creation is handled by the test suite BeforeSuite"
-	KIND_CLUSTER_NAME=optipod-contract-e2e go test ./test/e2e/contract/... -v -ginkgo.v -timeout=10m
+# Full conformance deliberately INCLUDES the smoke coverage: the label filter
+# selects every smoke AND every conformance spec over one owned installed
+# cluster, so the conformance command cannot pass by bypassing smoke
+# (VAL-CROSS-003). Nothing skipped here is silently dropped - diagnostics,
+# canary and deliberate-failure harness self-checks keep their own opt-in
+# label invocations.
+E2E_CONFORMANCE_TIMEOUT ?= 60m
 
-.PHONY: cleanup-e2e
-cleanup-e2e: ## Clean up e2e test environment
-	@echo "Cleaning up e2e test environment..."
-	@kind delete cluster --name optipod-e2e-test || true
+.PHONY: test-e2e-conformance
+test-e2e-conformance: ## Run the hermetic installed-controller conformance suite end to end: smoke plus all conformance labels (one command; owns and removes its Kind cluster)
+	@echo "Running the hermetic installed-controller conformance suite (label filter: smoke || conformance)..."
+	go test $(E2E_SUITE) -count=1 -timeout=$(E2E_CONFORMANCE_TIMEOUT) -v -ginkgo.v -ginkgo.label-filter="smoke || conformance"
 
-.PHONY: cleanup-contract-e2e
-cleanup-contract-e2e: ## Clean up contract e2e test environment
-	@echo "Cleaning up contract e2e test environment..."
-	@kind delete cluster --name optipod-contract-e2e || true
+.PHONY: test-e2e-reuse
+test-e2e-reuse: ## Focused rerun against a retained harness cluster (OPTIPOD_E2E_REUSE_CLUSTER/OPTIPOD_E2E_REUSE_KUBECONFIG from a KEEP_CLUSTER=1 run; the retained install is kept, not rebuilt)
+	@if [ -z "$$OPTIPOD_E2E_REUSE_CLUSTER" ] || [ -z "$$OPTIPOD_E2E_REUSE_KUBECONFIG" ]; then \
+		echo "test-e2e-reuse requires OPTIPOD_E2E_REUSE_CLUSTER and OPTIPOD_E2E_REUSE_KUBECONFIG (printed by a KEEP_CLUSTER=1 run)"; \
+		exit 2; \
+	fi
+	@echo "Reusing retained harness cluster $$OPTIPOD_E2E_REUSE_CLUSTER for a focused rerun (label filter: $(E2E_LABELS)); the retained install is kept, not rebuilt"
+	go test $(E2E_SUITE) -count=1 -timeout=$(E2E_SUITE_TIMEOUT) -v -ginkgo.v -ginkgo.label-filter="$(E2E_LABELS)"
+
+.PHONY: test-e2e-deliberate-failure
+test-e2e-deliberate-failure: ## Deliberately fail one suite spec to verify pre-teardown redacted diagnostics (expected nonzero exit)
+	@echo "Deliberately failing one new-suite spec to exercise redacted failure diagnostics (nonzero exit is expected)"
+	OPTIPOD_E2E_DELIBERATE_FAILURE=1 go test $(E2E_SUITE) -count=1 -timeout=$(E2E_SUITE_TIMEOUT) -v -ginkgo.v -ginkgo.label-filter="deliberate-failure"
 
 ##@ Dependencies
 
@@ -374,16 +380,16 @@ ENVTEST ?= $(LOCALBIN)/setup-envtest
 GOLANGCI_LINT = $(LOCALBIN)/golangci-lint
 
 ## Tool Versions
-KUSTOMIZE_VERSION ?= v5.7.1
-CONTROLLER_TOOLS_VERSION ?= v0.19.0
+KUSTOMIZE_VERSION ?= v5.8.1
+CONTROLLER_TOOLS_VERSION ?= v0.22.0
 
 #ENVTEST_VERSION is the version of controller-runtime release branch to fetch the envtest setup script (i.e. release-0.20)
-ENVTEST_VERSION ?= release-0.22
+ENVTEST_VERSION ?= release-0.25
 
 #ENVTEST_K8S_VERSION is the version of Kubernetes to use for setting up ENVTEST binaries (i.e. 1.31)
-ENVTEST_K8S_VERSION ?= 1.34
+ENVTEST_K8S_VERSION ?= 1.37
 
-GOLANGCI_LINT_VERSION ?= v2.5.0
+GOLANGCI_LINT_VERSION ?= v2.13.2
 .PHONY: kustomize
 kustomize: $(KUSTOMIZE) ## Download kustomize locally if necessary.
 $(KUSTOMIZE): $(LOCALBIN)
