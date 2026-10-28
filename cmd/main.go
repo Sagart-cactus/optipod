@@ -19,7 +19,9 @@ package main
 import (
 	"crypto/tls"
 	"flag"
+	"fmt"
 	"os"
+	"path/filepath"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -46,6 +48,7 @@ import (
 	"github.com/optipod/optipod/internal/metrics"
 	"github.com/optipod/optipod/internal/observability"
 	"github.com/optipod/optipod/internal/recommendation"
+	webhookpkg "github.com/optipod/optipod/internal/webhook"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -65,23 +68,41 @@ func init() {
 func main() {
 	// Initialize operator configuration
 	operatorConfig := config.NewOperatorConfig()
+
+	const configMountDir = "/etc/optipod"
+	if err := operatorConfig.LoadFromDir(configMountDir); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to load operator config from %s: %v\n", configMountDir, err)
+		os.Exit(1)
+	}
+	if err := operatorConfig.LoadFromEnv(); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to load operator config from environment: %v\n", err)
+		os.Exit(1)
+	}
+
 	operatorConfig.BindFlags()
 
-	var metricsAddr string
+	var metricsAddr = operatorConfig.GetMetricsAddr()
 	var metricsCertPath, metricsCertName, metricsCertKey string
 	var webhookCertPath, webhookCertName, webhookCertKey string
-	var probeAddr string
+	var webhookServiceName, webhookServiceNamespace string
+	var enableWebhook bool
+	var probeAddr = operatorConfig.GetProbeAddr()
 	var secureMetrics bool
 	var enableHTTP2 bool
 	var tlsOpts []func(*tls.Config)
-	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
+	flag.StringVar(&metricsAddr, "metrics-bind-address", metricsAddr, "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
-	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
+	flag.StringVar(&probeAddr, "health-probe-bind-address", probeAddr, "The address the probe endpoint binds to.")
 	flag.BoolVar(&secureMetrics, "metrics-secure", true,
 		"If set, the metrics endpoint is served securely via HTTPS. Use --metrics-secure=false to use HTTP instead.")
 	flag.StringVar(&webhookCertPath, "webhook-cert-path", "", "The directory that contains the webhook certificate.")
 	flag.StringVar(&webhookCertName, "webhook-cert-name", "tls.crt", "The name of the webhook certificate file.")
 	flag.StringVar(&webhookCertKey, "webhook-cert-key", "tls.key", "The name of the webhook key file.")
+	flag.StringVar(&webhookServiceName, "webhook-service-name", "optipod-webhook-service",
+		"The name of the webhook service.")
+	flag.StringVar(&webhookServiceNamespace, "webhook-service-namespace", "optipod-system",
+		"The namespace of the webhook service.")
+	flag.BoolVar(&enableWebhook, "enable-webhook", true, "Enable the mutating webhook for pod resource modification.")
 	flag.StringVar(&metricsCertPath, "metrics-cert-path", "",
 		"The directory that contains the metrics server certificate.")
 	flag.StringVar(&metricsCertName, "metrics-cert-name", "tls.crt", "The name of the metrics server certificate file.")
@@ -236,34 +257,79 @@ func main() {
 
 	switch providerType {
 	case metrics.ProviderTypePrometheus:
+		// Build Prometheus configuration with authentication
+		promConfig := metrics.PrometheusConfig{
+			URL: operatorConfig.GetPrometheusURL(),
+			Auth: metrics.PrometheusAuth{
+				Type:        operatorConfig.GetPrometheusAuthType(),
+				Username:    operatorConfig.GetPrometheusUsername(),
+				Password:    operatorConfig.GetPrometheusPassword(),
+				BearerToken: operatorConfig.GetPrometheusBearerToken(),
+			},
+			TLS: metrics.PrometheusTLS{
+				Enabled: operatorConfig.GetPrometheusTLSCAFile() != "" ||
+					operatorConfig.GetPrometheusTLSCertFile() != "",
+				InsecureSkipVerify: operatorConfig.GetPrometheusTLSInsecure(),
+				CAFile:             operatorConfig.GetPrometheusTLSCAFile(),
+				CertFile:           operatorConfig.GetPrometheusTLSCertFile(),
+				KeyFile:            operatorConfig.GetPrometheusTLSKeyFile(),
+			},
+			Timeout: operatorConfig.GetPrometheusTimeout(),
+		}
+
 		metricsProvider, err = metrics.NewProvider(metrics.ProviderConfig{
-			Type:          metrics.ProviderTypePrometheus,
-			PrometheusURL: operatorConfig.GetPrometheusURL(),
+			Type:       metrics.ProviderTypePrometheus,
+			Prometheus: promConfig,
 		})
 	case metrics.ProviderTypeMetricsServer:
 		metricsProvider, err = metrics.NewProvider(metrics.ProviderConfig{
-			Type:             metrics.ProviderTypeMetricsServer,
-			Clientset:        clientset,
-			MetricsClientset: metricsClientset,
-			MaxSamples:       operatorConfig.GetMetricsMaxSamples(),
-			SampleInterval:   operatorConfig.GetMetricsSampleInterval(),
+			Type:                             metrics.ProviderTypeMetricsServer,
+			Clientset:                        clientset,
+			MetricsClientset:                 metricsClientset,
+			MaxSamples:                       operatorConfig.GetMetricsMaxSamples(),
+			SampleInterval:                   operatorConfig.GetMetricsSampleInterval(),
+			MetricsServerSamplingInterval:    operatorConfig.GetMetricsServerSamplingInterval(),
+			MetricsServerMaxSamplesPerTarget: operatorConfig.GetMetricsServerMaxSamplesPerTarget(),
+			MetricsServerMinSamplesRequired:  operatorConfig.GetMetricsServerMinSamplesRequired(),
+			MetricsServerTargetTTL:           operatorConfig.GetMetricsServerTargetTTL(),
 		})
 	default:
 		// Default to metrics-server with fallback
 		setupLog.Info("Unknown metrics provider, defaulting to metrics-server",
 			"provider", operatorConfig.GetMetricsProvider())
 		metricsProvider, err = metrics.NewProvider(metrics.ProviderConfig{
-			Type:             metrics.ProviderTypeMetricsServer,
-			Clientset:        clientset,
-			MetricsClientset: metricsClientset,
-			MaxSamples:       operatorConfig.GetMetricsMaxSamples(),
-			SampleInterval:   operatorConfig.GetMetricsSampleInterval(),
+			Type:                             metrics.ProviderTypeMetricsServer,
+			Clientset:                        clientset,
+			MetricsClientset:                 metricsClientset,
+			MaxSamples:                       operatorConfig.GetMetricsMaxSamples(),
+			SampleInterval:                   operatorConfig.GetMetricsSampleInterval(),
+			MetricsServerSamplingInterval:    operatorConfig.GetMetricsServerSamplingInterval(),
+			MetricsServerMaxSamplesPerTarget: operatorConfig.GetMetricsServerMaxSamplesPerTarget(),
+			MetricsServerMinSamplesRequired:  operatorConfig.GetMetricsServerMinSamplesRequired(),
+			MetricsServerTargetTTL:           operatorConfig.GetMetricsServerTargetTTL(),
 		})
 	}
 
 	if err != nil {
 		setupLog.Error(err, "unable to create metrics provider")
 		os.Exit(1)
+	}
+
+	if samplerProvider, ok := metricsProvider.(interface {
+		Sampler() *metrics.MetricsServerSampler
+	}); ok {
+		if sampler := samplerProvider.Sampler(); sampler != nil {
+			setupLog.Info("Registering metrics-server sampler with manager")
+			if err := mgr.Add(sampler); err != nil {
+				setupLog.Error(err, "unable to register metrics-server sampler")
+				os.Exit(1)
+			}
+			setupLog.Info("Metrics-server sampler registered successfully")
+		} else {
+			setupLog.Info("Metrics-server sampler is nil, skipping registration")
+		}
+	} else {
+		setupLog.Info("Metrics provider does not support sampling", "provider", operatorConfig.GetMetricsProvider())
 	}
 
 	// Initialize recommendation engine
@@ -280,12 +346,19 @@ func main() {
 		mgr.GetClient(),
 	)
 
-	// Create event recorder
+	// Create event recorder.
+	// NOTE: GetEventRecorderFor is deprecated in favour of the events/v1 API
+	// (GetEventRecorder). Migrating means switching record.EventRecorder to
+	// events.EventRecorder throughout internal/observability and the reconciler,
+	// and supplying the new per-event "action" field, so it is tracked as
+	// separate follow-up work rather than folded into a dependency bump.
+	//nolint:staticcheck // SA1019: events API migration tracked separately
 	eventRecorder := observability.NewEventRecorder(mgr.GetEventRecorderFor("optimizationpolicy-controller"))
 
 	if err := (&controller.OptimizationPolicyReconciler{
-		Client:            mgr.GetClient(),
-		Scheme:            mgr.GetScheme(),
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
+		//nolint:staticcheck // SA1019: events API migration tracked separately
 		Recorder:          mgr.GetEventRecorderFor("optimizationpolicy-controller"),
 		WorkloadProcessor: workloadProcessor,
 		EventRecorder:     eventRecorder,
@@ -293,6 +366,41 @@ func main() {
 		setupLog.Error(err, "unable to create controller", "controller", "OptimizationPolicy")
 		os.Exit(1)
 	}
+
+	// Setup webhook server if enabled
+	// Note: The MutatingWebhookConfiguration is managed by Helm/kubectl, not by the controller.
+	// cert-manager automatically injects the CA bundle via the cert-manager.io/inject-ca-from annotation.
+	if enableWebhook && len(webhookCertPath) > 0 {
+		setupLog.Info("Starting webhook server",
+			"webhook-cert-path", webhookCertPath,
+			"webhook-service-name", webhookServiceName,
+			"webhook-service-namespace", webhookServiceNamespace)
+
+		// Create event recorder for webhook
+		eventRecorder := observability.NewEventRecorder(nil)
+
+		// Create webhook server
+		webhookServer := webhookpkg.NewServer(
+			mgr.GetClient(),
+			filepath.Join(webhookCertPath, webhookCertName),
+			filepath.Join(webhookCertPath, webhookCertKey),
+			9443, // Default webhook port
+			eventRecorder,
+		)
+
+		// Add webhook server as a runnable to the manager
+		if err := mgr.Add(webhookServer); err != nil {
+			setupLog.Error(err, "unable to add webhook server")
+			os.Exit(1)
+		}
+
+		setupLog.Info("Webhook server configured successfully")
+	} else if enableWebhook {
+		setupLog.Info("Webhook enabled but no certificate path provided, skipping webhook setup")
+	} else {
+		setupLog.Info("Webhook disabled, skipping webhook setup")
+	}
+
 	// +kubebuilder:scaffold:builder
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {

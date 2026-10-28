@@ -2,6 +2,15 @@
 
 This document outlines the current implementation status and future plans for OptiPod features.
 
+## 🚫 Non-goals
+
+OptiPod is intentionally scoped. The project is **not** trying to be:
+
+- A replacement for HPA/cluster autoscaling (replica counts and node provisioning are out of scope)
+- A full FinOps platform (billing ingestion, cost allocation, chargeback/showback)
+- A generic “mutate anything” controller (OptiPod only targets container `resources` fields)
+- A black-box auto-tuner that changes workloads without guardrails (safety bounds and review-first workflows are core)
+
 ## 🎯 Current Status
 
 OptiPod is in **active development** with core functionality implemented and tested. The project follows a spec-driven
@@ -28,9 +37,9 @@ development approach with comprehensive testing.
 
 - **Safety-First Approach**: ✅ Fully implemented
   - Resource bounds enforcement (min/max limits)
-  - Memory decrease safety thresholds
   - In-place resize support (Kubernetes 1.29+)
   - Graceful fallback for pod recreation scenarios
+  - Note: memory decreases are applied in full today; the `allowUnsafeMemoryDecrease` and `gradualDecreaseConfig` fields are schema-validated but not yet enforced by the controller
 
 ### Workload Management
 
@@ -72,11 +81,36 @@ development approach with comprehensive testing.
   - ⚠️ Limited testing coverage
   - 🔄 Enhanced integration testing in progress
 
-- **Prometheus Integration**: 🚧 Partial implementation
-  - ✅ Basic Prometheus query support
-  - 🔄 Advanced query optimization in progress
+- **Prometheus Integration**: ✅ Fully implemented
+  - ✅ Complete Prometheus query support
+  - ✅ Production-ready integration tested
+  - ✅ Custom metrics and query optimization
   - 🔄 High availability Prometheus setup testing
-  - 🔄 Custom metrics and alerting integration
+
+- **Per-Policy Metrics Providers**: 🚧 Planned for next release
+  - 🔄 Hybrid approach: Global default with per-policy override capability
+  - 🔄 Support different providers for different policies (e.g., Prometheus for production, metrics-server for dev)
+  - 🔄 Backward compatible implementation
+  - 📋 Dynamic provider switching and resource management
+
+### Configuration System
+
+- **Command-Line Configuration**: ✅ Fully implemented
+  - ✅ Complete flag-based configuration system
+  - ✅ Production-ready deployment args support
+  - ✅ Override capability for all operator settings
+
+- **ConfigMap Integration**: 🚧 Planned for next release
+  - ⚠️ ConfigMap defined but not actively read by application
+  - 🔄 Dynamic configuration loading from ConfigMap
+  - 🔄 Hot-reload capability without pod restart
+  - 📋 Environment variable support
+
+- **Configuration Precedence**: ✅ Documented
+  - ✅ Command-line flags (highest priority)
+  - ✅ Built-in defaults (fallback)
+  - 🔄 ConfigMap integration (planned)
+  - 📋 Environment variables (planned)
 
 ### Advanced Features
 
@@ -93,7 +127,13 @@ development approach with comprehensive testing.
 
 ## 📋 Planned Features
 
-### Q1 2025
+### Q1 2026
+
+- **Configuration System Enhancements**
+  - ConfigMap integration and dynamic loading
+  - Environment variable support
+  - Hot-reload capability without pod restart
+  - Configuration validation and error reporting
 
 - **Performance & Scale Enhancements**
   - Cluster-wide performance benchmarks
@@ -104,8 +144,9 @@ development approach with comprehensive testing.
   - Cost savings reporting and dashboards
   - Historical trend analysis
   - Recommendation confidence scoring
+  - Export Prometheus metrics for recommended CPU/memory requests/limits (per workload/container) to enable dashboards showing current vs recommended values (with careful cardinality controls)
 
-### Q2 2025
+### Q2 2026
 
 - **Enterprise Features**
   - Multi-cluster support and management
@@ -117,7 +158,7 @@ development approach with comprehensive testing.
   - Operator Lifecycle Manager (OLM) support
   - Integration with popular monitoring stacks (Grafana, Datadog)
 
-### Q3 2025
+### Q3 2026
 
 - **Machine Learning Enhancements**
   - Predictive scaling based on historical patterns
@@ -167,7 +208,7 @@ We welcome contributions to accelerate the roadmap! Priority areas:
 3. **Integration**: Build integrations with popular tools and platforms
 4. **Performance**: Contribute benchmarks and optimization improvements
 
-See [CONTRIBUTING.md](docs/CONTRIBUTING.md) for detailed contribution guidelines.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed contribution guidelines.
 
 ## 📞 Feedback
 
@@ -179,8 +220,8 @@ Have suggestions for the roadmap? We'd love to hear from you:
 
 ---
 
-**Last Updated**: December 2024  
-**Next Review**: March 2025
+**Last Updated**: January 2026  
+**Next Review**: April 2026
 
 > This roadmap is a living document and may be updated based on community feedback, technical discoveries, and changing
 > requirements.

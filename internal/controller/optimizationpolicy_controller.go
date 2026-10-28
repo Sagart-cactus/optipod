@@ -57,8 +57,12 @@ type OptimizationPolicyReconciler struct {
 // +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 // +kubebuilder:rbac:groups="",resources=namespaces,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
-// +kubebuilder:rbac:groups=apps,resources=deployments;statefulsets;daemonsets,verbs=get;list;watch;update;patch
+// +kubebuilder:rbac:groups=apps,resources=deployments;statefulsets;daemonsets;replicasets,verbs=get;list;watch;update;patch
+// (replicasets read mirrors the shipped Helm chart: the pod mutator resolves a
+// Deployment-owned pod to its parent workload through pod -> ReplicaSet ->
+// Deployment to read parent annotations, for ArgoCD compatibility.)
 // +kubebuilder:rbac:groups=metrics.k8s.io,resources=pods;nodes,verbs=get;list
+// +kubebuilder:rbac:groups=admissionregistration.k8s.io,resources=mutatingadmissionwebhookconfigurations,verbs=get;list;watch;create;update;patch;delete
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.

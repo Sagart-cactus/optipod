@@ -34,6 +34,12 @@ type MetricsProvider interface {
 	HealthCheck(ctx context.Context) error
 }
 
+// SamplingTargetRegistrar registers metrics-server sampling targets.
+// Other providers can ignore this interface.
+type SamplingTargetRegistrar interface {
+	RegisterTarget(key TargetKey, podName string)
+}
+
 // ContainerMetrics contains resource usage statistics for a single container.
 type ContainerMetrics struct {
 	CPU    ResourceMetrics

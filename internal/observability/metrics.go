@@ -17,8 +17,20 @@ limitations under the License.
 package observability
 
 import (
+	"fmt"
+
 	"github.com/prometheus/client_golang/prometheus"
 	"sigs.k8s.io/controller-runtime/pkg/metrics"
+)
+
+// Prometheus label names reused across the metric definitions below.
+const (
+	labelNamespace    = "namespace"
+	labelPolicy       = "policy"
+	labelWorkload     = "workload"
+	labelMethod       = "method"
+	labelKind         = "kind"
+	labelResourceType = "resource_type"
 )
 
 var (
@@ -28,7 +40,7 @@ var (
 			Name: "optipod_workloads_monitored",
 			Help: "Number of workloads currently monitored by OptiPod",
 		},
-		[]string{"namespace", "policy"},
+		[]string{labelNamespace, labelPolicy},
 	)
 
 	// WorkloadsUpdated tracks the number of workloads updated in the last reconciliation cycle
@@ -37,7 +49,7 @@ var (
 			Name: "optipod_workloads_updated",
 			Help: "Number of workloads updated in the last reconciliation cycle",
 		},
-		[]string{"namespace", "policy"},
+		[]string{labelNamespace, labelPolicy},
 	)
 
 	// WorkloadsSkipped tracks the number of workloads skipped with reasons
@@ -46,7 +58,7 @@ var (
 			Name: "optipod_workloads_skipped",
 			Help: "Number of workloads skipped in the last reconciliation cycle",
 		},
-		[]string{"namespace", "policy", "reason"},
+		[]string{labelNamespace, labelPolicy, "reason"},
 	)
 
 	// ReconciliationDuration tracks the duration of reconciliation cycles
@@ -56,7 +68,7 @@ var (
 			Help:    "Duration of reconciliation cycles in seconds",
 			Buckets: prometheus.DefBuckets,
 		},
-		[]string{"policy"},
+		[]string{labelPolicy},
 	)
 
 	// MetricsCollectionDuration tracks the duration of metrics collection operations
@@ -75,7 +87,7 @@ var (
 			Name: "optipod_reconciliation_errors_total",
 			Help: "Total number of reconciliation errors",
 		},
-		[]string{"policy", "error_type"},
+		[]string{labelPolicy, "error_type"},
 	)
 
 	// RecommendationsTotal tracks the total number of recommendations generated
@@ -84,7 +96,7 @@ var (
 			Name: "optipod_recommendations_total",
 			Help: "Total number of recommendations generated",
 		},
-		[]string{"policy"},
+		[]string{labelPolicy},
 	)
 
 	// ApplicationsTotal tracks the total number of applications (updates) performed
@@ -93,7 +105,7 @@ var (
 			Name: "optipod_applications_total",
 			Help: "Total number of resource updates applied",
 		},
-		[]string{"policy", "method"},
+		[]string{labelPolicy, labelMethod},
 	)
 
 	// SSAPatchTotal tracks the total number of Server-Side Apply patch operations
@@ -102,7 +114,7 @@ var (
 			Name: "optipod_ssa_patch_total",
 			Help: "Total number of Server-Side Apply patch operations",
 		},
-		[]string{"policy", "namespace", "workload", "kind", "status", "patch_type"},
+		[]string{labelPolicy, labelNamespace, labelWorkload, labelKind, "status", "patch_type"},
 	)
 
 	// OptimizationSuccessTotal tracks successful optimizations
@@ -111,7 +123,7 @@ var (
 			Name: "optipod_optimization_success_total",
 			Help: "Total number of successful optimizations",
 		},
-		[]string{"policy", "namespace", "workload", "kind", "method"},
+		[]string{labelPolicy, labelNamespace, labelWorkload, labelKind, labelMethod},
 	)
 
 	// OptimizationFailureTotal tracks failed optimizations
@@ -120,7 +132,7 @@ var (
 			Name: "optipod_optimization_failure_total",
 			Help: "Total number of failed optimizations",
 		},
-		[]string{"policy", "namespace", "workload", "kind", "method", "reason"},
+		[]string{labelPolicy, labelNamespace, labelWorkload, labelKind, labelMethod, "reason"},
 	)
 
 	// ResourceChangesMagnitude tracks the magnitude of resource changes
@@ -130,7 +142,7 @@ var (
 			Help:    "Magnitude of resource changes in percentage",
 			Buckets: []float64{-90, -75, -50, -25, -10, -5, 0, 5, 10, 25, 50, 75, 100, 200, 500},
 		},
-		[]string{"policy", "namespace", "workload", "resource_type"},
+		[]string{labelPolicy, labelNamespace, labelWorkload, labelResourceType},
 	)
 
 	// DefaultMultiplierUsage tracks usage of default multipliers
@@ -139,7 +151,7 @@ var (
 			Name: "optipod_default_multiplier_usage_total",
 			Help: "Total number of times default multipliers were used",
 		},
-		[]string{"policy", "resource_type", "multiplier_value"},
+		[]string{labelPolicy, labelResourceType, "multiplier_value"},
 	)
 
 	// OptimizationDecisionDuration tracks time spent making optimization decisions
@@ -149,7 +161,92 @@ var (
 			Help:    "Duration of optimization decision making in seconds",
 			Buckets: prometheus.DefBuckets,
 		},
-		[]string{"policy", "workload_kind"},
+		[]string{labelPolicy, "workload_kind"},
+	)
+
+	// Webhook-specific metrics
+
+	// WebhookAdmissionRequestsTotal tracks the total number of webhook admission requests
+	WebhookAdmissionRequestsTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "optipod_webhook_admission_requests_total",
+			Help: "Total number of webhook admission requests received",
+		},
+		[]string{labelNamespace, "pod_name", "dry_run"},
+	)
+
+	// WebhookAdmissionSuccessTotal tracks successful webhook admissions
+	WebhookAdmissionSuccessTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "optipod_webhook_admission_success_total",
+			Help: "Total number of successful webhook admissions",
+		},
+		[]string{labelNamespace, labelPolicy, "patches_applied"},
+	)
+
+	// WebhookAdmissionFailuresTotal tracks failed webhook admissions
+	WebhookAdmissionFailuresTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "optipod_webhook_admission_failures_total",
+			Help: "Total number of failed webhook admissions",
+		},
+		[]string{labelNamespace, "failure_reason"},
+	)
+
+	// WebhookMutationDuration tracks the duration of webhook mutation operations
+	WebhookMutationDuration = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "optipod_webhook_mutation_duration_seconds",
+			Help:    "Duration of webhook mutation operations in seconds",
+			Buckets: []float64{0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0},
+		},
+		[]string{labelNamespace, labelPolicy},
+	)
+
+	// WebhookPatchesAppliedTotal tracks the number of patches applied by the webhook
+	WebhookPatchesAppliedTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "optipod_webhook_patches_applied_total",
+			Help: "Total number of patches applied by the webhook",
+		},
+		[]string{labelNamespace, labelPolicy, "container_name", labelResourceType},
+	)
+
+	// WebhookAnnotationParsingErrorsTotal tracks annotation parsing errors
+	WebhookAnnotationParsingErrorsTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "optipod_webhook_annotation_parsing_errors_total",
+			Help: "Total number of annotation parsing errors in webhook",
+		},
+		[]string{labelNamespace, "pod_name", "annotation_key", "error_type"},
+	)
+
+	// WebhookPolicyMatchingDuration tracks time spent matching policies
+	WebhookPolicyMatchingDuration = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "optipod_webhook_policy_matching_duration_seconds",
+			Help:    "Duration of policy matching operations in webhook",
+			Buckets: []float64{0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5},
+		},
+		[]string{labelNamespace, "policies_found"},
+	)
+
+	// WebhookServerHealthStatus tracks webhook server health status
+	WebhookServerHealthStatus = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "optipod_webhook_server_health_status",
+			Help: "Webhook server health status (1 = healthy, 0 = unhealthy)",
+		},
+		[]string{"endpoint"},
+	)
+
+	// WebhookCertificateExpiryTime tracks webhook certificate expiry time
+	WebhookCertificateExpiryTime = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "optipod_webhook_certificate_expiry_timestamp_seconds",
+			Help: "Webhook certificate expiry time as Unix timestamp",
+		},
+		[]string{"cert_type"},
 	)
 )
 
@@ -176,6 +273,17 @@ func RegisterMetrics() {
 	_ = metrics.Registry.Register(ResourceChangesMagnitude)
 	_ = metrics.Registry.Register(DefaultMultiplierUsage)
 	_ = metrics.Registry.Register(OptimizationDecisionDuration)
+
+	// Register webhook-specific metrics
+	_ = metrics.Registry.Register(WebhookAdmissionRequestsTotal)
+	_ = metrics.Registry.Register(WebhookAdmissionSuccessTotal)
+	_ = metrics.Registry.Register(WebhookAdmissionFailuresTotal)
+	_ = metrics.Registry.Register(WebhookMutationDuration)
+	_ = metrics.Registry.Register(WebhookPatchesAppliedTotal)
+	_ = metrics.Registry.Register(WebhookAnnotationParsingErrorsTotal)
+	_ = metrics.Registry.Register(WebhookPolicyMatchingDuration)
+	_ = metrics.Registry.Register(WebhookServerHealthStatus)
+	_ = metrics.Registry.Register(WebhookCertificateExpiryTime)
 }
 
 // RecordSSAPatch records an SSA patch operation
@@ -206,4 +314,64 @@ func RecordDefaultMultiplierUsage(policy, resourceType, multiplierValue string) 
 // RecordOptimizationDecisionDuration records the duration of optimization decision making
 func RecordOptimizationDecisionDuration(policy, workloadKind string, duration float64) {
 	OptimizationDecisionDuration.WithLabelValues(policy, workloadKind).Observe(duration)
+}
+
+// Webhook metric recording functions
+
+// RecordWebhookAdmissionRequest records a webhook admission request
+func RecordWebhookAdmissionRequest(namespace, podName string, dryRun bool) {
+	dryRunStr := "false"
+	if dryRun {
+		dryRunStr = "true"
+	}
+	WebhookAdmissionRequestsTotal.WithLabelValues(namespace, podName, dryRunStr).Inc()
+}
+
+// RecordWebhookAdmissionSuccess records a successful webhook admission
+func RecordWebhookAdmissionSuccess(namespace, policy string, patchesApplied int) {
+	patchesStr := "0"
+	if patchesApplied > 0 {
+		patchesStr = "1+"
+	}
+	WebhookAdmissionSuccessTotal.WithLabelValues(namespace, policy, patchesStr).Inc()
+}
+
+// RecordWebhookAdmissionFailure records a failed webhook admission
+func RecordWebhookAdmissionFailure(namespace, failureReason string) {
+	WebhookAdmissionFailuresTotal.WithLabelValues(namespace, failureReason).Inc()
+}
+
+// RecordWebhookMutationDuration records the duration of a webhook mutation operation
+func RecordWebhookMutationDuration(namespace, policy string, duration float64) {
+	WebhookMutationDuration.WithLabelValues(namespace, policy).Observe(duration)
+}
+
+// RecordWebhookPatchApplied records a patch applied by the webhook
+func RecordWebhookPatchApplied(namespace, policy, containerName, resourceType string) {
+	WebhookPatchesAppliedTotal.WithLabelValues(namespace, policy, containerName, resourceType).Inc()
+}
+
+// RecordWebhookAnnotationParsingError records an annotation parsing error
+func RecordWebhookAnnotationParsingError(namespace, podName, annotationKey, errorType string) {
+	WebhookAnnotationParsingErrorsTotal.WithLabelValues(namespace, podName, annotationKey, errorType).Inc()
+}
+
+// RecordWebhookPolicyMatchingDuration records the duration of policy matching
+func RecordWebhookPolicyMatchingDuration(namespace string, policiesFound int, duration float64) {
+	policiesFoundStr := fmt.Sprintf("%d", policiesFound)
+	WebhookPolicyMatchingDuration.WithLabelValues(namespace, policiesFoundStr).Observe(duration)
+}
+
+// SetWebhookServerHealthStatus sets the webhook server health status
+func SetWebhookServerHealthStatus(endpoint string, healthy bool) {
+	status := 0.0
+	if healthy {
+		status = 1.0
+	}
+	WebhookServerHealthStatus.WithLabelValues(endpoint).Set(status)
+}
+
+// SetWebhookCertificateExpiryTime sets the webhook certificate expiry time
+func SetWebhookCertificateExpiryTime(certType string, expiryTime float64) {
+	WebhookCertificateExpiryTime.WithLabelValues(certType).Set(expiryTime)
 }

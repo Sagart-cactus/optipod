@@ -1,0 +1,393 @@
+# Default values for optipod
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+# Global settings
+nameOverride: ""
+fullnameOverride: ""
+
+# Namespace configuration
+namespaceOverride: ""
+
+# Image configuration
+image:
+  repository: ghcr.io/sagart-cactus/optipod
+  pullPolicy: IfNotPresent
+  # Overrides the image tag; defaults to Chart.appVersion when empty
+  tag: ""
+
+imagePullSecrets: []
+
+# Service Account configuration
+serviceAccount:
+  # Specifies whether a service account should be created
+  create: true
+  # Annotations to add to the service account
+  annotations: {}
+  # The name of the service account to use.
+  # If not set and create is true, a name is generated using the fullname template
+  name: ""
+
+# RBAC configuration
+rbac:
+  # Specifies whether RBAC resources should be created
+  create: true
+
+# Controller configuration
+controller:
+  replicaCount: 1
+
+  # Deployment strategy
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+
+  # Port configuration
+  ports:
+    health: 8081
+    metrics: 8080
+
+  # Operator configuration
+  dryRun: false
+  leaderElect: true
+  reconciliationInterval: "5m"
+  enableHTTP2: false
+  # Optional external ConfigMap (created outside Helm) to inject environment variables
+  # into the controller container via envFrom.
+  # If prefix is empty, use full env keys (e.g. OPTIPOD_METRICS_PROVIDER).
+  # If prefix is "OPTIPOD_", use base keys (e.g. METRICS_PROVIDER).
+  envConfigMap:
+    enabled: false
+    name: ""
+    optional: true
+    prefix: ""
+
+  # Pod configuration
+  priorityClassName: ""
+  terminationGracePeriodSeconds: 30
+  dnsPolicy: ""
+
+  # Topology spread constraints
+  topologySpreadConstraints: []
+
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+  # Pod annotations
+  podAnnotations: {}
+
+  # Pod security context
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+    fsGroup: 65532
+
+  # Container security context
+  securityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+    readOnlyRootFilesystem: true
+
+  # Liveness probe
+  livenessProbe:
+    httpGet:
+      path: /healthz
+      port: 8081
+    initialDelaySeconds: 15
+    periodSeconds: 20
+
+  # Readiness probe
+  readinessProbe:
+    httpGet:
+      path: /readyz
+      port: 8081
+    initialDelaySeconds: 5
+    periodSeconds: 10
+
+# Webhook configuration
+webhook:
+  # Enable or disable the mutating webhook
+  # When enabled, cert-manager is required for certificate management
+  enabled: true
+
+  # Webhook port
+  port: 9443
+
+  # Port configuration for metrics and health
+  ports:
+    health: 8081
+    metrics: 8080
+
+  # Certificate directory
+  certDir: /tmp/k8s-webhook-server/serving-certs
+
+  # Webhook failure policy
+  # Options: Ignore, Fail
+  # Ignore: Allow pod creation even if webhook fails (recommended for initial setup)
+  # Fail: Block pod creation if webhook fails (stricter enforcement)
+  failurePolicy: Ignore
+
+  # Webhook timeout in seconds
+  timeoutSeconds: 10
+
+  # Namespace selector for webhook
+  # Only pods in matching namespaces will be mutated
+  namespaceSelector:
+    matchExpressions:
+    - key: name
+      operator: NotIn
+      values: ["kube-system", "kube-public", "kube-node-lease"]
+    - key: control-plane
+      operator: DoesNotExist
+
+  # Object selector for webhook
+  # Note: Kubernetes objectSelector only supports label matching, not annotations
+  # Since the controller adds annotations (not labels) to workload templates,
+  # we use an empty selector and filter by annotations in the webhook code
+  objectSelector: {}
+
+  # Webhook service configuration
+  service:
+    type: ClusterIP
+    port: 443
+    targetPort: 9443
+
+  # Webhook deployment configuration
+  deployment:
+    replicaCount: 2
+
+    # Deployment strategy
+    strategy:
+      type: RollingUpdate
+      rollingUpdate:
+        maxUnavailable: 0
+        maxSurge: 1
+
+    # Port configuration
+    ports:
+      health: 8081
+      metrics: 8080
+
+    # Operator configuration
+    leaderElect: false
+    enableHTTP2: false
+
+    # Pod configuration
+    priorityClassName: ""
+    terminationGracePeriodSeconds: 30
+    dnsPolicy: ""
+
+    # Topology spread constraints
+    topologySpreadConstraints: []
+
+    resources:
+      limits:
+        cpu: 200m
+        memory: 256Mi
+      requests:
+        cpu: 50m
+        memory: 64Mi
+
+    nodeSelector: {}
+    tolerations: []
+    affinity:
+      podAntiAffinity:
+        preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            labelSelector:
+              matchExpressions:
+              - key: app.kubernetes.io/component
+                operator: In
+                values:
+                - webhook
+            topologyKey: kubernetes.io/hostname
+
+    podAnnotations: {}
+
+    podSecurityContext:
+      runAsNonRoot: true
+      runAsUser: 65532
+      fsGroup: 65532
+
+    securityContext:
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop:
+          - ALL
+      readOnlyRootFilesystem: true
+
+    # Liveness probe
+    livenessProbe:
+      httpGet:
+        path: /healthz
+        port: 8081
+      initialDelaySeconds: 15
+      periodSeconds: 20
+
+    # Readiness probe
+    readinessProbe:
+      httpGet:
+        path: /readyz
+        port: 8081
+      initialDelaySeconds: 5
+      periodSeconds: 10
+
+  # Pod Disruption Budget
+  pdb:
+    enabled: true
+    minAvailable: 1
+
+  # Network Policy
+  networkPolicy:
+    enabled: true
+    ingress:
+      - from:
+        - namespaceSelector: {}
+        ports:
+        - protocol: TCP
+          port: 9443
+
+# Certificate Manager configuration
+certManager:
+  # Control cert-manager installation
+  # true: Install cert-manager as a subchart (default)
+  # false: Use existing cert-manager in the cluster
+  install: true
+
+  # Install cert-manager CRDs
+  # Only used if cert-manager is being installed by this chart
+  installCRDs: true
+
+  # Issuer configuration
+  issuer:
+    # Issuer type: Issuer or ClusterIssuer
+    kind: Issuer
+    # Issuer name
+    name: optipod-selfsigned-issuer
+    # Use self-signed issuer (recommended for webhook certificates)
+    selfSigned: true
+
+  # Certificate configuration
+  certificate:
+    # Secret name where certificate will be stored
+    secretName: webhook-server-certs
+    # Certificate duration
+    duration: 8760h  # 1 year
+    # Renew before expiry
+    renewBefore: 720h  # 30 days
+    # Subject organization
+    organization: optipod
+    # DNS names for the certificate
+    # Will be auto-generated based on service name and namespace
+    dnsNames: []
+    # Private key configuration
+    privateKey:
+      algorithm: RSA
+      size: 2048
+
+# cert-manager subchart configuration
+# These values are passed to the cert-manager subchart when certManager.install is true
+cert-manager:
+  installCRDs: true
+
+# Metrics configuration
+metrics:
+  enabled: true
+  secure: true
+
+  # TLS configuration for metrics endpoint
+  tls:
+    certPath: ""
+    certName: "tls.crt"
+    keyName: "tls.key"
+
+  serviceMonitor:
+    enabled: false
+    interval: 30s
+    scrapeTimeout: 10s
+
+# Metrics provider configuration
+metricsProvider:
+  # Type of metrics provider: "metrics-server" or "prometheus"
+  type: "metrics-server"
+
+  # Prometheus configuration (only used if type is "prometheus")
+  prometheus:
+    # Prometheus server URL
+    url: "http://prometheus:9090"
+
+    # Authentication configuration
+    auth:
+      # Authentication type: "none", "basic", or "bearer"
+      type: "none"
+
+      # Basic authentication
+      basic:
+        username: ""
+        password: ""
+        # Reference to existing secret (recommended over inline credentials)
+        existingSecret:
+          name: ""
+          usernameKey: "username"
+          passwordKey: "password"  # pragma: allowlist secret
+
+      # Bearer token authentication
+      bearer:
+        token: ""
+        # Reference to existing secret (recommended over inline token)
+        existingSecret:
+          name: ""
+          key: "token"
+
+    # TLS configuration
+    tls:
+      enabled: false
+      insecureSkipVerify: false
+      # Reference to existing secret with TLS certificates
+      existingSecret:
+        name: ""
+        caKey: "ca.crt"
+        certKey: "tls.crt"
+        keyKey: "tls.key"
+
+    # HTTP client timeout
+    timeout: "30s"
+
+  # Metrics-server configuration (only used if type is "metrics-server")
+  metricsServer:
+    # Background sampling interval
+    samplingInterval: "5m"
+    # Maximum samples to cache per target
+    maxSamplesPerTarget: 2880
+    # Minimum samples required for recommendations
+    minSamplesRequired: 10
+    # Target eviction TTL
+    targetTTL: "15m"
+
+# Observability
+logging:
+  level: info
+  format: json
+
+# Additional volumes for controller
+extraVolumes: []
+
+# Additional volume mounts for controller
+extraVolumeMounts: []
+
+# Additional environment variables for controller
+extraEnv: []

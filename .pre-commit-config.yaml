@@ -1,6 +1,7 @@
 # Pre-commit configuration for OptipPod
 # See https://pre-commit.com for more information
 
+exclude: (^|/)\.secrets\.baseline$
 repos:
   # General file checks
   - repo: https://github.com/pre-commit/pre-commit-hooks
@@ -12,6 +13,7 @@ repos:
         exclude: '\.md$'
       - id: check-yaml
         args: ['--unsafe']
+        exclude: '^charts/.*/templates/'
       - id: check-json
       - id: check-merge-conflict
       - id: check-added-large-files
@@ -22,7 +24,7 @@ repos:
 
   # Go linting with golangci-lint
   - repo: https://github.com/golangci/golangci-lint
-    rev: v2.7.2
+    rev: v2.13.2
     hooks:
       - id: golangci-lint
         name: Lint Go code
@@ -64,8 +66,9 @@ repos:
       - id: detect-secrets
         name: Detect secrets
         description: Scans for potential secrets in code
-        args: ['--baseline', '.secrets.baseline']
-        exclude: '\.lock$|\.sum$|test/.*\.yaml$'
+        args: ['--baseline', '.secrets.baseline', '--exclude-files', '\.secrets\.baseline$']
+        files: '^(?!\.secrets\.baseline$).*'
+        exclude: '\.lock$|\.sum$|test/.*\.yaml$|(^|/)\.secrets\.baseline$'
 
 # Configuration for specific hooks
 ci:

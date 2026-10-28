@@ -1,0 +1,736 @@
+---
+title: API Reference
+description: Complete reference for OptimizationPolicy CRD
+---
+
+This page provides a complete API reference for the OptimizationPolicy Custom Resource Definition (CRD).
+
+## API Version
+
+```yaml
+apiVersion: optipod.optipod.io/v1alpha1
+kind: OptimizationPolicy
+```
+
+## Resource Structure
+
+```yaml
+apiVersion: optipod.optipod.io/v1alpha1
+kind: OptimizationPolicy
+metadata:
+  name: string
+  namespace: string
+spec:
+  mode: string
+  weight: integer
+  selector: object
+  metricsConfig: object
+  resourceBounds: object
+  updateStrategy: object
+  reconciliationInterval: duration
+status:
+  conditions: []Condition
+  workloadsDiscovered: integer
+  workloadsProcessed: integer
+  lastReconciliation: timestamp
+  workloadsByType: object
+```
+
+## Metadata
+
+Standard Kubernetes metadata fields:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | Yes | Policy name |
+| `namespace` | string | Yes | Policy namespace |
+| `labels` | map[string]string | No | Labels |
+| `annotations` | map[string]string | No | Annotations |
+
+## Spec Fields
+
+### spec.mode
+
+| Property | Value |
+|----------|-------|
+| **Type** | string |
+| **Required** | Yes |
+| **Values** | `Recommend`, `Auto`, `Disabled` |
+| **Default** | None |
+
+Operational mode for the policy.
+
+**Example:**
+```yaml
+spec:
+  mode: Recommend
+```
+
+### spec.weight
+
+| Property | Value |
+|----------|-------|
+| **Type** | integer |
+| **Required** | No |
+| **Range** | 1-1000 |
+| **Default** | 100 |
+
+Priority when multiple policies match the same workload. Higher weight wins.
+
+**Example:**
+```yaml
+spec:
+  weight: 200
+```
+
+### spec.selector
+
+| Property | Value |
+|----------|-------|
+| **Type** | object |
+| **Required** | Yes |
+| **Fields** | `workloadSelector`, `namespaceSelector`, `namespaces`, `workloadTypes` |
+
+Defines which workloads this policy applies to.
+
+**Structure:**
+```yaml
+spec:
+  selector:
+    workloadSelector:
+      matchLabels: map[string]string
+      matchExpressions: []LabelSelectorRequirement
+    namespaceSelector:
+      matchLabels: map[string]string
+      matchExpressions: []LabelSelectorRequirement
+    namespaces:
+      allow: []string
+      deny: []string
+    workloadTypes:
+      include: []WorkloadType
+      exclude: []WorkloadType
+```
+
+**Example:**
+```yaml
+spec:
+  selector:
+    workloadSelector:
+      matchLabels:
+        optipod.io/enabled: "true"
+    workloadTypes:
+      include:
+        - Deployment
+        - StatefulSet
+    namespaces:
+      allow:
+        - production
+        - staging
+```
+
+#### spec.selector.workloadSelector
+
+| Property | Value |
+|----------|-------|
+| **Type** | LabelSelector |
+| **Required** | No |
+
+Standard Kubernetes label selector for workloads.
+
+**Example:**
+```yaml
+workloadSelector:
+  matchLabels:
+    optipod.io/enabled: "true"
+    environment: production
+  matchExpressions:
+    - key: tier
+      operator: In
+      values: ["frontend", "backend"]
+```
+
+#### spec.selector.namespaceSelector
+
+| Property | Value |
+|----------|-------|
+| **Type** | LabelSelector |
+| **Required** | No |
+
+Standard Kubernetes label selector for namespaces.
+
+**Example:**
+```yaml
+namespaceSelector:
+  matchLabels:
+    environment: production
+```
+
+#### spec.selector.namespaces
+
+| Property | Value |
+|----------|-------|
+| **Type** | object |
+| **Required** | No |
+| **Fields** | `allow`, `deny` |
+
+Allow/deny lists for namespace filtering. Deny takes precedence over allow.
+
+**Example:**
+```yaml
+namespaces:
+  allow:
+    - production
+    - staging
+  deny:
+    - kube-system
+    - kube-public
+```
+
+#### spec.selector.workloadTypes
+
+| Property | Value |
+|----------|-------|
+| **Type** | object |
+| **Required** | No |
+| **Fields** | `include`, `exclude` |
+
+Include/exclude filters for workload types. Exclude takes precedence over include.
+
+**Supported workload types:**
+- `Deployment`
+- `StatefulSet`
+- `DaemonSet`
+
+**Example:**
+```yaml
+workloadTypes:
+  include:
+    - Deployment
+    - StatefulSet
+  exclude:
+    - DaemonSet
+```
+
+### spec.metricsConfig
+
+| Property | Value |
+|----------|-------|
+| **Type** | object |
+| **Required** | Yes |
+| **Fields** | `provider`, `rollingWindow`, `percentile`, `safetyFactor`, `metricsServer` |
+
+Configuration for metrics collection and processing.
+
+**Structure:**
+```yaml
+spec:
+  metricsConfig:
+    provider: string
+    rollingWindow: duration
+    percentile: string
+    safetyFactor: float
+    metricsServer:
+      minSamplesRequired: integer
+```
+
+**Example:**
+```yaml
+spec:
+  metricsConfig:
+    provider: prometheus
+    rollingWindow: 7d
+    percentile: P90
+    safetyFactor: 1.2
+```
+
+#### spec.metricsConfig.provider
+
+| Property | Value |
+|----------|-------|
+| **Type** | string |
+| **Required** | Yes |
+| **Values** | `prometheus`, `metrics-server`, `custom` |
+
+Metrics backend to use.
+
+#### spec.metricsConfig.rollingWindow
+
+| Property | Value |
+|----------|-------|
+| **Type** | duration |
+| **Required** | No |
+| **Default** | `24h` |
+| **Format** | `<number><unit>` (d=days, h=hours, m=minutes, s=seconds) |
+
+Time period over which metrics are aggregated.
+
+**Examples:** `3d`, `7d`, `14d`, `24h`
+
+#### spec.metricsConfig.percentile
+
+| Property | Value |
+|----------|-------|
+| **Type** | string |
+| **Required** | No |
+| **Values** | `P50`, `P90`, `P99` |
+| **Default** | `P90` |
+
+Percentile to use for recommendations.
+
+#### spec.metricsConfig.safetyFactor
+
+| Property | Value |
+|----------|-------|
+| **Type** | float |
+| **Required** | No |
+| **Default** | 1.2 |
+| **Minimum** | 1.0 |
+
+Multiplier applied to the selected percentile to add headroom.
+
+**Example:** With P90=200m and safetyFactor=1.2, recommendation is 240m.
+
+#### spec.metricsConfig.metricsServer
+
+| Property | Value |
+|----------|-------|
+| **Type** | object |
+| **Required** | No |
+| **Fields** | `minSamplesRequired` |
+
+Configuration specific to metrics-server provider.
+
+**Example:**
+```yaml
+metricsServer:
+  minSamplesRequired: 10
+```
+
+### spec.resourceBounds
+
+| Property | Value |
+|----------|-------|
+| **Type** | object |
+| **Required** | Yes |
+| **Fields** | `cpu`, `memory` |
+
+Minimum and maximum constraints for recommendations.
+
+**Structure:**
+```yaml
+spec:
+  resourceBounds:
+    cpu:
+      min: quantity
+      max: quantity
+    memory:
+      min: quantity
+      max: quantity
+```
+
+**Example:**
+```yaml
+spec:
+  resourceBounds:
+    cpu:
+      min: 10m
+      max: 4000m
+    memory:
+      min: 64Mi
+      max: 8Gi
+```
+
+#### spec.resourceBounds.cpu
+
+| Property | Value |
+|----------|-------|
+| **Type** | object |
+| **Required** | Yes |
+| **Fields** | `min`, `max` |
+
+CPU resource bounds.
+
+#### spec.resourceBounds.memory
+
+| Property | Value |
+|----------|-------|
+| **Type** | object |
+| **Required** | Yes |
+| **Fields** | `min`, `max` |
+
+Memory resource bounds.
+
+### spec.updateStrategy
+
+| Property | Value |
+|----------|-------|
+| **Type** | object |
+| **Required** | Yes |
+| **Fields** | `strategy`, `rolloutStrategy`, `useServerSideApply`, `updateRequestsOnly`, `allowInPlaceResize`, `allowRecreate`, `allowUnsafeMemoryDecrease`, `limitConfig`, `gradualDecreaseConfig` |
+
+Defines how resource updates are applied.
+
+**Structure:**
+```yaml
+spec:
+  updateStrategy:
+    strategy: string
+    rolloutStrategy: string
+    useServerSideApply: boolean
+    updateRequestsOnly: boolean
+    allowInPlaceResize: boolean
+    allowRecreate: boolean
+    allowUnsafeMemoryDecrease: boolean
+    limitConfig:
+      cpuLimitMultiplier: float
+      memoryLimitMultiplier: float
+    # gradualDecreaseConfig: Not yet implemented
+```
+
+**Example:**
+```yaml
+spec:
+  updateStrategy:
+    strategy: ssa
+    rolloutStrategy: onNextRestart
+    useServerSideApply: true
+    updateRequestsOnly: true
+    allowUnsafeMemoryDecrease: false
+    limitConfig:
+      cpuLimitMultiplier: 1.0
+      memoryLimitMultiplier: 1.1
+    # Note: gradualDecreaseConfig not yet implemented
+```
+
+#### spec.updateStrategy.strategy
+
+| Property | Value |
+|----------|-------|
+| **Type** | string |
+| **Required** | No |
+| **Values** | `ssa`, `webhook` |
+| **Default** | `webhook` |
+
+Update strategy type.
+
+#### spec.updateStrategy.rolloutStrategy
+
+| Property | Value |
+|----------|-------|
+| **Type** | string |
+| **Required** | No |
+| **Values** | `immediate`, `onNextRestart` |
+| **Default** | `onNextRestart` |
+
+When changes take effect (webhook strategy only).
+
+#### spec.updateStrategy.useServerSideApply
+
+| Property | Value |
+|----------|-------|
+| **Type** | boolean |
+| **Required** | No |
+| **Default** | true |
+
+Enable Server-Side Apply for field-level ownership.
+
+#### spec.updateStrategy.updateRequestsOnly
+
+| Property | Value |
+|----------|-------|
+| **Type** | boolean |
+| **Required** | No |
+| **Default** | true |
+
+Update only requests, not limits.
+
+#### spec.updateStrategy.allowInPlaceResize
+
+| Property | Value |
+|----------|-------|
+| **Type** | boolean |
+| **Required** | No |
+| **Default** | true |
+
+Enable in-place pod resize when supported by Kubernetes.
+
+#### spec.updateStrategy.allowRecreate
+
+| Property | Value |
+|----------|-------|
+| **Type** | boolean |
+| **Required** | No |
+| **Default** | false |
+
+Allow pod recreation when in-place resize is not available.
+
+#### spec.updateStrategy.allowUnsafeMemoryDecrease
+
+| Property | Value |
+|----------|-------|
+| **Type** | boolean |
+| **Required** | No |
+| **Default** | false |
+
+Work-in-progress toggle that would disable memory decrease safety gating when true.
+
+> **⚠️ Implementation Status**: The field is defined in the CRD schema and validated, but **no production code reads it**, so setting it has **no effect**.
+
+OptiPod currently has **no memory decrease guard**: a recommended memory decrease is applied in full, exactly like any other recommendation, constrained only by `resourceBounds` and the safety factor.
+
+#### spec.updateStrategy.limitConfig
+
+| Property | Value |
+|----------|-------|
+| **Type** | object |
+| **Required** | No |
+| **Fields** | `cpuLimitMultiplier`, `memoryLimitMultiplier` |
+
+How limits are calculated from requests.
+
+**Example:**
+```yaml
+limitConfig:
+  cpuLimitMultiplier: 1.0      # Limit = request × 1.0
+  memoryLimitMultiplier: 1.1   # Limit = request × 1.1
+```
+
+#### spec.updateStrategy.gradualDecreaseConfig
+
+> **⚠️ Implementation Status**: Not yet implemented. Configuration is accepted but has no effect.
+
+| Property | Value |
+|----------|-------|
+| **Type** | object |
+| **Required** | No |
+| **Fields** | `enabled`, `memoryDecreasePercentage`, `minimumDecreaseThreshold`, `maximumTotalDecrease` |
+
+Gradual memory reduction configuration for safer optimization (planned feature).
+
+**Example:**
+```yaml
+gradualDecreaseConfig:
+  enabled: true
+  memoryDecreasePercentage: 10
+  minimumDecreaseThreshold: 100Mi
+  maximumTotalDecrease: 70
+```
+
+**Current Behavior**: Memory decreases are applied in full in a single reconciliation; `allowUnsafeMemoryDecrease` and `gradualDecreaseConfig` are inert until implemented.
+
+### spec.reconciliationInterval
+
+| Property | Value |
+|----------|-------|
+| **Type** | duration |
+| **Required** | No |
+| **Default** | `5m` |
+| **Format** | `<number><unit>` (d=days, h=hours, m=minutes, s=seconds) |
+
+How often the policy is evaluated.
+
+**Example:**
+```yaml
+spec:
+  reconciliationInterval: 5m
+```
+
+## Status Fields
+
+### status.conditions
+
+| Property | Value |
+|----------|-------|
+| **Type** | []Condition |
+
+Standard Kubernetes conditions.
+
+**Example:**
+```yaml
+status:
+  conditions:
+    - type: Ready
+      status: "True"
+      lastTransitionTime: "2026-01-26T10:30:00Z"
+      reason: PolicyActive
+      message: Policy is active and processing workloads
+```
+
+### status.workloadsDiscovered
+
+| Property | Value |
+|----------|-------|
+| **Type** | integer |
+
+Count of workloads matching this policy.
+
+### status.workloadsProcessed
+
+| Property | Value |
+|----------|-------|
+| **Type** | integer |
+
+Count of workloads successfully processed.
+
+### status.lastReconciliation
+
+| Property | Value |
+|----------|-------|
+| **Type** | timestamp |
+| **Format** | RFC3339 |
+
+Timestamp of the last reconciliation.
+
+### status.workloadsByType
+
+| Property | Value |
+|----------|-------|
+| **Type** | object |
+| **Fields** | `deployments`, `statefulSets`, `daemonSets` |
+
+Breakdown of workloads by type.
+
+**Example:**
+```yaml
+status:
+  workloadsByType:
+    deployments: 3
+    statefulSets: 2
+    daemonSets: 0
+```
+
+## Complete Example
+
+```yaml
+apiVersion: optipod.optipod.io/v1alpha1
+kind: OptimizationPolicy
+metadata:
+  name: production-policy
+  namespace: production
+  labels:
+    environment: production
+    tier: standard
+spec:
+  mode: Auto
+  weight: 150
+
+  selector:
+    workloadSelector:
+      matchLabels:
+        optipod.io/enabled: "true"
+    workloadTypes:
+      include:
+        - Deployment
+        - StatefulSet
+    namespaces:
+      allow:
+        - production
+
+  metricsConfig:
+    provider: prometheus
+    rollingWindow: 7d
+    percentile: P90
+    safetyFactor: 1.2
+
+  resourceBounds:
+    cpu:
+      min: 10m
+      max: 4000m
+    memory:
+      min: 64Mi
+      max: 8Gi
+
+  updateStrategy:
+    strategy: ssa
+    rolloutStrategy: onNextRestart
+    useServerSideApply: true
+    updateRequestsOnly: true
+    allowInPlaceResize: true
+    allowRecreate: false
+    allowUnsafeMemoryDecrease: false
+    limitConfig:
+      cpuLimitMultiplier: 1.0
+      memoryLimitMultiplier: 1.1
+    # Note: gradualDecreaseConfig not yet implemented
+
+  reconciliationInterval: 5m
+
+status:
+  conditions:
+    - type: Ready
+      status: "True"
+      lastTransitionTime: "2026-01-26T10:30:00Z"
+      reason: PolicyActive
+      message: Policy is active and processing workloads
+  workloadsDiscovered: 5
+  workloadsProcessed: 5
+  lastReconciliation: "2026-01-26T10:30:00Z"
+  workloadsByType:
+    deployments: 3
+    statefulSets: 2
+    daemonSets: 0
+```
+
+## kubectl Commands
+
+### Create Policy
+
+```bash
+kubectl apply -f policy.yaml
+```
+
+### List Policies
+
+```bash
+# All namespaces
+kubectl get optimizationpolicy -A
+
+# Specific namespace
+kubectl get optimizationpolicy -n production
+
+# With custom columns
+kubectl get optimizationpolicy -A \
+  -o custom-columns=NAMESPACE:.metadata.namespace,NAME:.metadata.name,MODE:.spec.mode,PROVIDER:.spec.metricsConfig.provider
+```
+
+### Get Policy Details
+
+```bash
+# YAML output
+kubectl get optimizationpolicy my-policy -n production -o yaml
+
+# JSON output
+kubectl get optimizationpolicy my-policy -n production -o json
+
+# Describe
+kubectl describe optimizationpolicy my-policy -n production
+```
+
+### Update Policy
+
+```bash
+# Edit interactively
+kubectl edit optimizationpolicy my-policy -n production
+
+# Patch mode
+kubectl patch optimizationpolicy my-policy -n production \
+  --type merge \
+  -p '{"spec":{"mode":"Auto"}}'
+
+# Patch weight
+kubectl patch optimizationpolicy my-policy -n production \
+  --type merge \
+  -p '{"spec":{"weight":200}}'
+```
+
+### Delete Policy
+
+```bash
+kubectl delete optimizationpolicy my-policy -n production
+```
+
+## Next Steps
+
+- [CRD Specification](/optipod/docs/reference/crd-spec)
+- [Annotations Reference](/optipod/docs/reference/annotations)
+- [Creating Policies Guide](/optipod/docs/guides/creating-policies)

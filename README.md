@@ -1,4 +1,4 @@
-# OptiPod
+# <img src="website/src/assets/images/optipod-logo.svg" alt="OptiPod" width="42" height="42" style="vertical-align: middle; margin-right: 10px;"> OptiPod
 
 [![CI][ci-badge]][ci-link]
 [![Lint][lint-badge]][lint-link]
@@ -8,89 +8,91 @@
 [![Go Version][go-badge]][go-link]
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
-OptiPod is an open-source, Kubernetes-native operator that automatically rightsizes CPU and memory requests for your
-workloads based on real-time and historical usage patterns. It helps reduce cloud costs by eliminating over-provisioning
-while maintaining safety margins to prevent performance issues.
+OptiPod is an open-source Kubernetes operator that makes **explainable recommendations** for CPU and memory requests/limits, and can apply them when you explicitly opt in.
 
-## Features
+If you're new to operators or autoscaling: OptiPod is designed to be calm and safe to try.
 
-### ✅ Production-Ready Features
+- **Recommend mode is the safe way to start.**
+- **Nothing mutates without opt-in** (you must explicitly choose `mode: Auto`).
 
-- **Automatic Resource Optimization**: Continuously monitors workload resource usage and adjusts CPU and memory requests
-  based on actual consumption
-- **Server-Side Apply (SSA)**: Field-level ownership tracking prevents conflicts with GitOps tools like ArgoCD - OptiPod
-  owns only resource requests/limits while other tools manage different fields
-- **Multiple Operational Modes**: Choose between Auto (automatic application), Recommend (review before applying), or
-  Disabled modes
-- **Safety-First Approach**: Configurable safety factors, min/max bounds, and intelligent handling of in-place resize vs
-  pod recreation
-- **Multi-Tenant Ready**: Namespace and label-based workload selection with allow/deny lists
-- **Comprehensive Observability**: Prometheus metrics, Kubernetes events, and detailed status reporting
-- **Property-Based Tested**: Extensive test coverage including property-based tests for correctness guarantees
+## Why OptiPod exists
 
-### 🚧 Work in Progress
+Kubernetes resources are often set once and never revisited. Teams want to tighten requests/limits, but hesitate because:
 
-- **Metrics Backends**: Basic support for metrics-server implemented; Prometheus integration in active development
-- **Custom Metrics Providers**: Plugin architecture designed, implementation in progress
+- GitOps controllers can fight with automated mutations.
+- Memory tuning can cause OOMKills and noisy rollouts.
+- It’s hard to trust a tool if you can’t explain its recommendations.
 
-> **📋 See [ROADMAP.md](ROADMAP.md) for complete implementation status and future plans**
+OptiPod exists to provide a GitOps-safe, policy-driven way to *recommend first*, then apply when you’re ready.
 
-## Quick Start
+## What OptiPod will NOT do
 
-### Prerequisites
+- Will not mutate workloads unless explicitly configured
+- Will not override GitOps ownership
+- Will not require a SaaS backend
 
-- Kubernetes cluster (1.29+)
-- kubectl configured to access your cluster
-- Metrics source (metrics-server recommended; Prometheus support in development)
+Note: OptiPod does not currently guard memory decreases — a recommended decrease is applied in full. See the [Safety model](docs/concepts/safety-model.md) for details.
 
-### Installation
+## Quick Start (safe Recommend mode)
 
-1. **Install using the release manifest**:
+In **Recommend mode**:
 
+- No resources are changed.
+- No pods are restarted.
+- Recommendations are written as annotations on individual workloads for review.
+- Policy status shows aggregate counts (workloads discovered/processed) but not individual recommendations.
+
+### 1) Install
+
+**Recommended: Helm Installation**
 ```bash
+# Install from the OCI registry (recommended)
+# Omit --version to install the latest chart.
+VERSION=<latest> # see https://github.com/Sagart-cactus/optipod/releases/latest
+helm install optipod oci://ghcr.io/sagart-cactus/charts/optipod \
+  --version "${VERSION}" \
+  --namespace optipod-system \
+  --create-namespace
+```
+
+**Alternative: kubectl**
+```bash
+# For ArgoCD/GitOps environments (webhook strategy)
+kubectl apply -f https://github.com/Sagart-cactus/optipod/releases/latest/download/install-webhook.yaml
+
+# For traditional Kubernetes environments (SSA strategy)
 kubectl apply -f https://github.com/Sagart-cactus/optipod/releases/latest/download/install.yaml
 ```
 
-Or install a specific version:
-
+**Automated installation script:**
 ```bash
-kubectl apply -f https://github.com/Sagart-cactus/optipod/releases/download/v1.0.0/install.yaml
+curl -sSL https://raw.githubusercontent.com/Sagart-cactus/optipod/main/config/webhook/install.sh | bash
 ```
 
-> **Note**: The release workflow has been recently updated and validated. All releases include signed container images,
-> SBOMs, and security scan results.
+### 2) Create a minimal policy (Recommend mode)
 
-1. **Verify the installation**:
-
-```bash
-kubectl get pods -n optipod-system
-kubectl logs -n optipod-system deployment/optipod-manager
-```
-
-### Create Your First Policy
-
-Create a file named `my-policy.yaml`:
+Save as `optipod-policy.yaml`:
 
 ```yaml
 apiVersion: optipod.optipod.io/v1alpha1
 kind: OptimizationPolicy
 metadata:
-  name: production-workloads
+  name: safe-recommendations
   namespace: default
 spec:
-  mode: Recommend  # Start with Recommend mode to review suggestions
-  
+  mode: Recommend
+
   selector:
     workloadSelector:
       matchLabels:
-        optimize: "true"
-  
+        optipod.io/enabled: "true"
+
   metricsConfig:
-    provider: metrics-server  # Currently supported; Prometheus in development
+    provider: metrics-server
     rollingWindow: 24h
     percentile: P90
     safetyFactor: 1.2
-  
+
   resourceBounds:
     cpu:
       min: "100m"
@@ -98,146 +100,287 @@ spec:
     memory:
       min: "128Mi"
       max: "8Gi"
-  
+
   updateStrategy:
     allowInPlaceResize: true
     allowRecreate: false
     updateRequestsOnly: true
-  
-  reconciliationInterval: 5m
 ```
 
-Apply the policy:
+Apply it:
 
 ```bash
-kubectl apply -f my-policy.yaml
+kubectl apply -f optipod-policy.yaml
 ```
 
-Label your workloads to enable optimization:
+### 3) Label a workload and review recommendations
 
 ```bash
-kubectl label deployment my-app optimize=true
+kubectl label deployment my-app optipod.io/enabled=true
+kubectl describe optimizationpolicy safe-recommendations -n default
+# View individual workload recommendations:
+kubectl get deployment my-app -o yaml | grep -A5 -B5 "optipod.io/recommendation"
 ```
 
-Check the recommendations:
+Safety confirmation: as long as `spec.mode: Recommend`, OptiPod will not change workload specs.
 
-```bash
-kubectl describe optimizationpolicy production-workloads
+## Where recommendations are stored
+
+OptiPod stores recommendations in two places:
+
+### Individual Workload Annotations
+Each workload (Deployment, StatefulSet, DaemonSet) gets recommendation annotations:
+
+```yaml
+metadata:
+  annotations:
+    optipod.io/managed: "true"
+    optipod.io/policy: "safe-recommendations"
+    optipod.io/last-recommendation: "2025-01-04T10:30:00Z"
+    optipod.io/recommendation.app-container.cpu-request: "250m"
+    optipod.io/recommendation.app-container.memory-request: "512Mi"
+    optipod.io/recommendation.app-container.cpu-limit: "500m"     # Present when updateRequestsOnly=false
+    optipod.io/recommendation.app-container.memory-limit: "1Gi"   # Present when updateRequestsOnly=false
 ```
 
-## Documentation
+### Policy Status (Aggregate Only)
+The OptimizationPolicy status shows aggregate counts, not individual recommendations:
 
-- [Installation Guide](docs/INSTALLATION.md) - Detailed installation instructions
-- [CRD Reference](docs/CRD_REFERENCE.md) - Complete OptimizationPolicy field documentation
-- [Example Policies](docs/EXAMPLES.md) - Common use case examples
-- [Roadmap](ROADMAP.md) - Implementation status and future plans
-- [ArgoCD Integration](docs/ARGOCD_INTEGRATION.md) - GitOps compatibility guide
-- [CI/CD Testing Guide](docs/ci-cd-testing.md) - How to test and validate workflows
-- [CI/CD Implementation](docs/ci-cd-implementation-summary.md) - CI/CD pipeline details
+```yaml
+status:
+  workloadsDiscovered: 150
+  workloadsProcessed: 145
+  workloadsByType:
+    deployment: 120
+    statefulset: 25
+    daemonset: 5
+  lastReconciliation: "2025-01-04T10:30:00Z"
+```
 
-## How It Works
+This design keeps the policy status lightweight while making individual recommendations visible on each workload for GitOps workflows.
 
-1. **Discovery**: OptiPod discovers workloads matching your policy selectors
-2. **Metrics Collection**: Collects CPU and memory usage data from your configured metrics provider
-3. **Analysis**: Computes percentiles (P50, P90, P99) over a rolling window
-4. **Recommendation**: Applies safety factors and enforces min/max bounds
-5. **Application**: Updates workload resource requests (in Auto mode) or stores recommendations (in Recommend mode)
+## What OptiPod actually does (high-level flow)
 
-## Operational Modes
+1. Discovers workloads selected by your policy (namespaces, labels, workload types)
+2. Reads CPU/memory usage from your metrics backend
+3. Computes recommendations (percentiles over a rolling window + safety factor)
+4. Applies **policy-driven safety** (resource bounds and safety factor; the memory-decrease and change-rate guards are not implemented yet)
+5. Either:
+   - writes **explainable recommendations** as annotations on individual workloads (Recommend mode), or
+   - applies changes via **Server-Side Apply (SSA)** (Auto mode)
 
-- **Auto**: Automatically applies resource recommendations to workloads
-- **Recommend**: Computes and stores recommendations without applying them (review first)
-- **Disabled**: Stops processing workloads while preserving historical data
+## Key concepts / terminology
 
-## Safety Features
+| Term | Meaning (one line) |
+| --- | --- |
+| Operator | A controller that continuously reconciles desired state in Kubernetes. |
+| GitOps | A workflow where cluster state is driven from Git (e.g. ArgoCD/Flux). |
+| Server-Side Apply (SSA) | Kubernetes apply mode that tracks field ownership to avoid conflicts. |
+| VPA | Vertical Pod Autoscaler; recommends (and can apply) resource changes. |
 
-- **Bounds Enforcement**: All recommendations respect configured min/max limits
-- **Safety Factors**: Multiply usage percentiles by configurable factors (default 1.2x)
-- **In-Place Resize Support**: Prefers in-place updates when available (Kubernetes 1.29+)
-- **Graceful Fallback**: Skips changes that require pod recreation unless explicitly allowed
-- **RBAC Respect**: Never attempts operations without proper permissions
-- **Global Dry-Run**: Test across entire cluster without making changes
+## Operational modes
 
-## Building from Source
+- **Recommend**: Compute and record recommendations; do not mutate workloads.
+- **Auto**: Apply recommendations (within your safety policy) using the configured strategy.
+- **Disabled**: Stop processing workloads under the policy.
+
+## Update Strategies
+
+OptiPod supports two strategies for applying resource recommendations:
+
+### Webhook Strategy (Default)
+**Best for**: ArgoCD, GitOps workflows, environments without SSA permissions
+
+- ✅ **ArgoCD Compatible**: Works seamlessly with GitOps tools
+- ✅ **No SSA Required**: Doesn't need Server Side Apply permissions  
+- ✅ **Automatic Application**: Applies changes during pod creation
+- ❌ **Infrastructure Required**: Needs webhook server and certificates
+
+```yaml
+spec:
+  updateStrategy:
+    strategy: webhook                    # Use webhook strategy
+    rolloutStrategy: onNextRestart      # Control when changes take effect
+```
+
+### SSA Strategy (Traditional)
+**Best for**: Direct Kubernetes API access, environments with full SSA permissions
+
+- ✅ **Direct Updates**: Immediate API updates with Server Side Apply
+- ✅ **No Infrastructure**: No additional components required
+- ❌ **ArgoCD Conflicts**: May conflict with GitOps tools
+- ❌ **SSA Required**: Needs Server Side Apply permissions
+
+```yaml
+spec:
+  updateStrategy:
+    strategy: ssa                       # Use SSA strategy
+    useServerSideApply: true           # Enable SSA features
+```
+
+## Safety model
+
+OptiPod is built around conservative defaults and explicit, policy-driven controls:
+
+- **Policy-driven safety**: min/max bounds and safety factors (the memory-decrease and change-rate guards are not implemented yet).
+- **Memory handling**: recommendations are derived from observed usage and clamped to your explicit bounds; memory decreases are currently applied in full.
+- **GitOps-safe**: supports both **webhook strategy** (ArgoCD compatible) and **Server-Side Apply (SSA)** for different environments.
+- **Explainable recommendations**: usage window, percentile choice, and safety margin are visible before applying.
+- **Update strategy control**: allow/disallow in-place resize; block disruptive recreation unless you opt in.
+
+## OptiPod vs VPA comparison
+
+Legend: ✅ supported, ❌ not supported, ⚠️ supported with caveats.
+
+| Capability | OptiPod | Kubernetes VPA |
+| --- | --- | --- |
+| GitOps-safe (ArgoCD compatible) | ✅ | ❌ |
+| Server-Side Apply (SSA) support | ✅ | ❌ |
+| Safe by default (Recommend mode) | ✅ | ⚠️ |
+| Explainable recommendations | ✅ | ⚠️ |
+| Policy-driven safety | ✅ | ⚠️ |
+| Multiple update strategies | ✅ | ❌ |
+
+⚠️ Typically means you *can* achieve the outcome, but it’s easier to run into GitOps conflicts and/or less predictable rollouts depending on configuration and workload constraints.
+
+## Who OptiPod is for
+
+- Platform teams running GitOps-managed clusters
+- SREs who want safer, Recommend mode first workflows
+- FinOps partners who need guardrails and visibility (without a SaaS dependency)
+- Teams who want to start with recommendations and adopt automation gradually
+
+## Metrics & observability
+
+- Metrics backends: `metrics-server` and `prometheus`
+- Exposes Prometheus metrics from the controller
+- Emits Kubernetes events for important actions and failures
+- Writes recommendations as annotations on workloads and aggregate results to `OptimizationPolicy` status
+
+## Estimate impact before switching to Auto
+
+Before you change a policy to `mode: Auto`, you can generate a report that summarizes the *replica-weighted* impact (total CPU/memory request deltas across pods) based on OptiPod’s recommendations.
+
+This is especially useful to answer: “If I opt in to Auto, what will change, and by how much?”
+
+Generate an HTML report:
 
 ```bash
-# Clone the repository
+curl -fsSL https://raw.githubusercontent.com/Sagart-cactus/optipod/main/scripts/optipod-recommendation-report.sh -o optipod-recommendation-report.sh
+chmod +x optipod-recommendation-report.sh
+./optipod-recommendation-report.sh -o html -f optipod-impact.html
+```
+
+Generate a JSON report for programmatic analysis:
+
+```bash
+./optipod-recommendation-report.sh -o json -f optipod-impact.json
+```
+
+The report only includes workloads that have OptiPod recommendation annotations (generated in Recommend mode), and highlights warnings (for example: when `updateRequestsOnly=true` but recommended requests would exceed existing limits).
+
+**How the impact report works:**
+- Scans all workloads in the cluster for OptiPod recommendation annotations
+- Consolidates individual workload recommendations into aggregate totals
+- Calculates replica-weighted impact (recommendation delta × number of pods)
+- Provides both per-workload details and cluster-wide summaries
+- Available in JSON format for automation or HTML for human review
+
+![OptiPod Impact Report HTML](scripts/report-html.png)
+
+## Project status
+
+OptiPod has core functionality implemented and tested, and is in active development.
+
+- **Production-ready features**
+  - **GitOps-safe Server-Side Apply (SSA)**: OptiPod claims ownership only of CPU/memory request/limit fields.
+  - **Multiple operational modes**: Recommend / Auto / Disabled.
+  - **Policy-driven safety**: bounds, safety factors, and controlled application strategies.
+  - **Explainable recommendations**: visible inputs and margins before applying.
+  - **Observability**: Prometheus metrics, Kubernetes events, and detailed policy status.
+
+- **Work in progress**
+  - Per-policy metrics provider selection (currently configured globally)
+  - Custom metrics provider plugin framework
+
+- **Documentation**
+  - [Installation Guide](docs/INSTALLATION.md)
+  - [Example Policies](docs/EXAMPLES.md)
+  - [Impact Report](docs/IMPACT_REPORT.md)
+  - [CRD Reference](docs/CRD_REFERENCE.md)
+  - [Prometheus Setup](docs/PROMETHEUS_SETUP.md)
+  - [ArgoCD Integration](docs/ARGOCD_INTEGRATION.md)
+  - [Pre-commit Setup](docs/PRE_COMMIT_SETUP.md)
+  - [Webhook Troubleshooting](docs/WEBHOOK_TROUBLESHOOTING.md)
+  - [Webhook Examples](docs/WEBHOOK_EXAMPLES.md)
+
+- Docs: `docs/` (source) and `website/docs/` (rendered site)
+- Roadmap: [ROADMAP.md](ROADMAP.md)
+
+## Contributing & governance
+
+- Contributing guide: [CONTRIBUTING.md](CONTRIBUTING.md)
+- Governance: [GOVERNANCE.md](GOVERNANCE.md)
+- Code of Conduct: [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
+
+### Quick Start for contributors
+
+```bash
 git clone https://github.com/Sagart-cactus/optipod.git
 cd optipod
-
-# Build the operator
-make build
-
-# Run tests
-make test
-
-# Run E2E tests
-make test-e2e
-
-# Build and push Docker image
-make docker-build docker-push IMG=your-registry/optipod:tag
-```
-
-## Development
-
-### Quick Setup
-
-```bash
-# Clone the repository
-git clone https://github.com/Sagart-cactus/optipod.git
-cd optipod
-
-# Set up development environment (includes pre-commit hooks)
 make setup-pre-commit
+make test-fast   # non-mutating fast gate: unit + envtest + clusterless
+```
 
-# Install CRDs into your cluster
-make install
+### Testing
 
-# Run the operator locally (against your current kubeconfig)
+All test entry points are discoverable via `make help`. None of them mutate
+tracked files, switch your kubectl context, or touch existing clusters.
+
+| Command | What it runs |
+| --- | --- |
+| `make test-fast` | Fast gate: short unit, envtest (real local API server) and clusterless tests. Never regenerates or formats tracked files. |
+| `make vet` / `make lint` | `go vet` and pinned `golangci-lint`. |
+| `make test-e2e-smoke` | One-command installed-controller smoke suite on an ephemeral, uniquely named Kind cluster: preflight, build/load/install the checkout controller once, smoke specs, teardown. |
+| `make test-e2e-conformance` | Full conformance suite (includes all smoke coverage) over the same hermetic harness. |
+| `make test-e2e-labels E2E_LABELS="smoke && webhook"` | Focused run of the Kind suite by Ginkgo label (`smoke`, `conformance`, `webhook`, `rbac`, `observability`, `failure-recovery`, ...). |
+
+Kind suite prerequisites: Docker, Kind v0.31.0, kubectl, and kustomize v5.8.1
+on `PATH` (all other inputs are pinned by the harness; preflight fails early
+with a remedy if one is missing). Every run writes JUnit (`junit.xml`), phase
+timings (`timings.json`) and, on failure, a redacted diagnostics bundle to the
+git-ignored `test/e2e/artifacts/run-<id>/`. Normal runs delete only their own
+cluster; `KEEP_CLUSTER=1 make test-e2e-smoke` retains it and prints
+private-kubeconfig inspection, focused-reuse (`make test-e2e-reuse`) and
+disposal commands. See [docs/testing/README.md](docs/testing/README.md) for
+the full architecture, coverage matrix and debugging guide, and
+[docs/testing/final-report.md](docs/testing/final-report.md) for the measured
+final mission report (commands, timings, reliability ledger, follow-ups).
+
+CI mirrors these tiers: pull requests and pushes that touch controller, API,
+chart, manifest, test, Make or workflow inputs run the smoke job
+(`.github/workflows/e2e.yml`); the full conformance suite runs nightly and on
+manual dispatch; the fast gate runs on every push and pull request
+(`.github/workflows/test.yml`).
+
+### Building from source (development)
+
+```bash
+make build
 make run
 ```
 
-### Code Quality
+## Roadmap
 
-We use pre-commit hooks to ensure code quality and consistency:
+See [ROADMAP.md](ROADMAP.md) for planned work and explicit non-goals.
 
-```bash
-# Set up pre-commit hooks (one-time setup)
-make setup-pre-commit
+## License
 
-# Run all quality checks
-make pre-commit-run
+Apache 2.0. See [LICENSE](LICENSE).
 
-# Format code
-make format
+## Final safety note
 
-# Run linter
-make lint
-```
-
-### Building and Testing
-
-```bash
-# Build the operator
-make build
-
-# Run unit tests
-make test
-
-# Run E2E tests
-make test-e2e
-
-# Generate manifests after API changes
-make manifests
-
-# Build and push Docker image
-make docker-build docker-push IMG=your-registry/optipod:tag
-```
-
-## Contributing
-
-Contributions are welcome! Please read our [Contributing Guide](docs/CONTRIBUTING.md) for details on our code of
-conduct, development setup, and the process for submitting pull requests.
+Start in **Recommend mode**, set conservative bounds, and validate recommendations in a non-production environment before enabling `mode: Auto`.
 
 [ci-badge]: https://github.com/Sagart-cactus/optipod/actions/workflows/ci.yml/badge.svg
 [ci-link]: https://github.com/Sagart-cactus/optipod/actions/workflows/ci.yml
@@ -245,36 +388,9 @@ conduct, development setup, and the process for submitting pull requests.
 [lint-link]: https://github.com/Sagart-cactus/optipod/actions/workflows/lint.yml
 [tests-badge]: https://github.com/Sagart-cactus/optipod/actions/workflows/test.yml/badge.svg
 [tests-link]: https://github.com/Sagart-cactus/optipod/actions/workflows/test.yml
-[e2e-badge]: https://github.com/Sagart-cactus/optipod/actions/workflows/test-e2e.yml/badge.svg
-[e2e-link]: https://github.com/Sagart-cactus/optipod/actions/workflows/test-e2e.yml
+[e2e-badge]: https://github.com/Sagart-cactus/optipod/actions/workflows/e2e.yml/badge.svg
+[e2e-link]: https://github.com/Sagart-cactus/optipod/actions/workflows/e2e.yml
 [release-badge]: https://github.com/Sagart-cactus/optipod/actions/workflows/release.yml/badge.svg
 [release-link]: https://github.com/Sagart-cactus/optipod/actions/workflows/release.yml
 [go-badge]: https://img.shields.io/github/go-mod/go-version/Sagart-cactus/optipod
 [go-link]: https://github.com/Sagart-cactus/optipod
-
-### Quick Start for Contributors
-
-1. Fork the repository
-2. Set up development environment: `make setup-pre-commit`
-3. Create a feature branch
-4. Make your changes (pre-commit hooks will run automatically)
-5. Run tests: `make test && make test-e2e`
-6. Submit a pull request
-
-## License
-
-This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
-
-## Support
-
-- **Issues**: Report bugs and request features via [GitHub Issues](https://github.com/Sagart-cactus/optipod/issues)
-- **Discussions**: Ask questions in [GitHub Discussions](https://github.com/Sagart-cactus/optipod/discussions)
-- **Documentation**: Full documentation at [docs/](docs/)
-
-## Acknowledgments
-
-Built with:
-
-- [Kubebuilder](https://book.kubebuilder.io/) - Kubernetes operator framework
-- [controller-runtime](https://github.com/kubernetes-sigs/controller-runtime) - Kubernetes controller library
-- [gopter](https://github.com/leanovate/gopter) - Property-based testing for Go

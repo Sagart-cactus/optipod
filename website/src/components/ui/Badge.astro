@@ -1,0 +1,33 @@
+---
+interface Props {
+  variant?: 'info' | 'success' | 'warning' | 'danger' | 'primary';
+  size?: 'sm' | 'md' | 'lg';
+  class?: string;
+}
+
+const {
+  variant = 'info',
+  size = 'md',
+  class: className = '',
+} = Astro.props;
+
+const variantClasses = {
+  info: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200',
+  success: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
+  warning: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200',
+  danger: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200',
+  primary: 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200',
+};
+
+const sizeClasses = {
+  sm: 'text-xs px-2 py-1',
+  md: 'text-sm px-3 py-1.5',
+  lg: 'text-base px-4 py-2',
+};
+---
+
+<span
+  class={`inline-flex items-center font-semibold rounded-full ${variantClasses[variant]} ${sizeClasses[size]} ${className}`}
+>
+  <slot />
+</span>

@@ -1,5 +1,12 @@
 # Implementation Plan: Contract E2E Testing
 
+> **Historical record — retired pipeline.** The contract-E2E tasks below were completed
+> against a pipeline that was **retired and deleted** in the 2026-10 test-architecture
+> refactor (`make test-e2e-contract`, `make e2e-cluster` and `test/e2e/contract/` no longer
+> exist). The current test architecture is documented in `docs/testing/README.md`, the root
+> README "Testing" section and `.github/workflows/README.md`. Do not implement or run
+> anything from this plan.
+
 ## Overview
 
 This implementation plan creates a contract-based E2E testing model for OptiPod that validates only user-visible behavior, is deterministic, fast (<10 minutes), hermetic, and non-blocking for releases.

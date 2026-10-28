@@ -3,7 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.19.0
+    controller-gen.kubebuilder.io/version: v0.22.0
   name: optimizationpolicies.optipod.optipod.io
 spec:
   group: optipod.optipod.io
@@ -55,6 +55,20 @@ spec:
               metricsConfig:
                 description: MetricsConfig defines how metrics are collected and processed
                 properties:
+                  metricsServer:
+                    description: MetricsServer configures metrics-server specific
+                      behavior.
+                    properties:
+                      minSamplesRequired:
+                        description: |-
+                          MinSamplesRequired is the minimum number of cached samples required before OptiPod will
+                          compute/apply recommendations when using metrics-server.
+                          If not set, the operator-wide default is used.
+                        format: int32
+                        maximum: 100000
+                        minimum: 1
+                        type: integer
+                    type: object
                   percentile:
                     default: P90
                     description: Percentile defines which percentile to use for recommendations
@@ -86,16 +100,11 @@ spec:
                 - provider
                 type: object
               mode:
-                allOf:
-                - enum:
-                  - Auto
-                  - Recommend
-                  - Disabled
-                - enum:
-                  - Auto
-                  - Recommend
-                  - Disabled
                 description: Mode defines the operational behavior of the policy
+                enum:
+                - Auto
+                - Recommend
+                - Disabled
                 type: string
               reconciliationInterval:
                 default: 5m
@@ -310,28 +319,36 @@ spec:
                   allowUnsafeMemoryDecrease:
                     default: false
                     description: |-
-                      AllowUnsafeMemoryDecrease disables memory safety checks when true
-                      When false (default), OptipPod will block memory decreases that could cause pod eviction or OOM.
-                      When true, OptipPod will apply all memory recommendations regardless of safety concerns.
-                      Use with caution in production environments.
+                      AllowUnsafeMemoryDecrease is a work-in-progress field that would disable
+                      memory safety checks when true.
+                      Status: not enforced. The field is part of the CRD schema and is validated,
+                      but no production code reads it, so setting it has no effect.
+                      Memory decreases are currently applied in full, like any other
+                      recommendation, constrained only by resource bounds and the safety factor;
+                      there is no default block on memory decreases.
                     type: boolean
                   gradualDecreaseConfig:
                     description: |-
-                      GradualDecreaseConfig configures gradual memory reduction for safer optimization
-                      When enabled, large memory decreases are applied incrementally over multiple reconciliations
+                      GradualDecreaseConfig is a work-in-progress field that would apply large
+                      memory decreases incrementally over multiple reconciliations.
+                      Status: not implemented. The configuration is part of the CRD schema and is
+                      validated, but no production code reads it, so setting it has no effect.
+                      Memory decreases are currently applied in full in a single reconciliation.
                     properties:
                       enabled:
                         default: false
                         description: |-
-                          Enabled activates gradual decrease functionality
-                          When true, large memory decreases are applied incrementally over multiple reconciliations
+                          Enabled would activate gradual decrease functionality
+                          When true, large memory decreases would be applied incrementally over multiple reconciliations
+                          Status: not implemented; no production code reads this field
                         type: boolean
                       maximumTotalDecrease:
                         default: 70
                         description: |-
                           MaximumTotalDecrease is the maximum total percentage decrease from original value
                           Must be between 1 and 90. Default is 70 (70% maximum total decrease).
-                          This prevents excessive optimization that could destabilize workloads.
+                          This would prevent excessive optimization that could destabilize workloads.
+                          Status: not implemented; no production code reads this field
                         maximum: 90
                         minimum: 1
                         type: integer
@@ -340,6 +357,7 @@ spec:
                         description: |-
                           MemoryDecreasePercentage is the maximum percentage to decrease memory per reconciliation
                           Must be between 1 and 50. Default is 10 (10% per reconciliation).
+                          Status: not implemented; no production code reads this field
                         maximum: 50
                         minimum: 1
                         type: integer
@@ -349,8 +367,9 @@ spec:
                         - type: string
                         description: |-
                           MinimumDecreaseThreshold is the minimum decrease amount to trigger gradual reduction
-                          Decreases smaller than this threshold are applied immediately.
+                          Decreases smaller than this threshold would be applied immediately.
                           Default is 100Mi.
+                          Status: not implemented; no production code reads this field
                         pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
                         x-kubernetes-int-or-string: true
                     type: object
@@ -377,6 +396,21 @@ spec:
                         minimum: 1
                         type: number
                     type: object
+                  rolloutStrategy:
+                    default: onNextRestart
+                    description: RolloutStrategy defines when resource changes take
+                      effect (webhook strategy only)
+                    enum:
+                    - immediate
+                    - onNextRestart
+                    type: string
+                  strategy:
+                    default: webhook
+                    description: Strategy defines how resource updates are applied
+                    enum:
+                    - ssa
+                    - webhook
+                    type: string
                   updateRequestsOnly:
                     default: true
                     description: UpdateRequestsOnly controls whether to update only

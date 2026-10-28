@@ -1,0 +1,871 @@
+# Prometheus Metrics Reference
+
+Complete reference for all Prometheus metrics exposed by OptiPod.
+
+## Overview
+
+OptiPod exposes Prometheus metrics for monitoring controller and webhook operations. Metrics are available on:
+- **Controller**: `:8080/metrics`
+- **Webhook**: `:8443/metrics`
+
+All metrics use the `optipod_` prefix.
+
+## Metric Types
+
+OptiPod uses four Prometheus metric types:
+
+- **Counter** - Monotonically increasing value (e.g., total requests)
+- **Gauge** - Value that can go up or down (e.g., current workload count)
+- **Histogram** - Distribution of values with buckets (e.g., duration)
+- **Summary** - Similar to histogram with quantiles
+
+## Controller Metrics
+
+### Workload Monitoring
+
+#### optipod_workloads_monitored
+
+Number of workloads currently monitored by OptiPod.
+
+**Type**: Gauge  
+**Labels**:
+- `namespace` - Workload namespace
+- `policy` - Policy name managing the workload
+
+**Example**:
+```promql
+optipod_workloads_monitored{namespace="production",policy="prod-policy"}
+```
+
+**Use cases**:
+- Monitor workload discovery
+- Track policy coverage
+- Alert on unexpected changes
+
+#### optipod_workloads_updated
+
+Number of workloads updated in the last reconciliation cycle.
+
+**Type**: Gauge  
+**Labels**:
+- `namespace` - Workload namespace
+- `policy` - Policy name
+
+**Example**:
+```promql
+optipod_workloads_updated{namespace="production",policy="prod-policy"}
+```
+
+**Use cases**:
+- Track optimization activity
+- Monitor Auto mode effectiveness
+- Identify high-churn workloads
+
+#### optipod_workloads_skipped
+
+Number of workloads skipped in the last reconciliation cycle.
+
+**Type**: Gauge  
+**Labels**:
+- `namespace` - Workload namespace
+- `policy` - Policy name
+- `reason` - Skip reason (e.g., "no_metrics", "validation_failed")
+
+**Example**:
+```promql
+optipod_workloads_skipped{namespace="production",policy="prod-policy",reason="no_metrics"}
+```
+
+**Use cases**:
+- Identify workloads without metrics
+- Debug policy issues
+- Monitor validation failures
+
+### Reconciliation
+
+#### optipod_reconciliation_duration_seconds
+
+Duration of reconciliation cycles in seconds.
+
+**Type**: Histogram  
+**Labels**:
+- `policy` - Policy name
+
+**Buckets**: Default Prometheus buckets (0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10)
+
+**Example**:
+```promql
+# Average reconciliation duration
+rate(optipod_reconciliation_duration_seconds_sum[5m]) / rate(optipod_reconciliation_duration_seconds_count[5m])
+
+# 95th percentile
+histogram_quantile(0.95, rate(optipod_reconciliation_duration_seconds_bucket[5m]))
+```
+
+**Use cases**:
+- Monitor controller performance
+- Identify slow reconciliations
+- Set SLO targets
+
+#### optipod_reconciliation_errors_total
+
+Total number of reconciliation errors.
+
+**Type**: Counter  
+**Labels**:
+- `policy` - Policy name
+- `error_type` - Error category (e.g., "metrics_fetch", "validation", "apply")
+
+**Example**:
+```promql
+# Error rate
+rate(optipod_reconciliation_errors_total[5m])
+
+# Errors by type
+sum by (error_type) (rate(optipod_reconciliation_errors_total[5m]))
+```
+
+**Use cases**:
+- Alert on error spikes
+- Identify error patterns
+- Debug controller issues
+
+### Metrics Collection
+
+#### optipod_metrics_collection_duration_seconds
+
+Duration of metrics collection operations in seconds.
+
+**Type**: Histogram  
+**Labels**:
+- `provider` - Metrics provider (e.g., "prometheus", "metrics-server")
+
+**Buckets**: Default Prometheus buckets
+
+**Example**:
+```promql
+# Average collection duration by provider
+rate(optipod_metrics_collection_duration_seconds_sum[5m]) / rate(optipod_metrics_collection_duration_seconds_count[5m])
+```
+
+**Use cases**:
+- Monitor metrics provider performance
+- Identify slow queries
+- Compare provider efficiency
+
+### Recommendations
+
+#### optipod_recommendations_total
+
+Total number of recommendations generated.
+
+**Type**: Counter  
+**Labels**:
+- `policy` - Policy name
+
+**Example**:
+```promql
+# Recommendation rate
+rate(optipod_recommendations_total[5m])
+
+# Total recommendations by policy
+sum by (policy) (optipod_recommendations_total)
+```
+
+**Use cases**:
+- Track recommendation generation
+- Monitor policy activity
+- Measure optimization coverage
+
+### Applications
+
+#### optipod_applications_total
+
+Total number of resource updates applied.
+
+**Type**: Counter  
+**Labels**:
+- `policy` - Policy name
+- `method` - Application method ("ssa" or "webhook")
+
+**Example**:
+```promql
+# Application rate
+rate(optipod_applications_total[5m])
+
+# Applications by method
+sum by (method) (rate(optipod_applications_total[5m]))
+```
+
+**Use cases**:
+- Monitor Auto mode activity
+- Compare SSA vs webhook usage
+- Track optimization velocity
+
+#### optipod_ssa_patch_total
+
+Total number of Server-Side Apply patch operations.
+
+**Type**: Counter  
+**Labels**:
+- `policy` - Policy name
+- `namespace` - Workload namespace
+- `workload` - Workload name
+- `kind` - Workload kind (Deployment, StatefulSet, DaemonSet)
+- `status` - Patch status ("success" or "failure")
+- `patch_type` - Type of patch ("strategic" or "merge")
+
+**Example**:
+```promql
+# SSA success rate
+sum(rate(optipod_ssa_patch_total{status="success"}[5m])) / sum(rate(optipod_ssa_patch_total[5m]))
+
+# Failed patches
+rate(optipod_ssa_patch_total{status="failure"}[5m])
+```
+
+**Use cases**:
+- Monitor SSA strategy effectiveness
+- Debug patch failures
+- Track per-workload updates
+
+### Optimization
+
+#### optipod_optimization_success_total
+
+Total number of successful optimizations.
+
+**Type**: Counter  
+**Labels**:
+- `policy` - Policy name
+- `namespace` - Workload namespace
+- `workload` - Workload name
+- `kind` - Workload kind
+- `method` - Optimization method ("ssa" or "webhook")
+
+**Example**:
+```promql
+# Success rate
+rate(optipod_optimization_success_total[5m])
+
+# Success by workload kind
+sum by (kind) (rate(optipod_optimization_success_total[5m]))
+```
+
+**Use cases**:
+- Monitor optimization success
+- Track per-workload optimization
+- Compare methods
+
+#### optipod_optimization_failure_total
+
+Total number of failed optimizations.
+
+**Type**: Counter  
+**Labels**:
+- `policy` - Policy name
+- `namespace` - Workload namespace
+- `workload` - Workload name
+- `kind` - Workload kind
+- `method` - Optimization method
+- `reason` - Failure reason
+
+**Example**:
+```promql
+# Failure rate
+rate(optipod_optimization_failure_total[5m])
+
+# Failures by reason
+sum by (reason) (rate(optipod_optimization_failure_total[5m]))
+```
+
+**Use cases**:
+- Alert on optimization failures
+- Identify failure patterns
+- Debug specific workloads
+
+#### optipod_resource_changes_magnitude
+
+Magnitude of resource changes in percentage.
+
+**Type**: Histogram  
+**Labels**:
+- `policy` - Policy name
+- `namespace` - Workload namespace
+- `workload` - Workload name
+- `resource_type` - Resource type ("cpu" or "memory")
+
+**Buckets**: -90, -75, -50, -25, -10, -5, 0, 5, 10, 25, 50, 75, 100, 200, 500
+
+**Example**:
+```promql
+# Average change magnitude
+rate(optipod_resource_changes_magnitude_sum[5m]) / rate(optipod_resource_changes_magnitude_count[5m])
+
+# Distribution of changes
+sum by (le) (rate(optipod_resource_changes_magnitude_bucket[5m]))
+```
+
+**Use cases**:
+- Monitor optimization impact
+- Identify aggressive changes
+- Track savings
+
+#### optipod_default_multiplier_usage_total
+
+Total number of times default multipliers were used.
+
+**Type**: Counter  
+**Labels**:
+- `policy` - Policy name
+- `resource_type` - Resource type ("cpu" or "memory")
+- `multiplier_value` - Multiplier value used
+
+**Example**:
+```promql
+# Default multiplier usage rate
+rate(optipod_default_multiplier_usage_total[5m])
+```
+
+**Use cases**:
+- Track default configuration usage
+- Identify policies needing tuning
+
+#### optipod_optimization_decision_duration_seconds
+
+Duration of optimization decision making in seconds.
+
+**Type**: Histogram  
+**Labels**:
+- `policy` - Policy name
+- `workload_kind` - Workload kind
+
+**Buckets**: Default Prometheus buckets
+
+**Example**:
+```promql
+# Average decision duration
+rate(optipod_optimization_decision_duration_seconds_sum[5m]) / rate(optipod_optimization_decision_duration_seconds_count[5m])
+```
+
+**Use cases**:
+- Monitor decision performance
+- Identify slow policies
+
+## Webhook Metrics
+
+### Admission Requests
+
+#### optipod_webhook_admission_requests_total
+
+Total number of webhook admission requests received.
+
+**Type**: Counter  
+**Labels**:
+- `namespace` - Pod namespace
+- `pod_name` - Pod name
+- `dry_run` - Dry run flag ("true" or "false")
+
+**Example**:
+```promql
+# Request rate
+rate(optipod_webhook_admission_requests_total[5m])
+
+# Dry run vs real requests
+sum by (dry_run) (rate(optipod_webhook_admission_requests_total[5m]))
+```
+
+**Use cases**:
+- Monitor webhook traffic
+- Track dry run usage
+- Capacity planning
+
+#### optipod_webhook_admission_success_total
+
+Total number of successful webhook admissions.
+
+**Type**: Counter  
+**Labels**:
+- `namespace` - Pod namespace
+- `policy` - Policy name
+- `patches_applied` - Whether patches were applied ("0" or "1+")
+
+**Example**:
+```promql
+# Success rate
+sum(rate(optipod_webhook_admission_success_total[5m])) / sum(rate(optipod_webhook_admission_requests_total[5m]))
+```
+
+**Use cases**:
+- Monitor webhook success rate
+- Track patch application
+
+#### optipod_webhook_admission_failures_total
+
+Total number of failed webhook admissions.
+
+**Type**: Counter  
+**Labels**:
+- `namespace` - Pod namespace
+- `failure_reason` - Failure reason
+
+**Example**:
+```promql
+# Failure rate
+rate(optipod_webhook_admission_failures_total[5m])
+
+# Failures by reason
+sum by (failure_reason) (rate(optipod_webhook_admission_failures_total[5m]))
+```
+
+**Use cases**:
+- Alert on webhook failures
+- Debug admission issues
+- Identify failure patterns
+
+### Mutation Operations
+
+#### optipod_webhook_mutation_duration_seconds
+
+Duration of webhook mutation operations in seconds.
+
+**Type**: Histogram  
+**Labels**:
+- `namespace` - Pod namespace
+- `policy` - Policy name
+
+**Buckets**: 0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0
+
+**Example**:
+```promql
+# Average mutation duration
+rate(optipod_webhook_mutation_duration_seconds_sum[5m]) / rate(optipod_webhook_mutation_duration_seconds_count[5m])
+
+# 99th percentile
+histogram_quantile(0.99, rate(optipod_webhook_mutation_duration_seconds_bucket[5m]))
+```
+
+**Use cases**:
+- Monitor webhook latency
+- Set SLO targets
+- Identify slow mutations
+
+#### optipod_webhook_patches_applied_total
+
+Total number of patches applied by the webhook.
+
+**Type**: Counter  
+**Labels**:
+- `namespace` - Pod namespace
+- `policy` - Policy name
+- `container_name` - Container name
+- `resource_type` - Resource type ("cpu" or "memory")
+
+**Example**:
+```promql
+# Patch rate
+rate(optipod_webhook_patches_applied_total[5m])
+
+# Patches by resource type
+sum by (resource_type) (rate(optipod_webhook_patches_applied_total[5m]))
+```
+
+**Use cases**:
+- Track webhook activity
+- Monitor per-container patches
+- Analyze resource type distribution
+
+### Errors and Health
+
+#### optipod_webhook_annotation_parsing_errors_total
+
+Total number of annotation parsing errors in webhook.
+
+**Type**: Counter  
+**Labels**:
+- `namespace` - Pod namespace
+- `pod_name` - Pod name
+- `annotation_key` - Annotation key that failed to parse
+- `error_type` - Error type
+
+**Example**:
+```promql
+# Parsing error rate
+rate(optipod_webhook_annotation_parsing_errors_total[5m])
+
+# Errors by annotation
+sum by (annotation_key) (rate(optipod_webhook_annotation_parsing_errors_total[5m]))
+```
+
+**Use cases**:
+- Debug annotation format issues
+- Identify problematic annotations
+- Alert on parsing errors
+
+#### optipod_webhook_server_health_status
+
+Webhook server health status.
+
+**Type**: Gauge  
+**Labels**:
+- `endpoint` - Health endpoint ("/healthz" or "/readyz")
+
+**Values**:
+- `1` - Healthy
+- `0` - Unhealthy
+
+**Example**:
+```promql
+# Check health status
+optipod_webhook_server_health_status{endpoint="/healthz"}
+```
+
+**Use cases**:
+- Monitor webhook health
+- Alert on unhealthy status
+- Track availability
+
+#### optipod_webhook_certificate_expiry_timestamp_seconds
+
+Webhook certificate expiry time as Unix timestamp.
+
+**Type**: Gauge  
+**Labels**:
+- `cert_type` - Certificate type ("server" or "ca")
+
+**Example**:
+```promql
+# Days until expiry
+(optipod_webhook_certificate_expiry_timestamp_seconds - time()) / 86400
+
+# Alert if expiring soon
+(optipod_webhook_certificate_expiry_timestamp_seconds - time()) < 604800  # 7 days
+```
+
+**Use cases**:
+- Monitor certificate expiry
+- Alert before expiration
+- Track certificate rotation
+
+### Policy Matching
+
+#### optipod_webhook_policy_matching_duration_seconds
+
+Duration of policy matching operations in webhook.
+
+**Type**: Histogram  
+**Labels**:
+- `namespace` - Pod namespace
+- `policies_found` - Number of policies found
+
+**Buckets**: 0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5
+
+**Example**:
+```promql
+# Average matching duration
+rate(optipod_webhook_policy_matching_duration_seconds_sum[5m]) / rate(optipod_webhook_policy_matching_duration_seconds_count[5m])
+```
+
+**Use cases**:
+- Monitor policy matching performance
+- Optimize policy selectors
+
+
+## Common PromQL Queries
+
+### Controller Health
+
+**Reconciliation success rate**:
+```promql
+1 - (
+  rate(optipod_reconciliation_errors_total[5m]) /
+  rate(optipod_reconciliation_duration_seconds_count[5m])
+)
+```
+
+**Workloads per policy**:
+```promql
+sum by (policy) (optipod_workloads_monitored)
+```
+
+**Recommendation generation rate**:
+```promql
+rate(optipod_recommendations_total[5m])
+```
+
+### Optimization Impact
+
+**Total resource savings (CPU)**:
+```promql
+sum(optipod_resource_changes_magnitude{resource_type="cpu"} < 0)
+```
+
+**Average optimization magnitude**:
+```promql
+avg(optipod_resource_changes_magnitude)
+```
+
+**Optimization success rate**:
+```promql
+sum(rate(optipod_optimization_success_total[5m])) /
+(sum(rate(optipod_optimization_success_total[5m])) + sum(rate(optipod_optimization_failure_total[5m])))
+```
+
+### Webhook Performance
+
+**Webhook latency (p95)**:
+```promql
+histogram_quantile(0.95, rate(optipod_webhook_mutation_duration_seconds_bucket[5m]))
+```
+
+**Webhook success rate**:
+```promql
+sum(rate(optipod_webhook_admission_success_total[5m])) /
+sum(rate(optipod_webhook_admission_requests_total[5m]))
+```
+
+**Patches per second**:
+```promql
+sum(rate(optipod_webhook_patches_applied_total[5m]))
+```
+
+### Error Monitoring
+
+**Error rate by type**:
+```promql
+sum by (error_type) (rate(optipod_reconciliation_errors_total[5m]))
+```
+
+**Webhook failure rate**:
+```promql
+sum by (failure_reason) (rate(optipod_webhook_admission_failures_total[5m]))
+```
+
+**Annotation parsing errors**:
+```promql
+sum by (annotation_key) (rate(optipod_webhook_annotation_parsing_errors_total[5m]))
+```
+
+## Grafana Dashboard
+
+### Recommended Panels
+
+**Overview Dashboard**:
+1. Workloads monitored (gauge)
+2. Recommendation rate (graph)
+3. Optimization success rate (gauge)
+4. Reconciliation duration p95 (graph)
+5. Error rate (graph)
+
+**Controller Dashboard**:
+1. Reconciliation duration histogram
+2. Metrics collection duration
+3. Workloads by policy (table)
+4. Errors by type (graph)
+5. Resource change magnitude distribution
+
+**Webhook Dashboard**:
+1. Admission request rate (graph)
+2. Mutation latency p50/p95/p99 (graph)
+3. Success rate (gauge)
+4. Patches applied by resource type (graph)
+5. Certificate expiry countdown (gauge)
+
+### Example Panel Queries
+
+**Workloads Monitored (Gauge)**:
+```promql
+sum(optipod_workloads_monitored)
+```
+
+**Reconciliation Duration (Graph)**:
+```promql
+histogram_quantile(0.50, rate(optipod_reconciliation_duration_seconds_bucket[5m]))
+histogram_quantile(0.95, rate(optipod_reconciliation_duration_seconds_bucket[5m]))
+histogram_quantile(0.99, rate(optipod_reconciliation_duration_seconds_bucket[5m]))
+```
+
+**Optimization Success Rate (Gauge)**:
+```promql
+sum(rate(optipod_optimization_success_total[5m])) /
+(sum(rate(optipod_optimization_success_total[5m])) + sum(rate(optipod_optimization_failure_total[5m])))
+```
+
+## Alerting Rules
+
+### Critical Alerts
+
+**Controller Down**:
+```yaml
+- alert: OptiPodControllerDown
+  expr: up{job="optipod-controller"} == 0
+  for: 5m
+  labels:
+    severity: critical
+  annotations:
+    summary: "OptiPod controller is down"
+    description: "Controller has been down for more than 5 minutes"
+```
+
+**High Error Rate**:
+```yaml
+- alert: OptiPodHighErrorRate
+  expr: rate(optipod_reconciliation_errors_total[5m]) > 0.1
+  for: 10m
+  labels:
+    severity: warning
+  annotations:
+    summary: "High reconciliation error rate"
+    description: "Error rate is {{ $value }} errors/sec"
+```
+
+**Webhook Failures**:
+```yaml
+- alert: OptiPodWebhookFailures
+  expr: rate(optipod_webhook_admission_failures_total[5m]) > 0.05
+  for: 5m
+  labels:
+    severity: warning
+  annotations:
+    summary: "Webhook admission failures detected"
+    description: "Failure rate is {{ $value }} failures/sec"
+```
+
+### Warning Alerts
+
+**Certificate Expiring Soon**:
+```yaml
+- alert: OptiPodCertificateExpiringSoon
+  expr: (optipod_webhook_certificate_expiry_timestamp_seconds - time()) < 604800
+  for: 1h
+  labels:
+    severity: warning
+  annotations:
+    summary: "Webhook certificate expiring soon"
+    description: "Certificate expires in {{ $value | humanizeDuration }}"
+```
+
+**High Reconciliation Duration**:
+```yaml
+- alert: OptiPodSlowReconciliation
+  expr: histogram_quantile(0.95, rate(optipod_reconciliation_duration_seconds_bucket[5m])) > 30
+  for: 15m
+  labels:
+    severity: warning
+  annotations:
+    summary: "Slow reconciliation detected"
+    description: "P95 reconciliation duration is {{ $value }}s"
+```
+
+**No Recommendations Generated**:
+```yaml
+- alert: OptiPodNoRecommendations
+  expr: rate(optipod_recommendations_total[30m]) == 0
+  for: 1h
+  labels:
+    severity: warning
+  annotations:
+    summary: "No recommendations generated"
+    description: "No recommendations in the last hour"
+```
+
+## ServiceMonitor Configuration
+
+OptiPod includes a ServiceMonitor for Prometheus Operator:
+
+```yaml
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: optipod-controller
+  namespace: optipod-system
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: optipod
+      app.kubernetes.io/component: controller
+  endpoints:
+  - port: metrics
+    path: /metrics
+    interval: 30s
+    scrapeTimeout: 10s
+```
+
+## Metrics Endpoint Security
+
+### Authentication
+
+Metrics endpoints support authentication via:
+- **Token-based auth** - Bearer token in Authorization header
+- **mTLS** - Mutual TLS authentication
+- **RBAC** - Kubernetes RBAC for metrics reader role
+
+### RBAC Configuration
+
+Grant metrics access:
+
+```yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: optipod-metrics-reader
+rules:
+- nonResourceURLs:
+  - /metrics
+  verbs:
+  - get
+```
+
+## Troubleshooting
+
+### Metrics Not Appearing
+
+**Check metrics endpoint**:
+```bash
+kubectl port-forward -n optipod-system deployment/optipod-controller 8080:8080
+curl http://localhost:8080/metrics
+```
+
+**Verify ServiceMonitor**:
+```bash
+kubectl get servicemonitor -n optipod-system
+kubectl describe servicemonitor optipod-controller -n optipod-system
+```
+
+**Check Prometheus targets**:
+```bash
+# In Prometheus UI
+Status → Targets → optipod-system/optipod-controller
+```
+
+### Missing Labels
+
+If labels are missing:
+1. Check metric registration in code
+2. Verify label values are set correctly
+3. Check for label cardinality limits
+
+### High Cardinality
+
+If metrics have too many unique label combinations:
+1. Review label usage (especially `workload` and `namespace`)
+2. Consider aggregating at query time
+3. Use recording rules for common queries
+
+## Best Practices
+
+1. **Use recording rules** for frequently queried metrics
+2. **Set appropriate scrape intervals** (30s recommended)
+3. **Monitor metric cardinality** to avoid performance issues
+4. **Use label matchers** in queries to reduce data volume
+5. **Create dashboards** for common monitoring scenarios
+6. **Set up alerts** for critical conditions
+7. **Document custom queries** for team reference
+8. **Review metrics regularly** to identify unused metrics
+
+## Related Documentation
+
+- [Observability Guide](../advanced/observability.md) - Complete observability setup
+- [Operations Guide](../advanced/operations.md) - Operational procedures
+- [Troubleshooting](../guides/troubleshooting.md) - Common issues and solutions
+- [Architecture](../concepts/architecture.md) - System architecture and components

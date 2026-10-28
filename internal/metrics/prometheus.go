@@ -31,10 +31,17 @@ type PrometheusProvider struct {
 	client v1.API
 }
 
-// NewPrometheusProvider creates a new PrometheusProvider.
-func NewPrometheusProvider(prometheusURL string) (*PrometheusProvider, error) {
+// NewPrometheusProvider creates a new PrometheusProvider with authentication support.
+func NewPrometheusProvider(config PrometheusConfig) (*PrometheusProvider, error) {
+	// Build HTTP client with auth and TLS
+	httpClient, err := buildHTTPClient(config)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build HTTP client: %w", err)
+	}
+
 	client, err := api.NewClient(api.Config{
-		Address: prometheusURL,
+		Address:      config.URL,
+		RoundTripper: httpClient.Transport,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Prometheus client: %w", err)

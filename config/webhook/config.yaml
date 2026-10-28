@@ -1,0 +1,69 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: webhook-config
+  namespace: system
+  labels:
+    app.kubernetes.io/name: optipod-webhook
+    app.kubernetes.io/managed-by: kustomize
+data:
+  # Webhook server configuration
+  webhook.yaml: |
+    webhook:
+      # Server configuration
+      port: 9443
+      certDir: "/tmp/k8s-webhook-server/serving-certs"
+
+      # TLS configuration
+      tls:
+        certFile: "tls.crt"
+        keyFile: "tls.key"
+        minVersion: "1.2"
+        cipherSuites:
+          - "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256"
+          - "TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384"
+          - "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256"
+          - "TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384"
+
+      # Admission configuration
+      admission:
+        timeoutSeconds: 10
+        failurePolicy: "Ignore"  # Change to "Fail" for strict enforcement
+        reinvocationPolicy: "Never"
+
+      # Mutation configuration
+      mutation:
+        # Enable/disable specific mutation features
+        resourceRequests: true
+        resourceLimits: true
+        annotations: true
+
+        # Resource bounds enforcement
+        enforceMinimums: true
+        enforceMaximums: true
+
+        # Safety settings
+        allowZeroRequests: false
+        preserveExistingLimits: false
+
+      # Observability configuration
+      observability:
+        metrics:
+          enabled: true
+          port: 8080
+          path: "/metrics"
+
+        logging:
+          level: "info"  # debug, info, warn, error
+          format: "json"  # json, text
+
+        tracing:
+          enabled: false
+          endpoint: ""
+
+      # Health check configuration
+      health:
+        enabled: true
+        port: 8081
+        livenessPath: "/healthz"
+        readinessPath: "/readyz"

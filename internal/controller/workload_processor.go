@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -43,7 +44,7 @@ import (
 // ApplicationEngine defines the interface for applying resource changes
 type ApplicationEngine interface {
 	CanApply(ctx context.Context, workload *application.Workload, containerName string, rec *recommendation.Recommendation, policy *optipodv1alpha1.OptimizationPolicy) (*application.ApplyDecision, error)
-	Apply(ctx context.Context, workload *application.Workload, containerName string, rec *recommendation.Recommendation, policy *optipodv1alpha1.OptimizationPolicy) (*application.ApplyResult, error)
+	Apply(ctx context.Context, workload *application.Workload, recommendations []application.ContainerRecommendation, policy *optipodv1alpha1.OptimizationPolicy) (*application.ApplyResult, error)
 }
 
 // WorkloadProcessor handles the processing of individual workloads
@@ -124,6 +125,15 @@ func (wp *WorkloadProcessor) ProcessWorkload(
 			continue
 		}
 
+		if registrar, ok := wp.metricsProvider.(metrics.SamplingTargetRegistrar); ok {
+			registrar.RegisterTarget(metrics.TargetKey{
+				Namespace:    workload.Namespace,
+				WorkloadKind: workload.Kind,
+				WorkloadName: workload.Name,
+				Container:    container.Name,
+			}, podName)
+		}
+
 		// Get rolling window from policy
 		rollingWindow := 24 * time.Hour
 		if policy.Spec.MetricsConfig.RollingWindow.Duration > 0 {
@@ -145,10 +155,45 @@ func (wp *WorkloadProcessor) ProcessWorkload(
 		metricsTimer.Observe(time.Since(metricsStartTime).Seconds())
 
 		if err != nil {
+			var insufficient *metrics.ErrInsufficientSamples
+			if errors.As(err, &insufficient) {
+				hasMetricsError = true
+				metricsErrorMsg = fmt.Sprintf("Insufficient metrics samples for container %s: %v", container.Name, err)
+				continue
+			}
+
 			// Handle missing metrics error
 			hasMetricsError = true
 			metricsErrorMsg = fmt.Sprintf("Failed to collect metrics for container %s: %v", container.Name, err)
 			continue
+		}
+
+		// Enforce per-policy minimum samples requirement for metrics-server.
+		// For other providers, this is ignored.
+		if wp.metricsProviderType == "metrics-server" {
+			required := 0
+			if policy.Spec.MetricsConfig.MetricsServer != nil && policy.Spec.MetricsConfig.MetricsServer.MinSamplesRequired != nil {
+				required = int(*policy.Spec.MetricsConfig.MetricsServer.MinSamplesRequired)
+			} else {
+				type defaultMinSampler interface {
+					DefaultMinSamplesRequired() int
+				}
+				if provider, ok := wp.metricsProvider.(defaultMinSampler); ok {
+					required = provider.DefaultMinSamplesRequired()
+				}
+			}
+
+			if required > 0 {
+				samples := containerMetrics.CPU.Samples
+				if containerMetrics.Memory.Samples < samples {
+					samples = containerMetrics.Memory.Samples
+				}
+				if samples < required {
+					hasMetricsError = true
+					metricsErrorMsg = fmt.Sprintf("Insufficient metrics samples for container %s: have %d, need %d", container.Name, samples, required)
+					continue
+				}
+			}
 		}
 
 		// Compute recommendation
@@ -208,24 +253,38 @@ func (wp *WorkloadProcessor) ProcessWorkload(
 
 	// In Auto mode, attempt to apply changes
 	if policy.Spec.Mode == optipodv1alpha1.ModeAuto {
-		// Track apply result for status updates
-		var lastApplyResult *application.ApplyResult
+		// Convert workload to application.Workload format
+		appWorkload, err := wp.convertToApplicationWorkload(workload)
+		if err != nil {
+			status.Status = StatusError
+			status.Reason = fmt.Sprintf("Failed to convert workload: %v", err)
+			return status, err
+		}
 
-		// For each container, apply the recommendation
-		for i, rec := range recommendations {
-			// Convert workload to application.Workload format
-			appWorkload, err := wp.convertToApplicationWorkload(workload)
-			if err != nil {
-				status.Status = StatusError
-				status.Reason = fmt.Sprintf("Failed to convert workload: %v", err)
-				return status, err
-			}
-
+		// Build the workload's full per-container recommendation set and check
+		// applicability per container before applying.
+		appRecs := make([]application.ContainerRecommendation, 0, len(recommendations))
+		for _, rec := range recommendations {
 			// Create recommendation object
 			appRec := &recommendation.Recommendation{
 				CPU:    *rec.CPU,
 				Memory: *rec.Memory,
 			}
+			appRecs = append(appRecs, application.ContainerRecommendation{
+				Container:      rec.Container,
+				Recommendation: appRec,
+			})
+
+			// Log the strategy being used for this policy
+			strategy := policy.GetStrategy()
+			log := logf.FromContext(ctx)
+			log.V(1).Info("Applying recommendation with strategy",
+				"workload", fmt.Sprintf("%s/%s", workload.Namespace, workload.Name),
+				"container", rec.Container,
+				"policy", policy.Name,
+				"strategy", strategy,
+				"rolloutStrategy", policy.GetRolloutStrategy(),
+			)
 
 			// Check if we can apply
 			decision, err := wp.applicationEngine.CanApply(ctx, appWorkload, rec.Container, appRec, policy)
@@ -240,26 +299,29 @@ func (wp *WorkloadProcessor) ProcessWorkload(
 				status.Reason = decision.Reason
 				return status, nil
 			}
+		}
 
-			// Apply the changes
-			applyResult, err := wp.applicationEngine.Apply(ctx, appWorkload, rec.Container, appRec, policy)
+		// Apply the workload's full per-container set in ONE workload-wide
+		// operation per strategy so sibling containers cannot prune each
+		// other's applied fields (multi-container convergence).
+		var lastApplyResult *application.ApplyResult
+		if len(appRecs) > 0 {
+			applyResult, err := wp.applicationEngine.Apply(ctx, appWorkload, appRecs, policy)
 			if err != nil {
 				status.Status = StatusError
-				status.Reason = fmt.Sprintf("Failed to apply changes to container %s: %v", rec.Container, err)
+				status.Reason = fmt.Sprintf("Failed to apply changes: %v", err)
 				return status, err
 			}
 
 			// Store the apply result
 			lastApplyResult = applyResult
 
-			// Update last applied timestamp (only once after all containers)
-			if i == len(recommendations)-1 {
-				now := metav1.Now()
-				status.LastApplied = &now
-			}
+			// Update last applied timestamp (after the workload-wide apply)
+			now := metav1.Now()
+			status.LastApplied = &now
 		}
 
-		// Update status with SSA information
+		// Update status with apply method information
 		if lastApplyResult != nil {
 			status.LastApplyMethod = lastApplyResult.Method
 			status.FieldOwnership = lastApplyResult.FieldOwnership
@@ -438,6 +500,7 @@ func (wp *WorkloadProcessor) addRecommendationAnnotations(ctx context.Context, w
 		// Add management annotations
 		annotations[optipodv1alpha1.AnnotationManaged] = "true"
 		annotations[optipodv1alpha1.AnnotationPolicy] = policy.Name
+		annotations[optipodv1alpha1.AnnotationPolicyUID] = string(policy.UID)
 		annotations[optipodv1alpha1.AnnotationLastRecommendation] = time.Now().Format(time.RFC3339)
 
 		// Add per-container recommendations (requests)

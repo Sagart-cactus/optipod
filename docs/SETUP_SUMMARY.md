@@ -139,7 +139,7 @@ Created a CI workflow that runs:
 
 Created comprehensive documentation:
 
-#### `docs/CONTRIBUTING.md`
+#### `CONTRIBUTING.md`
 
 - Complete contributing guide
 - Development setup instructions

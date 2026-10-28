@@ -83,7 +83,7 @@ spec:
   
   # Metrics configuration
   metricsConfig:
-    provider: prometheus  # or metrics-server, custom
+    provider: prometheus  # Fully supported: prometheus, metrics-server, custom
     rollingWindow: 24h
     percentile: P90
     safetyFactor: 1.2

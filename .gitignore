@@ -42,9 +42,24 @@ manager
 cover.out
 coverage.*
 
+# New hermetic Kind suite run artifacts (JUnit, timings, redacted diagnostics)
+test/e2e/artifacts/
+
 # Verification and checkpoint files
 *_VERIFICATION.md
 *_CHECKPOINT_SUMMARY.md
 E2E_TEST_IMPLEMENTATION.md
 TASK_*.md
 TEST_*.md
+
+# AI assistant and deployment folders
+.claude/
+.deploy/
+
+# AI-generated documentation (temporary)
+.ai-docs/
+
+# Test files and temporary artifacts
+test-*.yaml
+temp-*.yaml
+.DS_Store

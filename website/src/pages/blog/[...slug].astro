@@ -1,0 +1,31 @@
+---
+import Layout from '~/layouts/PageLayout.astro';
+import SinglePost from '~/components/blog/SinglePost.astro';
+import { fetchPosts } from '~/utils/blog';
+import type { Post } from '~/types';
+import '~/assets/styles/blog.css';
+
+export const prerender = true;
+
+export async function getStaticPaths() {
+  const posts = await fetchPosts();
+  return posts.map((post) => ({
+    params: { slug: post.slug },
+    props: { post },
+  }));
+}
+
+interface Props {
+  post: Post;
+}
+
+const { post } = Astro.props;
+const url = new URL(Astro.url.pathname, Astro.site);
+const { Content } = post;
+---
+
+<Layout metadata={post.metadata}>
+  <SinglePost post={post} url={url}>
+    {Content && <Content />}
+  </SinglePost>
+</Layout>

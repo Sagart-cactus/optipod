@@ -43,6 +43,9 @@ type ProviderConfig struct {
 	// PrometheusURL is the URL for Prometheus (required if Type is prometheus)
 	PrometheusURL string
 
+	// Prometheus contains Prometheus-specific configuration (optional)
+	Prometheus PrometheusConfig
+
 	// Clientset is the Kubernetes clientset (required if Type is metrics-server)
 	Clientset kubernetes.Interface
 
@@ -55,6 +58,18 @@ type ProviderConfig struct {
 
 	// SampleInterval is the interval between samples (optional, defaults to 15 seconds)
 	SampleInterval int // in seconds
+
+	// MetricsServerSamplingInterval controls background sampling cadence (metrics-server only).
+	MetricsServerSamplingInterval time.Duration
+
+	// MetricsServerMaxSamplesPerTarget caps stored samples per target (metrics-server only).
+	MetricsServerMaxSamplesPerTarget int
+
+	// MetricsServerMinSamplesRequired is the minimum samples required before recommendations (metrics-server only).
+	MetricsServerMinSamplesRequired int
+
+	// MetricsServerTargetTTL evicts targets that have not been refreshed (metrics-server only).
+	MetricsServerTargetTTL time.Duration
 }
 
 // NewProvider creates a new MetricsProvider based on the configuration.
@@ -71,30 +86,37 @@ func NewProvider(config ProviderConfig) (MetricsProvider, error) {
 		}
 
 		// Use custom configuration if provided, otherwise use defaults
-		if config.MaxSamples > 0 || config.SampleInterval > 0 {
-			maxSamples := config.MaxSamples
-			if maxSamples == 0 {
-				maxSamples = 10 // default
-			}
-			sampleInterval := config.SampleInterval
-			if sampleInterval == 0 {
-				sampleInterval = 15 // default 15 seconds
-			}
-			return NewMetricsServerProviderWithConfig(
-				config.Clientset,
-				config.MetricsClientset,
-				maxSamples,
-				time.Duration(sampleInterval)*time.Second,
-			), nil
+		samplingConfig := SamplingConfig{
+			Interval:   config.MetricsServerSamplingInterval,
+			MaxSamples: config.MetricsServerMaxSamplesPerTarget,
+			MinSamples: config.MetricsServerMinSamplesRequired,
+			TargetTTL:  config.MetricsServerTargetTTL,
 		}
 
-		return NewMetricsServerProvider(config.Clientset, config.MetricsClientset), nil
+		if samplingConfig.Interval == 0 && config.SampleInterval > 0 {
+			samplingConfig.Interval = time.Duration(config.SampleInterval) * time.Second
+		}
+		if samplingConfig.MaxSamples == 0 && config.MaxSamples > 0 {
+			samplingConfig.MaxSamples = config.MaxSamples
+		}
+
+		return NewMetricsServerProviderWithConfig(
+			config.MetricsClientset,
+			samplingConfig,
+		), nil
 
 	case ProviderTypePrometheus:
-		if config.PrometheusURL == "" {
+		if config.PrometheusURL == "" && config.Prometheus.URL == "" {
 			return nil, fmt.Errorf("prometheus URL is required for prometheus provider")
 		}
-		provider, err := NewPrometheusProvider(config.PrometheusURL)
+
+		// Use Prometheus config if provided, otherwise create from URL
+		promConfig := config.Prometheus
+		if promConfig.URL == "" {
+			promConfig.URL = config.PrometheusURL
+		}
+
+		provider, err := NewPrometheusProvider(promConfig)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create prometheus provider: %w", err)
 		}

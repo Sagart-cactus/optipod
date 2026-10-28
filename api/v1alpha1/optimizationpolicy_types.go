@@ -31,6 +31,9 @@ const (
 	// AnnotationPolicy indicates which policy manages this workload
 	AnnotationPolicy = "optipod.io/policy"
 
+	// AnnotationPolicyUID stores the unique identifier of the acting optimization policy
+	AnnotationPolicyUID = "optipod.io/policy-uid"
+
 	// AnnotationLastRecommendation is the timestamp of the last recommendation
 	AnnotationLastRecommendation = "optipod.io/last-recommendation"
 
@@ -41,6 +44,23 @@ const (
 	// Format: optipod.io/recommendation.<container-name>.cpu
 	//         optipod.io/recommendation.<container-name>.memory
 	AnnotationRecommendationPrefix = "optipod.io/recommendation"
+
+	// Webhook-specific annotations
+	// AnnotationWebhookEnabled indicates the workload should be processed by webhook
+	AnnotationWebhookEnabled = "optipod.io/webhook-enabled"
+
+	// AnnotationStrategy indicates which strategy is used for this workload
+	AnnotationStrategy = "optipod.io/strategy"
+
+	// Resource recommendation annotations (per container)
+	// Format: optipod.io/cpu-request.<container-name>
+	//         optipod.io/memory-request.<container-name>
+	//         optipod.io/cpu-limit.<container-name>
+	//         optipod.io/memory-limit.<container-name>
+	AnnotationCPURequestPrefix    = "optipod.io/cpu-request"
+	AnnotationMemoryRequestPrefix = "optipod.io/memory-request"
+	AnnotationCPULimitPrefix      = "optipod.io/cpu-limit"
+	AnnotationMemoryLimitPrefix   = "optipod.io/memory-limit"
 )
 
 // PolicyMode defines the operational mode of the optimization policy
@@ -54,6 +74,26 @@ const (
 	ModeRecommend PolicyMode = "Recommend"
 	// ModeDisabled stops processing workloads under this policy
 	ModeDisabled PolicyMode = "Disabled"
+)
+
+// UpdateStrategyType defines how resource updates are applied
+type UpdateStrategyType string
+
+const (
+	// StrategySSA uses Server-Side Apply for resource updates
+	StrategySSA UpdateStrategyType = "ssa"
+	// StrategyWebhook uses mutating webhooks for resource updates
+	StrategyWebhook UpdateStrategyType = "webhook"
+)
+
+// RolloutStrategyType defines when resource changes take effect
+type RolloutStrategyType string
+
+const (
+	// RolloutImmediate triggers rolling restart after applying annotations
+	RolloutImmediate RolloutStrategyType = "immediate"
+	// RolloutOnNextRestart only applies annotations without triggering restarts
+	RolloutOnNextRestart RolloutStrategyType = "onNextRestart"
 )
 
 // OptimizationPolicySpec defines the desired state of OptimizationPolicy
@@ -151,6 +191,10 @@ type MetricsConfig struct {
 	// +kubebuilder:validation:Enum=prometheus;metrics-server;custom
 	Provider string `json:"provider"`
 
+	// MetricsServer configures metrics-server specific behavior.
+	// +optional
+	MetricsServer *MetricsServerConfig `json:"metricsServer,omitempty"`
+
 	// RollingWindow defines the time period over which metrics are aggregated
 	// +kubebuilder:default="24h"
 	// +optional
@@ -167,6 +211,17 @@ type MetricsConfig struct {
 	// +kubebuilder:default=1.2
 	// +optional
 	SafetyFactor *float64 `json:"safetyFactor,omitempty"`
+}
+
+// MetricsServerConfig configures how metrics-server is sampled/consumed.
+type MetricsServerConfig struct {
+	// MinSamplesRequired is the minimum number of cached samples required before OptiPod will
+	// compute/apply recommendations when using metrics-server.
+	// If not set, the operator-wide default is used.
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=100000
+	// +optional
+	MinSamplesRequired *int32 `json:"minSamplesRequired,omitempty"`
 }
 
 // ResourceBounds defines min/max constraints for CPU and memory
@@ -193,6 +248,18 @@ type ResourceBound struct {
 
 // UpdateStrategy defines how resource updates are applied to workloads
 type UpdateStrategy struct {
+	// Strategy defines how resource updates are applied
+	// +kubebuilder:validation:Enum=ssa;webhook
+	// +kubebuilder:default="webhook"
+	// +optional
+	Strategy *string `json:"strategy,omitempty"`
+
+	// RolloutStrategy defines when resource changes take effect (webhook strategy only)
+	// +kubebuilder:validation:Enum=immediate;onNextRestart
+	// +kubebuilder:default="onNextRestart"
+	// +optional
+	RolloutStrategy *string `json:"rolloutStrategy,omitempty"`
+
 	// AllowInPlaceResize enables in-place pod resize when supported
 	// +kubebuilder:default=true
 	// +optional
@@ -217,16 +284,22 @@ type UpdateStrategy struct {
 	// +optional
 	LimitConfig *LimitConfig `json:"limitConfig,omitempty"`
 
-	// AllowUnsafeMemoryDecrease disables memory safety checks when true
-	// When false (default), OptipPod will block memory decreases that could cause pod eviction or OOM.
-	// When true, OptipPod will apply all memory recommendations regardless of safety concerns.
-	// Use with caution in production environments.
+	// AllowUnsafeMemoryDecrease is a work-in-progress field that would disable
+	// memory safety checks when true.
+	// Status: not enforced. The field is part of the CRD schema and is validated,
+	// but no production code reads it, so setting it has no effect.
+	// Memory decreases are currently applied in full, like any other
+	// recommendation, constrained only by resource bounds and the safety factor;
+	// there is no default block on memory decreases.
 	// +kubebuilder:default=false
 	// +optional
 	AllowUnsafeMemoryDecrease *bool `json:"allowUnsafeMemoryDecrease,omitempty"`
 
-	// GradualDecreaseConfig configures gradual memory reduction for safer optimization
-	// When enabled, large memory decreases are applied incrementally over multiple reconciliations
+	// GradualDecreaseConfig is a work-in-progress field that would apply large
+	// memory decreases incrementally over multiple reconciliations.
+	// Status: not implemented. The configuration is part of the CRD schema and is
+	// validated, but no production code reads it, so setting it has no effect.
+	// Memory decreases are currently applied in full in a single reconciliation.
 	// +optional
 	GradualDecreaseConfig *GradualDecreaseConfig `json:"gradualDecreaseConfig,omitempty"`
 }
@@ -254,14 +327,16 @@ type LimitConfig struct {
 
 // GradualDecreaseConfig defines parameters for gradual memory reduction
 type GradualDecreaseConfig struct {
-	// Enabled activates gradual decrease functionality
-	// When true, large memory decreases are applied incrementally over multiple reconciliations
+	// Enabled would activate gradual decrease functionality
+	// When true, large memory decreases would be applied incrementally over multiple reconciliations
+	// Status: not implemented; no production code reads this field
 	// +kubebuilder:default=false
 	// +optional
 	Enabled bool `json:"enabled,omitempty"`
 
 	// MemoryDecreasePercentage is the maximum percentage to decrease memory per reconciliation
 	// Must be between 1 and 50. Default is 10 (10% per reconciliation).
+	// Status: not implemented; no production code reads this field
 	// +kubebuilder:default=10
 	// +kubebuilder:validation:Minimum=1
 	// +kubebuilder:validation:Maximum=50
@@ -269,14 +344,16 @@ type GradualDecreaseConfig struct {
 	MemoryDecreasePercentage *int `json:"memoryDecreasePercentage,omitempty"`
 
 	// MinimumDecreaseThreshold is the minimum decrease amount to trigger gradual reduction
-	// Decreases smaller than this threshold are applied immediately.
+	// Decreases smaller than this threshold would be applied immediately.
 	// Default is 100Mi.
+	// Status: not implemented; no production code reads this field
 	// +optional
 	MinimumDecreaseThreshold *resource.Quantity `json:"minimumDecreaseThreshold,omitempty"`
 
 	// MaximumTotalDecrease is the maximum total percentage decrease from original value
 	// Must be between 1 and 90. Default is 70 (70% maximum total decrease).
-	// This prevents excessive optimization that could destabilize workloads.
+	// This would prevent excessive optimization that could destabilize workloads.
+	// Status: not implemented; no production code reads this field
 	// +kubebuilder:default=70
 	// +kubebuilder:validation:Minimum=1
 	// +kubebuilder:validation:Maximum=90
@@ -491,8 +568,35 @@ func (r *OptimizationPolicy) GetTotalWorkloadsByType() int {
 		r.Status.WorkloadsByType.DaemonSets
 }
 
-func init() {
-	SchemeBuilder.Register(&OptimizationPolicy{}, &OptimizationPolicyList{})
+// GetStrategy returns the update strategy, defaulting to "webhook" if not specified
+func (r *OptimizationPolicy) GetStrategy() UpdateStrategyType {
+	if r.Spec.UpdateStrategy.Strategy != nil {
+		return UpdateStrategyType(*r.Spec.UpdateStrategy.Strategy)
+	}
+	return StrategyWebhook // Default to webhook strategy
+}
+
+// GetRolloutStrategy returns the rollout strategy, defaulting to "onNextRestart" if not specified
+func (r *OptimizationPolicy) GetRolloutStrategy() RolloutStrategyType {
+	if r.Spec.UpdateStrategy.RolloutStrategy != nil {
+		return RolloutStrategyType(*r.Spec.UpdateStrategy.RolloutStrategy)
+	}
+	return RolloutOnNextRestart // Default to onNextRestart
+}
+
+// IsWebhookStrategy returns true if the policy uses webhook strategy
+func (r *OptimizationPolicy) IsWebhookStrategy() bool {
+	return r.GetStrategy() == StrategyWebhook
+}
+
+// IsSSAStrategy returns true if the policy uses SSA strategy
+func (r *OptimizationPolicy) IsSSAStrategy() bool {
+	return r.GetStrategy() == StrategySSA
+}
+
+// IsImmediateRollout returns true if the policy uses immediate rollout strategy
+func (r *OptimizationPolicy) IsImmediateRollout() bool {
+	return r.GetRolloutStrategy() == RolloutImmediate
 }
 
 // ValidateCreate validates the OptimizationPolicy on creation
@@ -590,6 +694,13 @@ func (r *OptimizationPolicy) validateOptimizationPolicy() error {
 		return fmt.Errorf("safety factor must be at least 1.0, got %f", *r.Spec.MetricsConfig.SafetyFactor)
 	}
 
+	// Validate metrics-server config if provided
+	if r.Spec.MetricsConfig.MetricsServer != nil && r.Spec.MetricsConfig.MetricsServer.MinSamplesRequired != nil {
+		if *r.Spec.MetricsConfig.MetricsServer.MinSamplesRequired < 1 {
+			return fmt.Errorf("metricsConfig.metricsServer.minSamplesRequired must be >= 1")
+		}
+	}
+
 	// Validate weight
 	if r.Spec.Weight != nil && (*r.Spec.Weight < 1 || *r.Spec.Weight > 1000) {
 		return fmt.Errorf("weight must be between 1 and 1000, got %d", *r.Spec.Weight)
@@ -599,6 +710,22 @@ func (r *OptimizationPolicy) validateOptimizationPolicy() error {
 	if r.Spec.UpdateStrategy.GradualDecreaseConfig != nil {
 		if err := validateGradualDecreaseConfig(r.Spec.UpdateStrategy.GradualDecreaseConfig); err != nil {
 			return err
+		}
+	}
+
+	// Validate strategy field
+	if r.Spec.UpdateStrategy.Strategy != nil {
+		strategy := *r.Spec.UpdateStrategy.Strategy
+		if strategy != string(StrategySSA) && strategy != string(StrategyWebhook) {
+			return fmt.Errorf("invalid strategy %q, must be one of: ssa, webhook", strategy)
+		}
+	}
+
+	// Validate rollout strategy field
+	if r.Spec.UpdateStrategy.RolloutStrategy != nil {
+		rolloutStrategy := *r.Spec.UpdateStrategy.RolloutStrategy
+		if rolloutStrategy != string(RolloutImmediate) && rolloutStrategy != string(RolloutOnNextRestart) {
+			return fmt.Errorf("invalid rolloutStrategy %q, must be one of: immediate, onNextRestart", rolloutStrategy)
 		}
 	}
 

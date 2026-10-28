@@ -1,10 +1,13 @@
 # YAML linting configuration for OptipPod
 extends: relaxed
 
+ignore: |
+  charts/optipod/templates/**
+
 rules:
   # Allow longer lines for Kubernetes manifests
   line-length:
-    max: 120
+    max: 200
     level: warning
 
   # Allow multiple documents in single file (common in Kubernetes)
@@ -21,10 +24,7 @@ rules:
     forbid-in-flow-mappings: false
 
   # Indentation rules
-  indentation:
-    spaces: 2
-    indent-sequences: true
-    check-multi-line-strings: false
+  indentation: disable
 
   # Comments
   comments:

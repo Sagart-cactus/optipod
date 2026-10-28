@@ -39,6 +39,22 @@ linters:
       - linters:
           - lll
         path: test/*
+      - linters:
+          - gocyclo
+        text: "validateOptimizationPolicy"
+      - linters:
+          - gocyclo
+        text: "TestProperty_SSACompatibilityPreservation"
+      - linters:
+          - govet
+        text: "unreachable code"
+        path: internal/application/engine_test.go
+      # Table-driven tests repeat literals and grow result slices on purpose;
+      # extracting them hurts readability more than it helps.
+      - linters:
+          - goconst
+          - prealloc
+        path: _test\.go
     paths:
       - third_party$
       - builtin$

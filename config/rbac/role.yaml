@@ -21,10 +21,23 @@ rules:
   - list
   - watch
 - apiGroups:
+  - admissionregistration.k8s.io
+  resources:
+  - mutatingadmissionwebhookconfigurations
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
   - apps
   resources:
   - daemonsets
   - deployments
+  - replicasets
   - statefulsets
   verbs:
   - get

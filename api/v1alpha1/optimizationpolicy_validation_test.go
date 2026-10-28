@@ -1113,3 +1113,252 @@ func TestProperty_ExcludePrecedenceOverInclude(t *testing.T) {
 
 	properties.TestingRun(t)
 }
+
+// Feature: mutating-webhook-support, Property 1: Strategy configuration and routing
+// For any OptimizationPolicy, when strategy is set to "ssa" the system should use SSA methods,
+// when set to "webhook" should use webhook methods, and when omitted should default to "webhook"
+// Validates: Requirements 1.1, 1.2, 1.3, 1.4
+func TestProperty_StrategyConfigurationAndRouting(t *testing.T) {
+	parameters := gopter.DefaultTestParameters()
+	parameters.MinSuccessfulTests = 100
+	properties := gopter.NewProperties(parameters)
+
+	// Property: Strategy configuration and routing behavior
+	properties.Property("strategy configuration and routing", prop.ForAll(
+		func(strategyPtr *string, rolloutStrategyPtr *string) bool {
+			policy := &OptimizationPolicy{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-policy",
+					Namespace: "default",
+				},
+				Spec: OptimizationPolicySpec{
+					Mode: ModeAuto,
+					Selector: WorkloadSelector{
+						WorkloadSelector: &metav1.LabelSelector{
+							MatchLabels: map[string]string{"app": "test"},
+						},
+					},
+					MetricsConfig: MetricsConfig{
+						Provider:   "prometheus",
+						Percentile: "P90",
+					},
+					ResourceBounds: ResourceBounds{
+						CPU: ResourceBound{
+							Min: *resource.NewMilliQuantity(100, resource.DecimalSI),
+							Max: *resource.NewMilliQuantity(1000, resource.DecimalSI),
+						},
+						Memory: ResourceBound{
+							Min: *resource.NewQuantity(128*1024*1024, resource.BinarySI),
+							Max: *resource.NewQuantity(1024*1024*1024, resource.BinarySI),
+						},
+					},
+					UpdateStrategy: UpdateStrategy{
+						Strategy:        strategyPtr,
+						RolloutStrategy: rolloutStrategyPtr,
+					},
+				},
+			}
+
+			// Test strategy routing behavior
+			actualStrategy := policy.GetStrategy()
+			actualRolloutStrategy := policy.GetRolloutStrategy()
+
+			// Verify strategy defaults and routing
+			if strategyPtr == nil {
+				// Should default to webhook
+				if actualStrategy != StrategyWebhook {
+					return false
+				}
+			} else {
+				expectedStrategy := UpdateStrategyType(*strategyPtr)
+				if actualStrategy != expectedStrategy {
+					return false
+				}
+			}
+
+			// Verify rollout strategy defaults
+			if rolloutStrategyPtr == nil {
+				// Should default to onNextRestart
+				if actualRolloutStrategy != RolloutOnNextRestart {
+					return false
+				}
+			} else {
+				expectedRolloutStrategy := RolloutStrategyType(*rolloutStrategyPtr)
+				if actualRolloutStrategy != expectedRolloutStrategy {
+					return false
+				}
+			}
+
+			// Test helper methods
+			if actualStrategy == StrategyWebhook && !policy.IsWebhookStrategy() {
+				return false
+			}
+			if actualStrategy == StrategySSA && !policy.IsSSAStrategy() {
+				return false
+			}
+			if actualRolloutStrategy == RolloutImmediate && !policy.IsImmediateRollout() {
+				return false
+			}
+
+			return true
+		},
+		gen.PtrOf(gen.OneConstOf(string(StrategySSA), string(StrategyWebhook))),
+		gen.PtrOf(gen.OneConstOf(string(RolloutImmediate), string(RolloutOnNextRestart))),
+	))
+
+	properties.TestingRun(t)
+}
+
+// Feature: mutating-webhook-support, Property 2: Strategy validation
+// For any OptimizationPolicy, when strategy field contains invalid values,
+// the system should reject the policy with validation errors
+// Validates: Requirements 1.5
+func TestProperty_StrategyValidation(t *testing.T) {
+	parameters := gopter.DefaultTestParameters()
+	parameters.MinSuccessfulTests = 100
+	properties := gopter.NewProperties(parameters)
+
+	// Property: Invalid strategy values should be rejected
+	properties.Property("invalid strategy values are rejected", prop.ForAll(
+		func(invalidStrategy string, invalidRolloutStrategy string) bool {
+			// Skip valid values - we want to test invalid ones
+			validStrategies := map[string]bool{
+				string(StrategySSA):     true,
+				string(StrategyWebhook): true,
+			}
+			validRolloutStrategies := map[string]bool{
+				string(RolloutImmediate):     true,
+				string(RolloutOnNextRestart): true,
+			}
+
+			// Test invalid strategy
+			if !validStrategies[invalidStrategy] && invalidStrategy != "" {
+				policy := &OptimizationPolicy{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "test-policy",
+						Namespace: "default",
+					},
+					Spec: OptimizationPolicySpec{
+						Mode: ModeAuto,
+						Selector: WorkloadSelector{
+							WorkloadSelector: &metav1.LabelSelector{
+								MatchLabels: map[string]string{"app": "test"},
+							},
+						},
+						MetricsConfig: MetricsConfig{
+							Provider:   "prometheus",
+							Percentile: "P90",
+						},
+						ResourceBounds: ResourceBounds{
+							CPU: ResourceBound{
+								Min: *resource.NewMilliQuantity(100, resource.DecimalSI),
+								Max: *resource.NewMilliQuantity(1000, resource.DecimalSI),
+							},
+							Memory: ResourceBound{
+								Min: *resource.NewQuantity(128*1024*1024, resource.BinarySI),
+								Max: *resource.NewQuantity(1024*1024*1024, resource.BinarySI),
+							},
+						},
+						UpdateStrategy: UpdateStrategy{
+							Strategy: &invalidStrategy,
+						},
+					},
+				}
+
+				// Should fail validation
+				if err := policy.ValidateCreate(); err == nil {
+					return false
+				}
+			}
+
+			// Test invalid rollout strategy
+			if !validRolloutStrategies[invalidRolloutStrategy] && invalidRolloutStrategy != "" {
+				policy := &OptimizationPolicy{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "test-policy",
+						Namespace: "default",
+					},
+					Spec: OptimizationPolicySpec{
+						Mode: ModeAuto,
+						Selector: WorkloadSelector{
+							WorkloadSelector: &metav1.LabelSelector{
+								MatchLabels: map[string]string{"app": "test"},
+							},
+						},
+						MetricsConfig: MetricsConfig{
+							Provider:   "prometheus",
+							Percentile: "P90",
+						},
+						ResourceBounds: ResourceBounds{
+							CPU: ResourceBound{
+								Min: *resource.NewMilliQuantity(100, resource.DecimalSI),
+								Max: *resource.NewMilliQuantity(1000, resource.DecimalSI),
+							},
+							Memory: ResourceBound{
+								Min: *resource.NewQuantity(128*1024*1024, resource.BinarySI),
+								Max: *resource.NewQuantity(1024*1024*1024, resource.BinarySI),
+							},
+						},
+						UpdateStrategy: UpdateStrategy{
+							RolloutStrategy: &invalidRolloutStrategy,
+						},
+					},
+				}
+
+				// Should fail validation
+				if err := policy.ValidateCreate(); err == nil {
+					return false
+				}
+			}
+
+			return true
+		},
+		gen.OneConstOf("invalid", "bad-strategy", "unknown", "SSA", "WEBHOOK", "123", ""),
+		gen.OneConstOf("invalid", "bad-rollout", "unknown", "IMMEDIATE", "ON_NEXT_RESTART", "456", ""),
+	))
+
+	// Property: Valid strategy values should pass validation
+	properties.Property("valid strategy values pass validation", prop.ForAll(
+		func(validStrategy string, validRolloutStrategy string) bool {
+			policy := &OptimizationPolicy{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-policy",
+					Namespace: "default",
+				},
+				Spec: OptimizationPolicySpec{
+					Mode: ModeAuto,
+					Selector: WorkloadSelector{
+						WorkloadSelector: &metav1.LabelSelector{
+							MatchLabels: map[string]string{"app": "test"},
+						},
+					},
+					MetricsConfig: MetricsConfig{
+						Provider:   "prometheus",
+						Percentile: "P90",
+					},
+					ResourceBounds: ResourceBounds{
+						CPU: ResourceBound{
+							Min: *resource.NewMilliQuantity(100, resource.DecimalSI),
+							Max: *resource.NewMilliQuantity(1000, resource.DecimalSI),
+						},
+						Memory: ResourceBound{
+							Min: *resource.NewQuantity(128*1024*1024, resource.BinarySI),
+							Max: *resource.NewQuantity(1024*1024*1024, resource.BinarySI),
+						},
+					},
+					UpdateStrategy: UpdateStrategy{
+						Strategy:        &validStrategy,
+						RolloutStrategy: &validRolloutStrategy,
+					},
+				},
+			}
+
+			// Should pass validation
+			return policy.ValidateCreate() == nil
+		},
+		gen.OneConstOf(string(StrategySSA), string(StrategyWebhook)),
+		gen.OneConstOf(string(RolloutImmediate), string(RolloutOnNextRestart)),
+	))
+
+	properties.TestingRun(t)
+}

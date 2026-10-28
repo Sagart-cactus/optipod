@@ -1,0 +1,18 @@
+{{- if .Values.webhook.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "optipod.webhook.serviceName" . }}
+  namespace: {{ include "optipod.namespace" . }}
+  labels:
+    {{- include "optipod.webhook.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.webhook.service.type }}
+  ports:
+  - name: webhook
+    port: {{ .Values.webhook.service.port }}
+    targetPort: {{ .Values.webhook.service.targetPort }}
+    protocol: TCP
+  selector:
+    {{- include "optipod.webhook.selectorLabels" . | nindent 4 }}
+{{- end }}

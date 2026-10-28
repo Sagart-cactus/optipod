@@ -1,0 +1,174 @@
+/* Blog Post Code Block Styling */
+
+/* Override default code block styles for better readability */
+article pre {
+  @apply bg-slate-900 dark:bg-slate-950 rounded-lg p-4 overflow-x-auto my-6 shadow-lg border border-slate-700;
+}
+
+article pre code {
+  @apply text-slate-50 text-sm font-mono leading-relaxed;
+  background: transparent !important;
+  padding: 0 !important;
+  color: #f1f5f9 !important; /* Force bright text */
+}
+
+/* Inline code styling */
+article :not(pre) > code {
+  @apply bg-blue-50 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200 px-1.5 py-0.5 rounded text-sm font-mono;
+}
+
+/* Syntax highlighting for code blocks - HIGH CONTRAST */
+article pre code .token.comment,
+article pre code .token.prolog,
+article pre code .token.doctype,
+article pre code .token.cdata {
+  color: #94a3b8 !important; /* Bright gray for comments */
+}
+
+article pre code .token.punctuation {
+  color: #cbd5e1 !important; /* Light gray for punctuation */
+}
+
+article pre code .token.property,
+article pre code .token.tag,
+article pre code .token.boolean,
+article pre code .token.number,
+article pre code .token.constant,
+article pre code .token.symbol,
+article pre code .token.deleted {
+  color: #fca5a5 !important; /* Bright red */
+}
+
+article pre code .token.selector,
+article pre code .token.attr-name,
+article pre code .token.string,
+article pre code .token.char,
+article pre code .token.builtin,
+article pre code .token.inserted {
+  color: #86efac !important; /* Bright green */
+}
+
+article pre code .token.operator,
+article pre code .token.entity,
+article pre code .token.url,
+article pre code .language-css .token.string,
+article pre code .style .token.string {
+  color: #fde047 !important; /* Bright yellow */
+}
+
+article pre code .token.atrule,
+article pre code .token.attr-value,
+article pre code .token.keyword {
+  color: #93c5fd !important; /* Bright blue */
+}
+
+article pre code .token.function,
+article pre code .token.class-name {
+  color: #d8b4fe !important; /* Bright purple */
+}
+
+article pre code .token.regex,
+article pre code .token.important,
+article pre code .token.variable {
+  color: #fdba74 !important; /* Bright orange */
+}
+
+/* YAML-specific highlighting */
+article pre code .token.key {
+  color: #93c5fd !important; /* Bright blue */
+}
+
+/* Bash/Shell-specific highlighting */
+article pre code .token.shebang {
+  color: #94a3b8 !important; /* Bright gray */
+  font-style: italic;
+}
+
+/* Plain text in code blocks should be bright */
+article pre code,
+article pre code * {
+  color: #f1f5f9 !important; /* Default to very bright text */
+}
+
+/* Better blockquote styling in blog posts */
+article blockquote {
+  @apply border-l-4 border-blue-500 dark:border-blue-400 pl-4 py-2 my-6 bg-blue-50 dark:bg-blue-900/20 rounded-r;
+}
+
+article blockquote p {
+  @apply text-gray-700 dark:text-gray-300 italic;
+}
+
+/* Better table styling in blog posts */
+article table {
+  @apply w-full my-6 border-collapse;
+}
+
+article table thead {
+  @apply bg-gray-100 dark:bg-gray-800;
+}
+
+article table th {
+  @apply px-4 py-3 text-left font-semibold text-gray-900 dark:text-gray-100 border-b-2 border-gray-300 dark:border-gray-600;
+}
+
+article table td {
+  @apply px-4 py-3 border-b border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300;
+}
+
+article table tbody tr:hover {
+  @apply bg-gray-50 dark:bg-gray-800/50;
+}
+
+/* Better list styling in blog posts */
+article ul,
+article ol {
+  @apply my-4 ml-6;
+}
+
+article ul li,
+article ol li {
+  @apply mb-2 text-gray-700 dark:text-gray-300;
+}
+
+article ul li::marker {
+  @apply text-blue-500 dark:text-blue-400;
+}
+
+/* Headings in blog posts */
+article h2 {
+  @apply text-3xl font-bold mt-12 mb-6 text-gray-900 dark:text-gray-100;
+}
+
+article h3 {
+  @apply text-2xl font-bold mt-8 mb-4 text-gray-900 dark:text-gray-100;
+}
+
+article h4 {
+  @apply text-xl font-semibold mt-6 mb-3 text-gray-900 dark:text-gray-100;
+}
+
+/* Links in blog posts */
+article a {
+  @apply text-blue-600 dark:text-blue-400 hover:underline;
+}
+
+/* Horizontal rules */
+article hr {
+  @apply my-8 border-gray-300 dark:border-gray-700;
+}
+
+/* Images in blog posts */
+article img {
+  @apply rounded-lg shadow-md my-6;
+}
+
+/* Kbd (keyboard) styling */
+article kbd {
+  @apply bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 px-2 py-1 rounded text-sm font-mono border border-gray-300 dark:border-gray-600;
+}
+
+/* Mark (highlight) styling */
+article mark {
+  @apply bg-yellow-200 dark:bg-yellow-800 text-gray-900 dark:text-gray-100 px-1 rounded;
+}

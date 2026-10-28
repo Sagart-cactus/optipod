@@ -1,0 +1,129 @@
+{{- if .Values.webhook.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "optipod.webhook.deploymentName" . }}
+  namespace: {{ include "optipod.namespace" . }}
+  labels:
+    {{- include "optipod.webhook.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.webhook.deployment.replicaCount }}
+  {{- with .Values.webhook.deployment.strategy }}
+  strategy:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "optipod.webhook.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        {{- with .Values.webhook.deployment.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "optipod.webhook.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
+    spec:
+      {{- if .Values.webhook.deployment.priorityClassName }}
+      priorityClassName: {{ .Values.webhook.deployment.priorityClassName }}
+      {{- end }}
+      {{- if .Values.webhook.deployment.dnsPolicy }}
+      dnsPolicy: {{ .Values.webhook.deployment.dnsPolicy }}
+      {{- end }}
+      terminationGracePeriodSeconds: {{ .Values.webhook.deployment.terminationGracePeriodSeconds | default 30 }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "optipod.webhook.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.webhook.deployment.podSecurityContext | nindent 8 }}
+      {{- with .Values.webhook.deployment.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+      - name: webhook
+        image: {{ include "optipod.image" . }}
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        command:
+        - /manager
+        args:
+        - --enable-webhook=true
+        - --webhook-cert-path={{ .Values.webhook.certDir }}
+        - --webhook-service-name={{ include "optipod.webhook.serviceName" . }}
+        - --webhook-service-namespace={{ include "optipod.namespace" . }}
+        - --health-probe-bind-address=:{{ .Values.webhook.ports.health }}
+        - --metrics-bind-address=:{{ .Values.webhook.ports.metrics }}
+        - --leader-elect={{ .Values.webhook.deployment.leaderElect }}
+        {{- if .Values.webhook.deployment.enableHTTP2 }}
+        - --enable-http2=true
+        {{- end }}
+        {{- if .Values.metrics.secure }}
+        - --metrics-secure=true
+        {{- end }}
+        {{- if .Values.logging.level }}
+        - --zap-log-level={{ .Values.logging.level }}
+        {{- end }}
+        {{- if eq .Values.logging.format "json" }}
+        - --zap-encoder=json
+        {{- end }}
+        ports:
+        - name: webhook
+          containerPort: {{ .Values.webhook.port }}
+          protocol: TCP
+        - name: metrics
+          containerPort: {{ .Values.webhook.ports.metrics }}
+          protocol: TCP
+        - name: health
+          containerPort: {{ .Values.webhook.ports.health }}
+          protocol: TCP
+        livenessProbe:
+          {{- toYaml .Values.webhook.deployment.livenessProbe | nindent 10 }}
+        readinessProbe:
+          {{- toYaml .Values.webhook.deployment.readinessProbe | nindent 10 }}
+        securityContext:
+          {{- toYaml .Values.webhook.deployment.securityContext | nindent 10 }}
+        resources:
+          {{- toYaml .Values.webhook.deployment.resources | nindent 10 }}
+        volumeMounts:
+        - name: cert
+          mountPath: {{ .Values.webhook.certDir }}
+          readOnly: true
+        {{- with .Values.extraVolumeMounts }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+        env:
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        {{- with .Values.extraEnv }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      volumes:
+      - name: cert
+        secret:
+          secretName: {{ include "optipod.webhook.certificateSecretName" . }}
+          defaultMode: 420
+      {{- with .Values.extraVolumes }}
+      {{- toYaml . | nindent 6 }}
+      {{- end }}
+      {{- with .Values.webhook.deployment.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.webhook.deployment.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.webhook.deployment.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}
