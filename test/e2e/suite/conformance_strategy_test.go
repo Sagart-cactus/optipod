@@ -122,8 +122,8 @@ var _ = Describe("SSA and webhook strategy boundaries on the installed workload"
 
 		By("registering changed metrics and waiting for the new recommendations in the stored metadata")
 		// The recommendation-annotation write is throttled for 30s after the
-		// last successful write, so the window is waited out before the touch
-		// that must store the changed values.
+		// first observed write. Later reconciles may write again, so the
+		// expected-value wait below also covers any subsequent throttle window.
 		waitForAnnotationThrottleWindow(ctx, ns.Name, workloadName)
 		registerWorkloadSeries(ctx, ns.Name, workloadName, changed)
 		Expect(env.Fixture.ClearTrace(ctx)).To(Succeed(),
