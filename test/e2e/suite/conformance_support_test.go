@@ -48,38 +48,21 @@ const policyEventTimeout = 90 * time.Second
 // controller/test clock skew on the recorded last-recommendation timestamp.
 const annotationThrottleMargin = 2 * time.Second
 
-// waitForAnnotationThrottleWindow waits until the production recommendation-
-// annotation write throttle no longer suppresses metadata writes for the
-// named deployment. The deployed processor records its last successful
+// waitForAnnotationThrottleWindow waits out the initially observed production
+// recommendation-annotation write window for the named deployment.
+// The deployed processor records its last successful
 // annotation write in optipod.io/last-recommendation and skips the whole
-// annotation update (while still applying) for 30s after it, so a phase that
-// needs NEW annotations stored must let that window elapse before triggering
-// the reconcile. The wait is anchored on the recorded timestamp rather than
-// on sleeps: it returns immediately when the window is already over.
+// annotation update (while still applying) for 30s after it. Anchor the wait
+// to the FIRST observed timestamp: the 30s periodic reconcile can otherwise
+// refresh it before the 2s margin elapses and starve the wait indefinitely.
+// Callers still assert their expected annotations after triggering a reconcile,
+// since another write can start a new throttle window in the meantime.
 func waitForAnnotationThrottleWindow(ctx context.Context, namespace, name string) {
-	err := framework.WaitForCondition(ctx, framework.WaitOptions{
-		Timeout:     policyStatusTimeout,
-		Description: fmt.Sprintf("deployment %s/%s recommendation-annotation throttle window to elapse", namespace, name),
-	}, func(ctx context.Context) (bool, error) {
-		dep := &appsv1.Deployment{}
-		if err := env.Clients.Ctrl.Get(ctx, types.NamespacedName{Namespace: namespace, Name: name}, dep); err != nil {
-			return false, err
-		}
-		if dep.Annotations == nil {
-			return false, nil
-		}
-		last, exists := dep.Annotations[optipodv1alpha1.AnnotationLastRecommendation]
-		if !exists {
-			// No write ever succeeded: nothing suppresses the next one.
-			return true, nil
-		}
-		lastTime, err := time.Parse(time.RFC3339, last)
-		if err != nil {
-			// Unreadable record: proceed and let the assertions judge.
-			return true, nil
-		}
-		return time.Since(lastTime) > 30*time.Second+annotationThrottleMargin, nil
-	})
+	err := framework.WaitForDeploymentAnnotationThrottle(ctx, env.Clients, namespace, name,
+		30*time.Second+annotationThrottleMargin, framework.WaitOptions{
+			Timeout:     policyStatusTimeout,
+			Description: fmt.Sprintf("deployment %s/%s recommendation-annotation throttle window to elapse", namespace, name),
+		})
 	Expect(err).NotTo(HaveOccurred(),
 		"the recommendation-annotation throttle window never elapsed for deployment %s/%s", namespace, name)
 }

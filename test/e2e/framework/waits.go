@@ -11,6 +11,8 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
+
+	optipodv1alpha1 "github.com/optipod/optipod/api/v1alpha1"
 )
 
 // WaitOptions bounds a condition wait. Every wait in the harness is bounded by
@@ -60,6 +62,46 @@ func WaitForCondition(ctx context.Context, opts WaitOptions, cond ConditionFunc)
 			opts.Timeout, opts.Description, err, lastNote)
 	}
 	return nil
+}
+
+// WaitForDeploymentAnnotationThrottle waits out the recommendation write window
+// observed on the first successful read. Re-reading its timestamp on every poll
+// can starve forever when periodic reconciles refresh it at the throttle boundary.
+// A later write can start a new window, so callers must still wait for their
+// expected annotations after changing metrics or touching the policy.
+func WaitForDeploymentAnnotationThrottle(ctx context.Context, c *Clients, namespace, name string, window time.Duration, opts WaitOptions) error {
+	if opts.Description == "" {
+		opts.Description = fmt.Sprintf("deployment %s/%s initial recommendation-annotation throttle window to elapse", namespace, name)
+	}
+	return WaitForCondition(ctx, opts, annotationThrottleCondition(func(ctx context.Context) (map[string]string, error) {
+		dep, err := c.Kube.AppsV1().Deployments(namespace).Get(ctx, name, metav1.GetOptions{})
+		if err != nil {
+			return nil, err
+		}
+		return dep.Annotations, nil
+	}, window, time.Now))
+}
+
+func annotationThrottleCondition(read func(context.Context) (map[string]string, error), window time.Duration, now func() time.Time) ConditionFunc {
+	var deadline time.Time
+	observed := false
+	return func(ctx context.Context) (bool, error) {
+		if !observed {
+			annotations, err := read(ctx)
+			if err != nil {
+				return false, err
+			}
+			if last := annotations[optipodv1alpha1.AnnotationLastRecommendation]; last != "" {
+				writtenAt, err := time.Parse(time.RFC3339, last)
+				if err != nil {
+					return false, fmt.Errorf("invalid last-recommendation timestamp: %w", err)
+				}
+				deadline = writtenAt.Add(window)
+			}
+			observed = true
+		}
+		return !now().Before(deadline), nil
+	}
 }
 
 // WaitForCRDEstablished waits until the named CRD reports the Established
