@@ -111,7 +111,7 @@ jobs:
         run: make test-e2e-smoke
 
       - name: Upload JUnit, timing and redacted diagnostics
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: kind-smoke-artifacts
@@ -168,7 +168,7 @@ jobs:
         run: make test-e2e-conformance
 
       - name: Upload JUnit, timing and redacted diagnostics
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: kind-conformance-artifacts
