@@ -35,7 +35,7 @@ import (
 // workloadTypeMatches checks if a workload type matches the policy's workload type filter
 func workloadTypeMatches(filter *optipodv1alpha1.WorkloadTypeFilter, workloadKind string) bool {
 	if filter == nil {
-		return true // No filter = all types match (backward compatibility)
+		return workloadKind == "Pod" || optipodv1alpha1.GetActiveWorkloadTypes(nil).Contains(optipodv1alpha1.WorkloadType(workloadKind)) // New kinds require explicit opt-in.
 	}
 
 	workloadType := optipodv1alpha1.WorkloadType(workloadKind)
@@ -45,11 +45,11 @@ func workloadTypeMatches(filter *optipodv1alpha1.WorkloadTypeFilter, workloadKin
 
 // PolicySelector handles selection of the best policy for a workload when multiple policies match
 type PolicySelector struct {
-	client client.Client
+	client client.Reader
 }
 
 // NewPolicySelector creates a new policy selector
-func NewPolicySelector(c client.Client) *PolicySelector {
+func NewPolicySelector(c client.Reader) *PolicySelector {
 	return &PolicySelector{
 		client: c,
 	}
@@ -75,11 +75,6 @@ func (ps *PolicySelector) SelectBestPolicy(ctx context.Context, workload *discov
 	// Find matching policies
 	var matches []PolicyMatch
 	for _, policy := range policyList.Items {
-		// Skip disabled policies
-		if policy.Spec.Mode == optipodv1alpha1.ModeDisabled {
-			continue
-		}
-
 		// Check if policy matches workload
 		if ps.policyMatchesWorkload(ctx, &policy, workload) {
 			matches = append(matches, PolicyMatch{
@@ -99,6 +94,9 @@ func (ps *PolicySelector) SelectBestPolicy(ctx context.Context, workload *discov
 			return matches[i].Weight > matches[j].Weight
 		}
 		// If weights are equal, sort by name for deterministic behavior
+		if matches[i].Policy.Name == matches[j].Policy.Name {
+			return matches[i].Policy.Namespace < matches[j].Policy.Namespace
+		}
 		return matches[i].Policy.Name < matches[j].Policy.Name
 	})
 
@@ -210,7 +208,10 @@ func (ps *PolicySelector) getWorkloadLabels(workload *discovery.Workload) map[st
 	case *appsv1.DaemonSet:
 		return obj.Labels
 	default:
-		return nil
+		if workload.Object != nil {
+			return workload.Object.GetLabels()
+		}
+		return workload.Labels
 	}
 }
 
@@ -225,11 +226,6 @@ func (ps *PolicySelector) GetMatchingPolicies(ctx context.Context, workload *dis
 	// Find matching policies
 	var matches []PolicyMatch
 	for _, policy := range policyList.Items {
-		// Skip disabled policies
-		if policy.Spec.Mode == optipodv1alpha1.ModeDisabled {
-			continue
-		}
-
 		// Check if policy matches workload
 		if ps.policyMatchesWorkload(ctx, &policy, workload) {
 			matches = append(matches, PolicyMatch{
@@ -243,6 +239,9 @@ func (ps *PolicySelector) GetMatchingPolicies(ctx context.Context, workload *dis
 	sort.Slice(matches, func(i, j int) bool {
 		if matches[i].Weight != matches[j].Weight {
 			return matches[i].Weight > matches[j].Weight
+		}
+		if matches[i].Policy.Name == matches[j].Policy.Name {
+			return matches[i].Policy.Namespace < matches[j].Policy.Namespace
 		}
 		return matches[i].Policy.Name < matches[j].Policy.Name
 	})

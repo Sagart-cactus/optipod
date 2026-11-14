@@ -29,7 +29,7 @@ data:
       admission:
         timeoutSeconds: 10
         failurePolicy: "Ignore"  # Change to "Fail" for strict enforcement
-        reinvocationPolicy: "Never"
+        reinvocationPolicy: "IfNeeded"
 
       # Mutation configuration
       mutation:

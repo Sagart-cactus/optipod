@@ -178,9 +178,18 @@ func computePercentiles(samples []int64, isMillicore bool) ResourceMetrics {
 	return ResourceMetrics{
 		P50:     p50Qty,
 		P90:     p90Qty,
+		P95:     sampleQuantity(percentile(sorted, 95), isMillicore),
 		P99:     p99Qty,
+		P100:    sampleQuantity(sorted[len(sorted)-1], isMillicore),
 		Samples: len(samples),
 	}
+}
+
+func sampleQuantity(value int64, cpu bool) resource.Quantity {
+	if cpu {
+		return *resource.NewMilliQuantity(value, resource.DecimalSI)
+	}
+	return *resource.NewQuantity(value, resource.BinarySI)
 }
 
 // percentile computes the nth percentile from a sorted slice.

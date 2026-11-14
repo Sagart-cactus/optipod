@@ -120,6 +120,7 @@ func createModesWorkloadFixture(ctx context.Context, namespace, deploymentName s
 		},
 	}
 	Expect(k8sClient.Create(ctx, deployment)).To(Succeed())
+	markEnvtestDeploymentReady(ctx, deployment)
 
 	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
@@ -169,8 +170,10 @@ func createModesPolicy(ctx context.Context, name, namespace string, mutate func(
 				},
 			},
 			UpdateStrategy: optipodv1alpha1.UpdateStrategy{
-				Strategy:           &ssaStrategy,
-				UpdateRequestsOnly: true,
+				AllowRecreate:               true,
+				AllowFieldOwnershipTakeover: true,
+				Strategy:                    &ssaStrategy,
+				UpdateRequestsOnly:          true,
 			},
 		},
 	}
@@ -183,6 +186,14 @@ func createModesPolicy(ctx context.Context, name, namespace string, mutate func(
 // reconcilePolicy runs the production Reconcile for the named policy through
 // the given reconciler.
 func reconcilePolicy(ctx context.Context, reconciler *OptimizationPolicyReconciler, name string) {
+	// envtest has no Deployment controller. Simulate its status observation
+	// before exercising policy behavior; real rollout safety is tested in Kind.
+	list := &appsv1.DeploymentList{}
+	Expect(k8sClient.List(ctx, list)).To(Succeed())
+	for i := range list.Items {
+		markEnvtestDeploymentReady(ctx, &list.Items[i])
+	}
+
 	_, err := reconciler.Reconcile(ctx, ctrl.Request{
 		NamespacedName: types.NamespacedName{Name: name, Namespace: "default"},
 	})
@@ -440,3 +451,16 @@ var _ = Describe("Production mode handling through the reconciler", func() {
 		})
 	})
 })
+
+func markEnvtestDeploymentReady(ctx context.Context, d *appsv1.Deployment) {
+	want := int32(1)
+	if d.Spec.Replicas != nil {
+		want = *d.Spec.Replicas
+	}
+	d.Status.ObservedGeneration = d.Generation
+	d.Status.ReadyReplicas = want
+	d.Status.UpdatedReplicas = want
+	d.Status.Replicas = want
+	d.Status.AvailableReplicas = want
+	Expect(k8sClient.Status().Update(ctx, d)).To(Succeed())
+}

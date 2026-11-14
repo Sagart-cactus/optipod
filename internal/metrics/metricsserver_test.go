@@ -150,22 +150,23 @@ func TestSampleRingConcurrency(t *testing.T) {
 					MemoryByte: int64((id*10 + j) * 1024),
 				}
 				ring.append(sample)
+				_ = ring.valuesSince(now)
 			}
 		}(i)
 	}
 
 	wg.Wait()
 
-	// Verify we have samples
 	values := ring.valuesSince(now.Add(-time.Hour))
-	if len(values) == 0 {
-		t.Fatal("expected samples after concurrent writes")
+	if len(values) != 100 {
+		t.Fatalf("concurrent writes lost samples: got %d, want 100", len(values))
 	}
-
-	// Note: Due to concurrent access and ring buffer overflow, we can't guarantee
-	// strict chronological order, but we can verify basic functionality
-	if len(values) > ring.count {
-		t.Errorf("returned more values (%d) than ring capacity (%d)", len(values), ring.count)
+	seen := map[int64]bool{}
+	for _, sample := range values {
+		seen[sample.CPUMilli] = true
+	}
+	if len(seen) != 100 {
+		t.Fatalf("concurrent writes duplicated samples: %d unique values", len(seen))
 	}
 }
 
@@ -240,7 +241,7 @@ func TestTimeSeriesStoreEviction(t *testing.T) {
 
 	// Manually set lastSeen to simulate stale target
 	store.mu.Lock()
-	if target, ok := store.targets[key1]; ok {
+	if target, ok := store.targets[podKey{Namespace: key1.Namespace, PodName: "app1-pod", Container: key1.Container}]; ok {
 		target.lastSeen = time.Now().Add(-time.Hour) // Make it stale
 	}
 	store.mu.Unlock()
@@ -268,10 +269,10 @@ func TestTimeSeriesStoreEviction(t *testing.T) {
 		t.Errorf("expected key2 to remain, got %+v", targets[0].key)
 	}
 
-	// Verify samples for key1 were also removed
+	// Evict sampling, but retain historical points until their retention expires.
 	samples := store.samplesSince(key1, now.Add(-time.Hour))
-	if len(samples) != 0 {
-		t.Errorf("expected no samples for evicted target, got %d", len(samples))
+	if len(samples) != 1 {
+		t.Errorf("expected retained history for evicted target, got %d", len(samples))
 	}
 
 	// Verify samples for key2 still exist

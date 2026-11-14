@@ -1,0 +1,30 @@
+scope: OptiPod workload optimization (node optimization excluded)
+baseline: d68ba81679cd74fea1be7738789716a3436f75e4 # pragma: allowlist secret -- public Git commit
+validation:
+  local_runtime: Podman
+  cluster: kind Kubernetes v1.35.0 (private kubeconfig)
+  development_loop: Tilt rebuild, deploy, installed-controller tests
+  rule: run focused E2E after each feature change; run full conformance before completion
+  result: passed; final complete run has 96 passing specs and no failures
+  evidence: docs/workload-parity-validation.yaml
+  rollout_scope: local Kind validation complete; deploy through the documented DPV2 Recommend/canary process
+features:
+  - {id: P0-policy, feature: shared selection and final mutation guards, status: implemented-and-e2e-verified}
+  - {id: P0-history, feature: all-replica history and short CPU rates, status: implemented-and-e2e-verified}
+  - {id: P0-resources, feature: independent percentiles windows margins limits and exclusions, status: implemented-and-e2e-verified}
+  - {id: P0-confidence, feature: startup exclusion freshness and coverage, status: implemented-and-e2e-verified}
+  - {id: P0-stability, feature: no-op detection thresholds cooldowns and memory guards, status: implemented-and-e2e-verified}
+  - {id: P0-recovery, feature: OOM recovery and reduction circuit breaker, status: implemented-and-e2e-verified}
+  - {id: P1-resize, feature: real pod resize and guarded restart fallback, status: implemented-and-e2e-verified}
+  - {id: P1-hpa, feature: HPA and KEDA coexistence, status: implemented-and-e2e-verified}
+  - {id: P1-batch, feature: Jobs and CronJobs with execution history, status: implemented-and-e2e-verified}
+  - {id: P1-sidecars, feature: native and injected sidecar controls, status: implemented-and-e2e-verified}
+  - {id: P1-constraints, feature: quota LimitRange and QoS checks, status: implemented-and-e2e-verified}
+  - {id: P1-history, feature: durable change history and rollback, status: implemented-and-e2e-verified}
+  - {id: P1-migration, feature: policy translation validation and examples, status: implemented-and-e2e-verified}
+  - {id: P2-predictive, feature: bounded predictive CPU recommendations, status: implemented-and-e2e-verified}
+  - {id: P2-jvm, feature: JVM and custom metric recommendations, status: implemented-and-e2e-verified}
+  - {id: P2-controllers, feature: Argo Rollouts and standalone ReplicaSets, status: implemented-and-e2e-verified}
+  - {id: P2-daemonset, feature: node-aware DaemonSet sizing, status: implemented-and-e2e-verified}
+  - {id: P2-horizontal, feature: opt-in managed native HPA, status: implemented-and-e2e-verified}
+  - {id: P2-ui, feature: recommendation history and fleet reporting UI, status: implemented-and-e2e-and-ui-verified}

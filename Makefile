@@ -152,13 +152,13 @@ manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and Cust
 .PHONY: generate
 generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
 	"$(CONTROLLER_GEN)" object:headerFile="hack/boilerplate.go.txt" paths="./..."
-	@# controller-gen v0.22 emits the meta/v1 import without its `v1` alias, which the
-	@# goimports check in CI rejects. Normalise here so `make generate` stays clean.
-	@if command -v goimports >/dev/null 2>&1; then \
-		goimports -w api/v1alpha1/zz_generated.deepcopy.go; \
-	else \
-		echo "goimports not found; run 'make format' before committing generated code"; \
-	fi
+	@# controller-gen v0.22 omits explicit aliases for these versioned imports,
+	@# which goimports requires. Normalise here so regeneration stays clean.
+	@sed -e 's|^\([[:space:]]*\)"k8s.io/apimachinery/pkg/apis/meta/v1"|\1v1 "k8s.io/apimachinery/pkg/apis/meta/v1"|' \
+		-e 's|^\([[:space:]]*\)"k8s.io/api/autoscaling/v2"|\1v2 "k8s.io/api/autoscaling/v2"|' \
+		api/v1alpha1/zz_generated.deepcopy.go > api/v1alpha1/zz_generated.deepcopy.go.tmp
+	@mv api/v1alpha1/zz_generated.deepcopy.go.tmp api/v1alpha1/zz_generated.deepcopy.go
+	@gofmt -w api/v1alpha1/zz_generated.deepcopy.go
 
 .PHONY: fmt
 fmt: ## Run go fmt against code.
@@ -429,8 +429,7 @@ TMP_DIR=$$(mktemp -d); \
 echo "Downloading $(2)@$(3)" ;\
 cd $$TMP_DIR ;\
 go mod init tmp ;\
-go install $(2)@$(3) ;\
-cp "$$(go env GOPATH)/bin/$$(basename $(1))" $(1) ;\
+GOBIN="$(dir $(1))" go install $(2)@$(3) ;\
 rm -rf $$TMP_DIR ;\
 }
 endef

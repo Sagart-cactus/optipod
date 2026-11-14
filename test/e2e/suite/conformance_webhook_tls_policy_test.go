@@ -131,7 +131,7 @@ var _ = Describe("Webhook TLS, readiness and configured failure policy", Label("
 		admittedName, err := framework.UniqueName("probe-admitted")
 		Expect(err).NotTo(HaveOccurred(), "generate unique admitted probe name")
 		admitted, err := env.Clients.Kube.CoreV1().Pods(ns.Name).Create(ctx,
-			newAdmissionProbePod(ns.Name, admittedName, true, probeRecommendationAnnotations(true)),
+			newAdmissionProbePod(ns.Name, admittedName, true, probeRecommendationAnnotations(true, policy)),
 			metav1.CreateOptions{})
 		Expect(err).NotTo(HaveOccurred(), "the real API must admit the eligible probe pod")
 		expectMutatedProbeRequests(admitted, "the admission response of the eligible probe")
@@ -225,7 +225,7 @@ var _ = Describe("Webhook TLS, readiness and configured failure policy", Label("
 		outageName, err := framework.UniqueName("probe-outage")
 		Expect(err).NotTo(HaveOccurred(), "generate unique outage probe name")
 		outageAdmitted, err := env.Clients.Kube.CoreV1().Pods(ns.Name).Create(ctx,
-			newAdmissionProbePod(ns.Name, outageName, true, probeRecommendationAnnotations(true)),
+			newAdmissionProbePod(ns.Name, outageName, true, probeRecommendationAnnotations(true, policy)),
 			metav1.CreateOptions{})
 		Expect(err).NotTo(HaveOccurred(),
 			"failurePolicy=Ignore must admit the eligible pod even though the webhook call failed")
@@ -247,6 +247,11 @@ var _ = Describe("Webhook TLS, readiness and configured failure policy", Label("
 		recoveryPolicy := framework.NewPolicyFixture(ns.Name, recoveryPolicyName, optipodv1alpha1.ModeAuto,
 			framework.WithStrategy("webhook", ""),
 			framework.WithReconciliationInterval(30*time.Second))
+		// The recovery probe is bound to this policy revision. Make it the
+		// explicit winner; equal weights otherwise select by random name and
+		// correctly reject the probe when the original policy wins.
+		recoveryWeight := policy.GetWeight() + 1
+		recoveryPolicy.Spec.Weight = &recoveryWeight
 		Expect(env.Clients.Ctrl.Create(ctx, recoveryPolicy)).To(Succeed(),
 			"create the post-restart recovery policy")
 		waitForPolicyStatus(ctx, ns.Name, recoveryPolicyName, policyStatusWait{
@@ -260,7 +265,7 @@ var _ = Describe("Webhook TLS, readiness and configured failure policy", Label("
 		recoveredName, err := framework.UniqueName("probe-recovered")
 		Expect(err).NotTo(HaveOccurred(), "generate unique recovered probe name")
 		recovered, err := env.Clients.Kube.CoreV1().Pods(ns.Name).Create(ctx,
-			newAdmissionProbePod(ns.Name, recoveredName, true, probeRecommendationAnnotations(true)),
+			newAdmissionProbePod(ns.Name, recoveredName, true, probeRecommendationAnnotations(true, recoveryPolicy)),
 			metav1.CreateOptions{})
 		Expect(err).NotTo(HaveOccurred(), "the real API must admit the recovery probe pod")
 		expectMutatedProbeRequests(recovered, "the recovery probe pod after the server returned")

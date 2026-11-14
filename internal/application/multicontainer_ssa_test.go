@@ -130,8 +130,9 @@ func multiContainerSSAPolicy() *optipodv1alpha1.OptimizationPolicy {
 		Spec: optipodv1alpha1.OptimizationPolicySpec{
 			Mode: optipodv1alpha1.ModeAuto,
 			UpdateStrategy: optipodv1alpha1.UpdateStrategy{
-				Strategy:           stringPtr(string(optipodv1alpha1.StrategySSA)),
-				UpdateRequestsOnly: true,
+				AllowFieldOwnershipTakeover: true,
+				Strategy:                    stringPtr(string(optipodv1alpha1.StrategySSA)),
+				UpdateRequestsOnly:          true,
 			},
 		},
 	}

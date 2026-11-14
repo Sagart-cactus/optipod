@@ -33,5 +33,5 @@ webhooks:
   sideEffects: None
   failurePolicy: {{ .Values.webhook.failurePolicy }}
   timeoutSeconds: {{ .Values.webhook.timeoutSeconds }}
-  reinvocationPolicy: Never
+  reinvocationPolicy: IfNeeded
 {{- end }}

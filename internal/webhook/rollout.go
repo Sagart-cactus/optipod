@@ -22,6 +22,7 @@ import (
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
@@ -86,9 +87,11 @@ func (rc *RolloutController) TriggerRollingRestart(ctx context.Context, workload
 
 // SupportsRollingRestart checks if the workload type supports rolling restart
 func (rc *RolloutController) SupportsRollingRestart(workload client.Object) bool {
-	switch workload.(type) {
-	case *appsv1.Deployment, *appsv1.StatefulSet, *appsv1.DaemonSet:
+	switch obj := workload.(type) {
+	case *appsv1.Deployment, *appsv1.StatefulSet, *appsv1.DaemonSet, *appsv1.ReplicaSet:
 		return true
+	case *unstructured.Unstructured:
+		return obj.GetAPIVersion() == "argoproj.io/v1alpha1" && obj.GetKind() == kindRollout
 	default:
 		return false
 	}
@@ -108,6 +111,19 @@ func (rc *RolloutController) UpdatePodTemplate(ctx context.Context, workload cli
 	if err := rc.client.Get(ctx, client.ObjectKeyFromObject(workload), current); err != nil {
 		return fmt.Errorf("failed to get current workload: %w", err)
 	}
+	if current.GetUID() != workload.GetUID() {
+		return fmt.Errorf("workload identity changed before restart")
+	}
+	// Preserve the plan identity in the same update as the template change.
+	// A refetch must not discard the caller's idempotency marker.
+	if plan := workload.GetAnnotations()[RolloutHash]; plan != "" {
+		if current.GetAnnotations()[RecommendationHash] != plan {
+			return fmt.Errorf("recommendation changed before rollout")
+		}
+		a := current.GetAnnotations()
+		a[RolloutHash] = plan
+		current.SetAnnotations(a)
+	}
 
 	// Update pod template based on workload type
 	switch obj := current.(type) {
@@ -117,6 +133,16 @@ func (rc *RolloutController) UpdatePodTemplate(ctx context.Context, workload cli
 		return rc.updateStatefulSetPodTemplate(ctx, obj)
 	case *appsv1.DaemonSet:
 		return rc.updateDaemonSetPodTemplate(ctx, obj)
+	case *appsv1.ReplicaSet:
+		return rc.restartReplicaSet(ctx, obj)
+	case *unstructured.Unstructured:
+		if obj.GetKind() != kindRollout {
+			return fmt.Errorf("unsupported custom workload")
+		}
+		if err := unstructured.SetNestedField(obj.Object, time.Now().UTC().Format(time.RFC3339), "spec", "restartAt"); err != nil {
+			return err
+		}
+		return rc.client.Update(ctx, obj)
 	default:
 		return fmt.Errorf("unsupported workload type: %T", obj)
 	}
@@ -299,6 +325,14 @@ func (rc *RolloutController) IsWorkloadReady(workload client.Object) bool {
 		return rc.isStatefulSetReady(obj)
 	case *appsv1.DaemonSet:
 		return rc.isDaemonSetReady(obj)
+	case *appsv1.ReplicaSet:
+		want := int32(1)
+		if obj.Spec.Replicas != nil {
+			want = *obj.Spec.Replicas
+		}
+		return want > 0 && specObserved(obj) && obj.Status.ReadyReplicas == want && obj.Status.Replicas == want
+	case *unstructured.Unstructured:
+		return rolloutReady(obj)
 	default:
 		// For unknown types, assume ready
 		return true
@@ -307,47 +341,26 @@ func (rc *RolloutController) IsWorkloadReady(workload client.Object) bool {
 
 // isDeploymentReady checks if a Deployment is ready
 func (rc *RolloutController) isDeploymentReady(deployment *appsv1.Deployment) bool {
-	// Check if deployment has desired replicas ready
-	if deployment.Status.ReadyReplicas == 0 {
-		return false
+	want := int32(1)
+	if deployment.Spec.Replicas != nil {
+		want = *deployment.Spec.Replicas
 	}
-
-	// Check if deployment is not in the middle of a rollout
-	if deployment.Status.UpdatedReplicas != deployment.Status.Replicas {
-		return false
-	}
-
-	return true
+	return want > 0 && specObserved(deployment) && deployment.Status.ReadyReplicas == want && deployment.Status.UpdatedReplicas == want && deployment.Status.Replicas == want
 }
 
 // isStatefulSetReady checks if a StatefulSet is ready
 func (rc *RolloutController) isStatefulSetReady(statefulSet *appsv1.StatefulSet) bool {
-	// Check if statefulset has desired replicas ready
-	if statefulSet.Status.ReadyReplicas == 0 {
-		return false
+	want := int32(1)
+	if statefulSet.Spec.Replicas != nil {
+		want = *statefulSet.Spec.Replicas
 	}
-
-	// Check if statefulset is not in the middle of a rollout
-	if statefulSet.Status.UpdatedReplicas != statefulSet.Status.Replicas {
-		return false
-	}
-
-	return true
+	return want > 0 && specObserved(statefulSet) && statefulSet.Status.ReadyReplicas == want && statefulSet.Status.UpdatedReplicas == want && statefulSet.Status.Replicas == want
 }
 
 // isDaemonSetReady checks if a DaemonSet is ready
 func (rc *RolloutController) isDaemonSetReady(daemonSet *appsv1.DaemonSet) bool {
-	// Check if daemonset has desired number ready
-	if daemonSet.Status.NumberReady == 0 {
-		return false
-	}
-
-	// Check if daemonset is not in the middle of a rollout
-	if daemonSet.Status.UpdatedNumberScheduled != daemonSet.Status.DesiredNumberScheduled {
-		return false
-	}
-
-	return true
+	want := daemonSet.Status.DesiredNumberScheduled
+	return want > 0 && specObserved(daemonSet) && daemonSet.Status.NumberReady == want && daemonSet.Status.UpdatedNumberScheduled == want && daemonSet.Status.NumberUnavailable == 0
 }
 
 // SafeTriggerRollingRestart safely triggers a rolling restart with error handling

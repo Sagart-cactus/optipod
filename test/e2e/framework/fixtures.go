@@ -162,6 +162,11 @@ type PolicyOption func(*optipodv1alpha1.OptimizationPolicy)
 func WithStrategy(strategy, rollout string) PolicyOption {
 	return func(p *optipodv1alpha1.OptimizationPolicy) {
 		p.Spec.UpdateStrategy.Strategy = strPtr(strategy)
+		p.Spec.UpdateStrategy.AllowFieldOwnershipTakeover = strategy == "ssa"
+		if strategy == "ssa" || rollout == "immediate" {
+			p.Spec.UpdateStrategy.AllowInPlaceResize = false
+			p.Spec.UpdateStrategy.AllowRecreate = true
+		}
 		if rollout != "" {
 			p.Spec.UpdateStrategy.RolloutStrategy = strPtr(rollout)
 		}
@@ -236,7 +241,7 @@ func PolicyUnstructured(policy *optipodv1alpha1.OptimizationPolicy) (*unstructur
 		return nil, fmt.Errorf("unmarshal policy fixture: %w", err)
 	}
 	obj["apiVersion"] = optipodv1alpha1.GroupVersion.String()
-	obj["kind"] = "OptimizationPolicy"
+	obj[kindCommand] = "OptimizationPolicy"
 	spec, ok := obj["spec"].(map[string]interface{})
 	if !ok {
 		return nil, fmt.Errorf("policy fixture %s/%s marshalled without a spec object",
@@ -340,7 +345,8 @@ func NewPolicyFixture(namespace, name string, mode optipodv1alpha1.PolicyMode, o
 				},
 			},
 			UpdateStrategy: optipodv1alpha1.UpdateStrategy{
-				Strategy: strPtr(string(optipodv1alpha1.StrategyWebhook)),
+				Strategy:           strPtr(string(optipodv1alpha1.StrategyWebhook)),
+				AllowInPlaceResize: true,
 			},
 		},
 	}

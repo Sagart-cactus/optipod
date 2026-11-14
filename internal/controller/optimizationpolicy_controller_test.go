@@ -264,8 +264,8 @@ var _ = Describe("OptimizationPolicy Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			// Verify that requeue is set with the correct interval
-			// In Recommend mode, the requeue interval is doubled
-			Expect(result.RequeueAfter).To(Equal(4 * time.Minute))
+			// Recommend cadence is capped at half the five-minute source freshness.
+			Expect(result.RequeueAfter).To(Equal(150 * time.Second))
 
 			// Clean up
 			Expect(k8sClient.Delete(ctx, policy)).Should(Succeed())

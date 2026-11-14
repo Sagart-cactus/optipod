@@ -29,8 +29,11 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	optipodv1alpha1 "github.com/optipod/optipod/api/v1alpha1"
 	"github.com/optipod/optipod/internal/discovery"
@@ -54,9 +57,18 @@ type OptimizationPolicyReconciler struct {
 // +kubebuilder:rbac:groups=optipod.optipod.io,resources=optimizationpolicies,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=optipod.optipod.io,resources=optimizationpolicies/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=optipod.optipod.io,resources=optimizationpolicies/finalizers,verbs=update
+// +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
-// +kubebuilder:rbac:groups="",resources=namespaces,verbs=get;list;watch
+// +kubebuilder:rbac:groups="",resources=namespaces;nodes,verbs=get;list;watch
+// +kubebuilder:rbac:groups="",resources=limitranges;resourcequotas,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
+// +kubebuilder:rbac:groups="",resources=pods/resize,verbs=patch;update
+// +kubebuilder:rbac:groups=policy,resources=poddisruptionbudgets,verbs=get;list;watch
+// +kubebuilder:rbac:groups=autoscaling,resources=horizontalpodautoscalers,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=keda.sh,resources=scaledobjects,verbs=get;list;watch
+// +kubebuilder:rbac:groups="",resources=pods/eviction,verbs=create
+// +kubebuilder:rbac:groups=argoproj.io,resources=rollouts,verbs=get;list;watch;patch;update
+// +kubebuilder:rbac:groups=batch,resources=jobs;cronjobs,verbs=get;list;watch;update;patch
 // +kubebuilder:rbac:groups=apps,resources=deployments;statefulsets;daemonsets;replicasets,verbs=get;list;watch;update;patch
 // (replicasets read mirrors the shipped Helm chart: the pod mutator resolves a
 // Deployment-owned pod to its parent workload through pod -> ReplicaSet ->
@@ -77,6 +89,11 @@ func (r *OptimizationPolicyReconciler) Reconcile(ctx context.Context, req ctrl.R
 		timer.Observe(duration)
 	}()
 
+	if r.WorkloadProcessor != nil {
+		if err := r.WorkloadProcessor.CleanupHorizontal(ctx, req.NamespacedName); err != nil {
+			return ctrl.Result{}, err
+		}
+	}
 	// Fetch the OptimizationPolicy instance
 	optimizationPolicy := &optipodv1alpha1.OptimizationPolicy{}
 	if err := r.Get(ctx, req.NamespacedName, optimizationPolicy); err != nil {
@@ -150,6 +167,7 @@ func (r *OptimizationPolicyReconciler) Reconcile(ctx context.Context, req ctrl.R
 
 	// Calculate requeue interval with adaptive scheduling
 	requeueAfter := r.calculateRequeueInterval(optimizationPolicy, discoveredCount, processedCount)
+	requeueAfter = metricsRefreshInterval(optimizationPolicy, requeueAfter)
 
 	log.Info("Successfully reconciled OptimizationPolicy", "policy", optimizationPolicy.Name, "requeueAfter", requeueAfter)
 	return ctrl.Result{RequeueAfter: requeueAfter}, nil
@@ -355,6 +373,7 @@ func (r *OptimizationPolicyReconciler) updateWorkloadTypeCounts(ctx context.Cont
 			optipodv1alpha1.WorkloadTypeDeployment,
 			optipodv1alpha1.WorkloadTypeStatefulSet,
 			optipodv1alpha1.WorkloadTypeDaemonSet,
+			optipodv1alpha1.WorkloadTypeJob, optipodv1alpha1.WorkloadTypeCronJob, optipodv1alpha1.WorkloadTypeReplicaSet, optipodv1alpha1.WorkloadTypeRollout,
 		}
 		for _, workloadType := range allTypes {
 			expectedCount := typeCounts[workloadType] // 0 if not in map
@@ -445,6 +464,7 @@ func (r *OptimizationPolicyReconciler) calculateRequeueInterval(policyObj *optip
 // processWorkloadsWithPolicySelection discovers all workloads and processes them with the best matching policy
 func (r *OptimizationPolicyReconciler) processWorkloadsWithPolicySelection(ctx context.Context, triggeringPolicy *optipodv1alpha1.OptimizationPolicy) (int, int, error) {
 	log := logf.FromContext(ctx)
+	var retryErr error
 
 	// Initialize policy selector if not already done
 	if r.PolicySelector == nil {
@@ -496,13 +516,21 @@ func (r *OptimizationPolicyReconciler) processWorkloadsWithPolicySelection(ctx c
 		}
 
 		// Only process if this policy is the best match
-		if bestPolicy.Name != triggeringPolicy.Name {
+		if bestPolicy.Name != triggeringPolicy.Name || bestPolicy.Namespace != triggeringPolicy.Namespace {
 			log.V(1).Info("Workload handled by higher priority policy, skipping",
 				"workload", fmt.Sprintf("%s/%s", workload.Namespace, workload.Name),
 				"triggeringPolicy", triggeringPolicy.Name,
 				"triggeringWeight", triggeringPolicy.GetWeight(),
 				"bestPolicy", bestPolicy.Name,
 				"bestWeight", bestPolicy.GetWeight())
+			continue
+		}
+		// A winning Disabled policy is an authoritative exclusion. It must
+		// participate in precedence, but never process or apply recommendations.
+		if bestPolicy.Spec.Mode == optipodv1alpha1.ModeDisabled {
+			if err := r.recordDisabledDecision(ctx, &workload, bestPolicy); err != nil {
+				retryErr = err
+			}
 			continue
 		}
 
@@ -527,6 +555,9 @@ func (r *OptimizationPolicyReconciler) processWorkloadsWithPolicySelection(ctx c
 						fmt.Sprintf("Failed to process workload %s/%s: %v", workload.Namespace, workload.Name, err))
 				}
 				observability.ReconciliationErrors.WithLabelValues(triggeringPolicy.Name, "processing_error").Inc()
+				if apierrors.IsConflict(err) || apierrors.IsTimeout(err) || apierrors.IsServerTimeout(err) || apierrors.IsTooManyRequests(err) || apierrors.IsServiceUnavailable(err) {
+					retryErr = err
+				}
 				continue
 			}
 
@@ -577,13 +608,22 @@ func (r *OptimizationPolicyReconciler) processWorkloadsWithPolicySelection(ctx c
 		"discovered", len(workloads),
 		"processed", processedCount)
 
-	return processedCount, len(workloads), nil
+	return processedCount, len(workloads), retryErr
+}
+
+func (r *OptimizationPolicyReconciler) recordDisabledDecision(ctx context.Context, workload *discovery.Workload, p *optipodv1alpha1.OptimizationPolicy) error {
+	if r.WorkloadProcessor == nil {
+		return nil
+	}
+	status := &optipodv1alpha1.WorkloadStatus{Status: StatusSkipped, Reason: reasonDisabled}
+	return r.WorkloadProcessor.recordDecision(ctx, workload, p, status, nil)
 }
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *OptimizationPolicyReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&optipodv1alpha1.OptimizationPolicy{}).
+		For(&optipodv1alpha1.OptimizationPolicy{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
+		Watches(&corev1.Pod{}, handler.EnqueueRequestsFromMapFunc(r.policyForPod), builder.WithPredicates(podLifecycleEvents)).
 		Named("optimizationpolicy").
 		Complete(r)
 }

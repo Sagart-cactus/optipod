@@ -35,6 +35,7 @@ import (
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	metricsclientset "k8s.io/metrics/pkg/client/clientset/versioned"
 	ctrl "sigs.k8s.io/controller-runtime"
+	runtimeclient "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
@@ -336,14 +337,21 @@ func main() {
 	recommendationEngine := recommendation.NewEngine()
 
 	// Initialize application engine with global dry-run setting from operator config
-	applicationEngine := application.NewEngine(mgr.GetClient(), dynamicClient, discoveryClient, operatorConfig.IsDryRun())
+	applicationClient, err := runtimeclient.New(mgr.GetConfig(), runtimeclient.Options{Scheme: mgr.GetScheme()})
+	if err != nil {
+		setupLog.Error(err, "unable to create application client")
+		os.Exit(1)
+	}
+	applicationEngine := application.NewEngine(
+		applicationClient, dynamicClient, discoveryClient, operatorConfig.IsDryRun(),
+	)
 
 	// Initialize workload processor
 	workloadProcessor := controller.NewWorkloadProcessor(
 		metricsProvider,
 		recommendationEngine,
 		applicationEngine,
-		mgr.GetClient(),
+		applicationClient,
 	)
 
 	// Create event recorder.
@@ -380,13 +388,25 @@ func main() {
 		eventRecorder := observability.NewEventRecorder(nil)
 
 		// Create webhook server
+		// Admission safety decisions read current policy state directly. A cache
+		// lag must not extend Auto behavior after a stop or exclusion update.
+		admissionClient, err := runtimeclient.New(mgr.GetConfig(), runtimeclient.Options{Scheme: mgr.GetScheme()})
+		if err != nil {
+			setupLog.Error(err, "unable to create admission client")
+			os.Exit(1)
+		}
 		webhookServer := webhookpkg.NewServer(
-			mgr.GetClient(),
+			admissionClient,
 			filepath.Join(webhookCertPath, webhookCertName),
 			filepath.Join(webhookCertPath, webhookCertKey),
 			9443, // Default webhook port
 			eventRecorder,
+			operatorConfig.IsDryRun(),
 		)
+		if err := mgr.AddReadyzCheck("admission", webhookServer.CheckReady); err != nil {
+			setupLog.Error(err, "unable to register admission readiness check")
+			os.Exit(1)
+		}
 
 		// Add webhook server as a runnable to the manager
 		if err := mgr.Add(webhookServer); err != nil {

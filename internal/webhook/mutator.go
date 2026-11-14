@@ -18,20 +18,24 @@ package webhook
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
 
-	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/labels"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	optipodv1alpha1 "github.com/optipod/optipod/api/v1alpha1"
+	"github.com/optipod/optipod/internal/coexist"
+	"github.com/optipod/optipod/internal/constraints"
+	"github.com/optipod/optipod/internal/discovery"
+	"github.com/optipod/optipod/internal/history"
+	"github.com/optipod/optipod/internal/nodesizing"
 	"github.com/optipod/optipod/internal/observability"
+	"github.com/optipod/optipod/internal/policy"
 )
 
 var mutatorLog = logf.Log.WithName("webhook-mutator")
@@ -50,15 +54,22 @@ const (
 type Mutator struct {
 	client        client.Client
 	eventRecorder *observability.EventRecorder
+	dryRun        bool
 }
 
 // ResourceRecommendation represents resource recommendations for a container
 type ResourceRecommendation struct {
-	ContainerName string
-	CPU           *resource.Quantity
-	Memory        *resource.Quantity
-	CPULimit      *resource.Quantity
-	MemoryLimit   *resource.Quantity
+	RemoveCPURequest    bool
+	RemoveMemoryRequest bool
+	// Excluded from the resource hash: renewing freshness is not a resource change.
+	ValidUntil        time.Time `json:"-"`
+	RemoveCPULimit    bool
+	RemoveMemoryLimit bool
+	ContainerName     string
+	CPU               *resource.Quantity
+	Memory            *resource.Quantity
+	CPULimit          *resource.Quantity
+	MemoryLimit       *resource.Quantity
 }
 
 // NewMutator creates a new mutator instance
@@ -71,6 +82,9 @@ func NewMutator(k8sClient client.Client, eventRecorder *observability.EventRecor
 
 // MutatePod processes a pod mutation request
 func (m *Mutator) MutatePod(req *AdmissionRequest) *AdmissionResponse {
+	if m.dryRun {
+		return &AdmissionResponse{Allowed: true, Message: "Global dry-run mode is enabled"}
+	}
 	startTime := time.Now()
 	ctx := context.Background()
 	log := mutatorLog.WithValues("pod", fmt.Sprintf("%s/%s", req.Pod.Namespace, req.Pod.Name))
@@ -119,6 +133,9 @@ func (m *Mutator) MutatePod(req *AdmissionRequest) *AdmissionResponse {
 
 	// Use the highest weight policy
 	selectedPolicy := matchingPolicies[0]
+	if selectedPolicy.Spec.Mode != optipodv1alpha1.ModeAuto {
+		return &AdmissionResponse{Allowed: true, Message: "Selected policy is not in Auto mode"}
+	}
 	log.V(1).Info("Selected policy for mutation", "policy", selectedPolicy.Name, "weight", selectedPolicy.GetWeight())
 
 	// Check if the selected policy uses webhook strategy
@@ -131,7 +148,29 @@ func (m *Mutator) MutatePod(req *AdmissionRequest) *AdmissionResponse {
 	}
 
 	// Extract resource recommendations from annotations
-	recommendations := m.getRecommendationsFromAnnotations(req.Pod)
+	owner, err := discovery.ResolvePodWorkload(ctx, m.client, req.Pod)
+	if err != nil {
+		return &AdmissionResponse{Allowed: true, Message: "Cannot resolve workload"}
+	}
+	recommendations, rollback, failure := m.admissionRecommendations(ctx, req, owner, selectedPolicy)
+	if failure != nil {
+		return failure
+	}
+
+	restrictions, err := coexist.Read(ctx, m.client, owner.Namespace, owner.Kind, owner.Name)
+	if err != nil {
+		return &AdmissionResponse{Allowed: true, Message: "Cannot verify horizontal scaler coexistence"}
+	}
+	template, templateErr := discovery.Template(owner.Object)
+	// Ownerless Pod admission remains supported for legacy callers.
+	if owner.Kind == "Pod" {
+		template = &corev1.PodTemplateSpec{Spec: req.Pod.Spec}
+		templateErr = nil
+	}
+	if templateErr != nil {
+		return &AdmissionResponse{Allowed: true, Message: "Cannot verify container ownership"}
+	}
+	recommendations = filterRecommendations(req.Pod, template, recommendations, selectedPolicy, restrictions, rollback)
 
 	if len(recommendations) == 0 {
 		log.V(1).Info("No resource recommendations found in annotations, skipping mutation")
@@ -141,6 +180,19 @@ func (m *Mutator) MutatePod(req *AdmissionRequest) *AdmissionResponse {
 		}
 	}
 
+	updates := recommendationUpdates(recommendations)
+	candidate, err := constraints.Overlay(req.Pod, updates)
+	if err != nil {
+		return &AdmissionResponse{Allowed: true, Message: "Invalid resource plan"}
+	}
+	if err := constraints.Validate(ctx, m.client, req.Pod.Namespace, []constraints.Change{{Before: req.Pod, After: candidate, NewPod: true}}, selectedPolicy.Spec.UpdateStrategy.PreserveQoS); err != nil {
+		return &AdmissionResponse{Allowed: true, Message: "Resource plan blocked by constraints: " + err.Error()}
+	}
+	// Recheck the winning revision after source and constraint reads. All mutation
+	// paths, including node sizing, must honor policy changes during admission.
+	if failure := m.revalidateAdmission(ctx, req, owner, selectedPolicy); failure != nil {
+		return failure
+	}
 	// Generate patches to modify pod resources
 	patches := m.generateResourcePatches(req.Pod, recommendations, selectedPolicy.Name)
 
@@ -152,6 +204,12 @@ func (m *Mutator) MutatePod(req *AdmissionRequest) *AdmissionResponse {
 		}
 	}
 
+	if selectedPolicy.Spec.DaemonSetSizing != nil && !rollback {
+		patches, err = nodeReceiptPatches(req, owner, selectedPolicy, updates, patches)
+		if err != nil {
+			return &AdmissionResponse{Allowed: true, Message: err.Error()}
+		}
+	}
 	// Record successful mutation metrics
 	mutationDuration := time.Since(startTime).Seconds()
 	observability.RecordWebhookMutationDuration(req.Pod.Namespace, selectedPolicy.Name, mutationDuration)
@@ -212,232 +270,35 @@ func (m *Mutator) isWebhookEnabled(pod *corev1.Pod) bool {
 // This is needed for ArgoCD compatibility since ArgoCD's self-heal reverts pod template annotations
 // but allows extra annotations on workload metadata
 func (m *Mutator) getParentDeploymentAnnotations(ctx context.Context, pod *corev1.Pod) map[string]string {
-	log := mutatorLog.WithValues("pod", fmt.Sprintf("%s/%s", pod.Namespace, pod.Name))
-
-	// Check if pod has owner references
-	if len(pod.OwnerReferences) == 0 {
-		log.V(2).Info("Pod has no owner references, cannot lookup parent workload")
+	owner, err := discovery.ResolvePodWorkload(ctx, m.client, pod)
+	if err != nil || owner.Kind == "Pod" {
 		return nil
 	}
+	return owner.Object.GetAnnotations()
 
-	// Check for direct StatefulSet or DaemonSet ownership
-	for _, owner := range pod.OwnerReferences {
-		if owner.APIVersion == appsV1APIGroup {
-			switch owner.Kind {
-			case "StatefulSet":
-				return m.getStatefulSetAnnotations(ctx, pod.Namespace, owner.Name)
-			case "DaemonSet":
-				return m.getDaemonSetAnnotations(ctx, pod.Namespace, owner.Name)
-			}
-		}
-	}
-
-	// Check for Deployment ownership (via ReplicaSet)
-	var replicaSetName string
-	for _, owner := range pod.OwnerReferences {
-		if owner.Kind == "ReplicaSet" && owner.APIVersion == appsV1APIGroup {
-			replicaSetName = owner.Name
-			break
-		}
-	}
-
-	if replicaSetName == "" {
-		log.V(2).Info("Pod is not owned by a ReplicaSet, StatefulSet, or DaemonSet")
-		return nil
-	}
-
-	// Get the ReplicaSet
-	replicaSet := &appsv1.ReplicaSet{}
-	if err := m.client.Get(ctx, client.ObjectKey{
-		Namespace: pod.Namespace,
-		Name:      replicaSetName,
-	}, replicaSet); err != nil {
-		log.V(1).Info("Failed to get ReplicaSet", "replicaset", replicaSetName, "error", err)
-		return nil
-	}
-
-	// Find Deployment owner of ReplicaSet
-	var deploymentName string
-	for _, owner := range replicaSet.OwnerReferences {
-		if owner.Kind == "Deployment" && owner.APIVersion == appsV1APIGroup {
-			deploymentName = owner.Name
-			break
-		}
-	}
-
-	if deploymentName == "" {
-		log.V(2).Info("ReplicaSet is not owned by a Deployment", "replicaset", replicaSetName)
-		return nil
-	}
-
-	// Get the Deployment
-	deployment := &appsv1.Deployment{}
-	if err := m.client.Get(ctx, client.ObjectKey{
-		Namespace: pod.Namespace,
-		Name:      deploymentName,
-	}, deployment); err != nil {
-		log.V(1).Info("Failed to get Deployment", "deployment", deploymentName, "error", err)
-		return nil
-	}
-
-	log.V(1).Info("Found parent deployment", "deployment", deploymentName, "annotations", len(deployment.Annotations))
-	return deployment.Annotations
-}
-
-// getStatefulSetAnnotations retrieves annotations from a StatefulSet
-func (m *Mutator) getStatefulSetAnnotations(ctx context.Context, namespace, name string) map[string]string {
-	log := mutatorLog.WithValues("statefulset", fmt.Sprintf("%s/%s", namespace, name))
-
-	statefulSet := &appsv1.StatefulSet{}
-	if err := m.client.Get(ctx, client.ObjectKey{
-		Namespace: namespace,
-		Name:      name,
-	}, statefulSet); err != nil {
-		log.V(1).Info("Failed to get StatefulSet", "error", err)
-		return nil
-	}
-
-	log.V(1).Info("Found parent StatefulSet", "annotations", len(statefulSet.Annotations))
-	return statefulSet.Annotations
-}
-
-// getDaemonSetAnnotations retrieves annotations from a DaemonSet
-func (m *Mutator) getDaemonSetAnnotations(ctx context.Context, namespace, name string) map[string]string {
-	log := mutatorLog.WithValues("daemonset", fmt.Sprintf("%s/%s", namespace, name))
-
-	daemonSet := &appsv1.DaemonSet{}
-	if err := m.client.Get(ctx, client.ObjectKey{
-		Namespace: namespace,
-		Name:      name,
-	}, daemonSet); err != nil {
-		log.V(1).Info("Failed to get DaemonSet", "error", err)
-		return nil
-	}
-
-	log.V(1).Info("Found parent DaemonSet", "annotations", len(daemonSet.Annotations))
-	return daemonSet.Annotations
 }
 
 // findMatchingPolicies finds optimization policies that match the pod
 func (m *Mutator) findMatchingPolicies(ctx context.Context, pod *corev1.Pod) ([]*optipodv1alpha1.OptimizationPolicy, error) {
-	// Get all optimization policies
-	policyList := &optipodv1alpha1.OptimizationPolicyList{}
-	if err := m.client.List(ctx, policyList); err != nil {
-		return nil, fmt.Errorf("failed to list optimization policies: %w", err)
+	workload, err := discovery.ResolvePodWorkload(ctx, m.client, pod)
+	if err != nil {
+		return nil, err
 	}
-
-	var matchingPolicies []*optipodv1alpha1.OptimizationPolicy
-
-	for i := range policyList.Items {
-		policy := &policyList.Items[i]
-
-		// Skip disabled policies
-		if policy.Spec.Mode == optipodv1alpha1.ModeDisabled {
-			continue
-		}
-
-		// Check if policy matches pod
-		if m.policyMatchesPod(ctx, policy, pod) {
-			matchingPolicies = append(matchingPolicies, policy)
-		}
+	matches, err := policy.NewPolicySelector(m.client).GetMatchingPolicies(ctx, workload)
+	if err != nil {
+		return nil, err
 	}
-
-	// Sort by weight (highest first)
-	for i := 0; i < len(matchingPolicies)-1; i++ {
-		for j := i + 1; j < len(matchingPolicies); j++ {
-			if matchingPolicies[i].GetWeight() < matchingPolicies[j].GetWeight() {
-				matchingPolicies[i], matchingPolicies[j] = matchingPolicies[j], matchingPolicies[i]
-			}
-		}
+	result := make([]*optipodv1alpha1.OptimizationPolicy, 0, len(matches))
+	for _, match := range matches {
+		result = append(result, match.Policy)
 	}
-
-	return matchingPolicies, nil
+	return result, nil
 }
 
-// policyMatchesPod checks if a policy's selectors match a pod
-func (m *Mutator) policyMatchesPod(ctx context.Context, policy *optipodv1alpha1.OptimizationPolicy, pod *corev1.Pod) bool {
-	// Check namespace selector
-	if policy.Spec.Selector.NamespaceSelector != nil {
-		// Get the namespace to check its labels
-		namespace := &corev1.Namespace{}
-		if err := m.client.Get(ctx, client.ObjectKey{Name: pod.Namespace}, namespace); err != nil {
-			// If we can't get the namespace, assume it doesn't match
-			return false
-		}
-
-		selector, err := metav1.LabelSelectorAsSelector(policy.Spec.Selector.NamespaceSelector)
-		if err != nil {
-			return false
-		}
-
-		if !selector.Matches(labels.Set(namespace.Labels)) {
-			return false
-		}
-	}
-
-	// Check namespace allow/deny lists
-	if policy.Spec.Selector.Namespaces != nil {
-		// Check deny list first (takes precedence)
-		for _, denied := range policy.Spec.Selector.Namespaces.Deny {
-			if pod.Namespace == denied {
-				return false
-			}
-		}
-
-		// Check allow list if specified
-		if len(policy.Spec.Selector.Namespaces.Allow) > 0 {
-			allowed := false
-			for _, allowedNs := range policy.Spec.Selector.Namespaces.Allow {
-				if pod.Namespace == allowedNs {
-					allowed = true
-					break
-				}
-			}
-			if !allowed {
-				return false
-			}
-		}
-	}
-
-	// Check workload selector - for pods, we check the pod's labels
-	if policy.Spec.Selector.WorkloadSelector != nil {
-		selector, err := metav1.LabelSelectorAsSelector(policy.Spec.Selector.WorkloadSelector)
-		if err != nil {
-			return false
-		}
-
-		if !selector.Matches(labels.Set(pod.Labels)) {
-			return false
-		}
-	}
-
-	return true
-}
-
-// getRecommendationsFromAnnotations extracts resource recommendations from pod annotations
-// For ArgoCD compatibility, it first tries to read from the parent deployment's metadata annotations
-// since ArgoCD's self-heal will revert pod template annotations but allows extra deployment metadata annotations
-func (m *Mutator) getRecommendationsFromAnnotations(pod *corev1.Pod) []ResourceRecommendation {
-	ctx := context.Background()
-	log := mutatorLog.WithValues("pod", fmt.Sprintf("%s/%s", pod.Namespace, pod.Name))
-
-	// Try to get annotations from parent deployment first (ArgoCD-compatible approach)
-	parentAnnotations := m.getParentDeploymentAnnotations(ctx, pod)
-
-	// Fall back to pod annotations if no parent annotations found
-	annotationsToUse := parentAnnotations
-	if len(annotationsToUse) == 0 {
-		if pod.Annotations == nil {
-			return nil
-		}
-		annotationsToUse = pod.Annotations
-		log.V(1).Info("Using pod annotations (no parent deployment annotations found)")
-	} else {
-		log.V(1).Info("Using parent deployment annotations for ArgoCD compatibility")
-	}
-
+// Parse the same owner snapshot whose policy identity and expiry were checked.
+func (m *Mutator) parseRecommendationAnnotations(pod *corev1.Pod, annotationsToUse map[string]string) []ResourceRecommendation {
 	containerMap := make(map[string]*ResourceRecommendation)
-	recommendations := make([]ResourceRecommendation, 0)
+	recommendations := make([]ResourceRecommendation, 0, len(annotationsToUse))
 
 	// Parse annotations for each container
 	for key, value := range annotationsToUse {
@@ -526,13 +387,26 @@ func (m *Mutator) generateResourcePatches(pod *corev1.Pod, recommendations []Res
 	}
 
 	// Process each container in the pod
-	for i, container := range pod.Spec.Containers {
+	for _, slot := range discovery.ContainerSlots(&pod.Spec) {
+		container := slot.Container
 		rec, exists := recMap[container.Name]
 		if !exists {
 			continue // No recommendations for this container
 		}
 
-		containerPath := fmt.Sprintf("/spec/containers/%d", i)
+		containerPath := fmt.Sprintf("/spec/%s/%d", slot.Field, slot.Index)
+		if _, exists := container.Resources.Requests[corev1.ResourceCPU]; exists && rec.RemoveCPURequest {
+			patches = append(patches, PatchOperation{Op: patchRemove, Path: containerPath + "/resources/requests/cpu"})
+		}
+		if _, exists := container.Resources.Requests[corev1.ResourceMemory]; exists && rec.RemoveMemoryRequest {
+			patches = append(patches, PatchOperation{Op: patchRemove, Path: containerPath + "/resources/requests/memory"})
+		}
+		if _, exists := container.Resources.Limits[corev1.ResourceCPU]; exists && rec.RemoveCPULimit {
+			patches = append(patches, PatchOperation{Op: patchRemove, Path: containerPath + "/resources/limits/cpu"})
+		}
+		if _, exists := container.Resources.Limits[corev1.ResourceMemory]; exists && rec.RemoveMemoryLimit {
+			patches = append(patches, PatchOperation{Op: patchRemove, Path: containerPath + "/resources/limits/memory"})
+		}
 
 		// Initialize resources if not present
 		if container.Resources.Requests == nil && (rec.CPU != nil || rec.Memory != nil) {
@@ -552,7 +426,7 @@ func (m *Mutator) generateResourcePatches(pod *corev1.Pod, recommendations []Res
 		}
 
 		// Add CPU request patch
-		if rec.CPU != nil {
+		if rec.CPU != nil && container.Resources.Requests.Cpu().Cmp(*rec.CPU) != 0 {
 			patches = append(patches, PatchOperation{
 				Op:    patchOpAdd,
 				Path:  containerPath + "/resources/requests/cpu",
@@ -563,7 +437,7 @@ func (m *Mutator) generateResourcePatches(pod *corev1.Pod, recommendations []Res
 		}
 
 		// Add memory request patch
-		if rec.Memory != nil {
+		if rec.Memory != nil && container.Resources.Requests.Memory().Cmp(*rec.Memory) != 0 {
 			patches = append(patches, PatchOperation{
 				Op:    patchOpAdd,
 				Path:  containerPath + "/resources/requests/memory",
@@ -574,7 +448,7 @@ func (m *Mutator) generateResourcePatches(pod *corev1.Pod, recommendations []Res
 		}
 
 		// Add CPU limit patch
-		if rec.CPULimit != nil {
+		if rec.CPULimit != nil && container.Resources.Limits.Cpu().Cmp(*rec.CPULimit) != 0 {
 			patches = append(patches, PatchOperation{
 				Op:    patchOpAdd,
 				Path:  containerPath + "/resources/limits/cpu",
@@ -585,7 +459,7 @@ func (m *Mutator) generateResourcePatches(pod *corev1.Pod, recommendations []Res
 		}
 
 		// Add memory limit patch
-		if rec.MemoryLimit != nil {
+		if rec.MemoryLimit != nil && container.Resources.Limits.Memory().Cmp(*rec.MemoryLimit) != 0 {
 			patches = append(patches, PatchOperation{
 				Op:    patchOpAdd,
 				Path:  containerPath + "/resources/limits/memory",
@@ -602,4 +476,204 @@ func (m *Mutator) generateResourcePatches(pod *corev1.Pod, recommendations []Res
 		"patches", len(patches))
 
 	return patches
+}
+
+func (m *Mutator) admissionRecommendations(ctx context.Context, req *AdmissionRequest, owner *discovery.Workload, selectedPolicy *optipodv1alpha1.OptimizationPolicy) ([]ResourceRecommendation, bool, *AdmissionResponse) {
+	rollback := false
+	var recommendations []ResourceRecommendation
+	if owner.Object.GetAnnotations()[history.Paused] == trueValue {
+		a := owner.Object.GetAnnotations()
+		name := a[history.RollbackTo]
+		record, err := history.Read(ctx, m.client, owner.Namespace, name)
+		if err != nil || name != a[history.Latest] || record.Digest != a[history.LatestDigest] || record.Workload.UID != owner.Object.GetUID() || record.Policy.UID != selectedPolicy.UID || record.Policy.Generation != selectedPolicy.Generation || (record.Phase != "RollbackPending" && record.Phase != "RolledBack") {
+			return nil, false, &AdmissionResponse{Allowed: true, Message: "Workload is paused"}
+		}
+		template, err := discovery.Template(owner.Object)
+		if err != nil || history.TemplateIdentity(template) != record.TemplateIdentity {
+			return nil, false, &AdmissionResponse{Allowed: true, Message: "Paused workload template has changed"}
+		}
+		plan, err := history.Restoration(record)
+		if err != nil {
+			return nil, false, &AdmissionResponse{Allowed: true, Message: err.Error()}
+		}
+		recommendations, err = FromResourcePlan(plan)
+		if err != nil {
+			return nil, false, &AdmissionResponse{Allowed: true, Message: err.Error()}
+		}
+		rollback = true
+	} else if selectedPolicy.Spec.DaemonSetSizing != nil {
+		if err := selectedPolicy.ValidateCreate(); err != nil {
+			return nil, false, &AdmissionResponse{Allowed: true, Message: err.Error()}
+		}
+		if owner.Kind != "DaemonSet" {
+			return nil, false, &AdmissionResponse{Allowed: true, Message: "Node sizing requires DaemonSet owner"}
+		}
+		_, plan, err := nodesizing.Plan(ctx, m.client, req.Pod, selectedPolicy)
+		if err != nil {
+			return nil, false, &AdmissionResponse{Allowed: true, Message: "Node sizing blocked: " + err.Error()}
+		}
+		recommendations, err = FromResourcePlan(plan)
+		if err != nil {
+			return nil, false, &AdmissionResponse{Allowed: true, Message: err.Error()}
+		}
+	} else {
+		if !ValidRecommendations(owner.Object.GetAnnotations(), selectedPolicy, time.Now()) {
+			return nil, false, &AdmissionResponse{Allowed: true, Message: "Recommendation is expired or belongs to another policy revision"}
+		}
+		recommendations = m.parseRecommendationAnnotations(req.Pod, owner.Object.GetAnnotations())
+	}
+
+	return recommendations, rollback, nil
+}
+
+func filterRecommendations(pod *corev1.Pod, template *corev1.PodTemplateSpec, recommendations []ResourceRecommendation, selectedPolicy *optipodv1alpha1.OptimizationPolicy, restrictions *coexist.Restrictions, rollback bool) []ResourceRecommendation {
+	templateNames := map[string]bool{}
+	for _, c := range template.Spec.Containers {
+		templateNames[c.Name] = true
+	}
+	for _, c := range template.Spec.InitContainers {
+		templateNames[c.Name] = true
+	}
+	eligible := map[string]bool{}
+	for _, slot := range discovery.ContainerSlots(&pod.Spec) {
+		if slot.Field == "initContainers" && !selectedPolicy.IncludesNativeSidecars() {
+			continue
+		}
+		if !templateNames[slot.Container.Name] && !selectedPolicy.IncludesInjectedSidecars() {
+			continue
+		}
+		eligible[slot.Container.Name] = true
+	}
+	filtered := make([]ResourceRecommendation, 0, len(recommendations))
+	for _, rec := range recommendations {
+		if !eligible[rec.ContainerName] || selectedPolicy.ExcludesContainer(rec.ContainerName) {
+			continue
+		}
+		applyLimitPolicy(pod, &rec, selectedPolicy, rollback)
+		if restrictions.Reason(rec.ContainerName, "cpu") != "" {
+			rec.RemoveCPULimit = false
+			rec.CPU = nil
+			rec.RemoveCPURequest = false
+			rec.CPULimit = nil
+			rec.RemoveCPULimit = false
+		}
+		if restrictions.Reason(rec.ContainerName, "memory") != "" {
+			rec.RemoveMemoryLimit = false
+			rec.Memory = nil
+			rec.RemoveMemoryRequest = false
+			rec.MemoryLimit = nil
+			rec.RemoveMemoryLimit = false
+		}
+		filtered = append(filtered, rec)
+	}
+	return filtered
+
+}
+
+func applyLimitPolicy(pod *corev1.Pod, rec *ResourceRecommendation, selectedPolicy *optipodv1alpha1.OptimizationPolicy, rollback bool) {
+	if !selectedPolicy.ControlsResource("cpu") {
+		rec.RemoveCPULimit = false
+		rec.CPU = nil
+		rec.RemoveCPURequest = false
+		rec.CPULimit = nil
+	} else if !rollback && (selectedPolicy.Spec.DaemonSetSizing == nil || rec.CPU != nil) {
+		rec.RemoveCPULimit = selectedPolicy.LimitMode(true) == limitNone
+		if selectedPolicy.LimitMode(true) != "Multiplier" {
+			rec.CPULimit = nil
+		}
+	}
+	if !selectedPolicy.ControlsResource("memory") {
+		rec.RemoveMemoryLimit = false
+		rec.Memory = nil
+		rec.RemoveMemoryRequest = false
+		rec.MemoryLimit = nil
+	} else if !rollback && (selectedPolicy.Spec.DaemonSetSizing == nil || rec.Memory != nil) {
+		rec.RemoveMemoryLimit = selectedPolicy.LimitMode(false) == limitNone
+		if selectedPolicy.LimitMode(false) == optipodv1alpha1.LimitAutomatic && rec.Memory != nil {
+			limit := optipodv1alpha1.AutomaticMemoryLimit(*rec.Memory, rec.MemoryLimit)
+			for _, slot := range discovery.ContainerSlots(&pod.Spec) {
+				if slot.Container.Name == rec.ContainerName && slot.Container.Resources.Limits.Memory().Cmp(limit) > 0 {
+					limit = slot.Container.Resources.Limits.Memory().DeepCopy()
+				}
+			}
+			rec.MemoryLimit = &limit
+		} else if selectedPolicy.LimitMode(false) != "Multiplier" {
+			rec.MemoryLimit = nil
+		}
+	}
+}
+
+func recommendationUpdates(recommendations []ResourceRecommendation) map[string]map[string]any {
+	updates := map[string]map[string]any{}
+	for _, r := range recommendations {
+		requests, limits := map[string]any{}, map[string]any{}
+		if r.CPU != nil {
+			requests["cpu"] = r.CPU.String()
+		}
+		if r.Memory != nil {
+			requests["memory"] = r.Memory.String()
+		}
+		if r.CPULimit != nil {
+			limits["cpu"] = r.CPULimit.String()
+		}
+		if r.MemoryLimit != nil {
+			limits["memory"] = r.MemoryLimit.String()
+		}
+		if r.RemoveCPURequest {
+			requests["cpu"] = nil
+		}
+		if r.RemoveMemoryRequest {
+			requests["memory"] = nil
+		}
+		if r.RemoveCPULimit {
+			limits["cpu"] = nil
+		}
+		if r.RemoveMemoryLimit {
+			limits["memory"] = nil
+		}
+		updates[r.ContainerName] = map[string]any{"requests": requests, "limits": limits}
+	}
+	return updates
+}
+
+func nodeReceiptPatches(req *AdmissionRequest, owner *discovery.Workload, selectedPolicy *optipodv1alpha1.OptimizationPolicy, updates map[string]map[string]any, patches []PatchOperation) ([]PatchOperation, error) {
+	node, err := nodesizing.NodeName(req.Pod)
+	if err != nil {
+		return nil, err
+	}
+	receipt := nodesizing.Receipt{PolicySpec: selectedPolicy.Spec.DeepCopy(), WorkloadUID: owner.Object.GetUID(), PolicyNamespace: selectedPolicy.Namespace, PolicyName: selectedPolicy.Name, PolicyUID: selectedPolicy.UID, PolicyGeneration: selectedPolicy.Generation, Node: node, Before: history.Resources(&req.Pod.Spec), Plan: updates, Created: time.Now().UTC()}
+	// Reinvocation after another injector preserves the original admission
+	// baseline, while adding baseline entries for newly injected containers.
+	var prior nodesizing.Receipt
+	if json.Unmarshal([]byte(req.Pod.Annotations[nodesizing.ReceiptAnnotation]), &prior) == nil && prior.WorkloadUID == receipt.WorkloadUID && prior.PolicyUID == receipt.PolicyUID && prior.PolicyGeneration == receipt.PolicyGeneration && prior.Node == receipt.Node {
+		for name, before := range prior.Before {
+			receipt.Before[name] = before
+		}
+		receipt.Created = prior.Created
+	}
+	data, err := json.Marshal(receipt)
+	if err != nil {
+		return nil, err
+	}
+	if len(data) > 64*1024 {
+		return nil, fmt.Errorf("node admission receipt exceeds 64KiB")
+	}
+	if req.Pod.Annotations == nil {
+		patches = append(patches, PatchOperation{Op: "add", Path: "/metadata/annotations", Value: map[string]string{nodesizing.ReceiptAnnotation: string(data)}})
+	} else {
+		patches = append(patches, PatchOperation{Op: "add", Path: "/metadata/annotations/optipod.io~1node-sizing-receipt", Value: string(data)})
+	}
+	return patches, nil
+}
+
+func (m *Mutator) revalidateAdmission(ctx context.Context, req *AdmissionRequest, owner *discovery.Workload, selectedPolicy *optipodv1alpha1.OptimizationPolicy) *AdmissionResponse {
+	finalPolicies, err := m.findMatchingPolicies(ctx, req.Pod)
+	if err != nil || len(finalPolicies) == 0 || finalPolicies[0].UID != selectedPolicy.UID || finalPolicies[0].Generation != selectedPolicy.Generation || finalPolicies[0].Spec.Mode != optipodv1alpha1.ModeAuto {
+		return &AdmissionResponse{Allowed: true, Message: "Winning policy changed during admission"}
+	}
+	finalOwner, err := discovery.ResolvePodWorkload(ctx, m.client, req.Pod)
+	if err != nil || finalOwner.Object.GetUID() != owner.Object.GetUID() || finalOwner.Object.GetAnnotations()[history.Paused] != owner.Object.GetAnnotations()[history.Paused] || finalOwner.Object.GetAnnotations()[history.RollbackTo] != owner.Object.GetAnnotations()[history.RollbackTo] {
+		return &AdmissionResponse{Allowed: true, Message: "Workload state changed during admission"}
+	}
+	return nil
 }

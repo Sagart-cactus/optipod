@@ -23,8 +23,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	admissionv1 "k8s.io/api/admission/v1"
@@ -42,6 +45,8 @@ var log = logf.Log.WithName("webhook-server")
 
 // Server represents the webhook server
 type Server struct {
+	serverMu      sync.Mutex
+	ready         atomic.Bool
 	client        client.Client
 	server        *http.Server
 	certPath      string
@@ -49,6 +54,17 @@ type Server struct {
 	port          int
 	mutator       *Mutator
 	eventRecorder *observability.EventRecorder
+}
+
+// Admission must run on every replica, including while another replica owns
+// the reconciliation lease. Otherwise a healthy standby silently fails open.
+func (s *Server) NeedLeaderElection() bool { return false }
+
+func (s *Server) CheckReady(_ *http.Request) error {
+	if !s.ready.Load() {
+		return fmt.Errorf("admission listener is not ready")
+	}
+	return nil
 }
 
 // AdmissionRequest represents a webhook admission request
@@ -72,8 +88,11 @@ type PatchOperation struct {
 }
 
 // NewServer creates a new webhook server instance
-func NewServer(k8sClient client.Client, certPath, keyPath string, port int, eventRecorder *observability.EventRecorder) *Server {
+func NewServer(k8sClient client.Client, certPath, keyPath string, port int, eventRecorder *observability.EventRecorder, dryRun ...bool) *Server {
 	mutator := NewMutator(k8sClient, eventRecorder)
+	if len(dryRun) > 0 {
+		mutator.dryRun = dryRun[0]
+	}
 
 	return &Server{
 		client:        k8sClient,
@@ -138,7 +157,7 @@ func (s *Server) Start(ctx context.Context) error {
 	mux.HandleFunc("/ready", s.HandleReady)
 	mux.HandleFunc("/debug/config", s.HandleDebugConfig)
 
-	s.server = &http.Server{
+	server := &http.Server{
 		Addr:    fmt.Sprintf(":%d", s.port),
 		Handler: mux,
 		TLSConfig: &tls.Config{
@@ -150,51 +169,84 @@ func (s *Server) Start(ctx context.Context) error {
 		IdleTimeout:  120 * time.Second,
 	}
 
-	// Set server health status to healthy
+	// Publish a fully initialized listener/server as one state transition.
+	s.serverMu.Lock()
+	if s.server != nil {
+		s.serverMu.Unlock()
+		return fmt.Errorf("admission server is already started")
+	}
+	listener, err := net.Listen("tcp", server.Addr)
+	if err != nil {
+		s.serverMu.Unlock()
+		return fmt.Errorf("listen for admission: %w", err)
+	}
+	s.server = server
+	s.ready.Store(true)
+	s.serverMu.Unlock()
+	defer s.clearServer(server)
 	observability.SetWebhookServerHealthStatus("server", true)
 
-	// Start server in a goroutine
+	serveErrors := make(chan error, 1)
 	go func() {
-		log.Info("Webhook server listening", "address", s.server.Addr)
-		if err := s.server.ListenAndServeTLS("", ""); err != nil && err != http.ErrServerClosed {
-			log.Error(err, "Failed to start webhook server")
-			observability.SetWebhookServerHealthStatus("server", false)
-			if s.eventRecorder != nil {
-				s.eventRecorder.RecordWebhookServerError(nil, "server", err)
-			}
-		}
+		log.Info("Webhook server listening", "address", server.Addr)
+		serveErrors <- server.ServeTLS(listener, "", "")
 	}()
-
 	log.Info("Webhook server started successfully")
-
-	// Wait for context cancellation
-	<-ctx.Done()
-	return s.Stop(ctx)
+	select {
+	case <-ctx.Done():
+		return s.stopServer(server)
+	case err := <-serveErrors:
+		if err == http.ErrServerClosed {
+			return nil
+		}
+		observability.SetWebhookServerHealthStatus("server", false)
+		if s.eventRecorder != nil {
+			s.eventRecorder.RecordWebhookServerError(nil, "server", err)
+		}
+		return err
+	}
 }
 
-// Stop gracefully stops the webhook server
-func (s *Server) Stop(ctx context.Context) error {
-	log.Info("Stopping webhook server")
+func (s *Server) currentServer() *http.Server {
+	s.serverMu.Lock()
+	defer s.serverMu.Unlock()
+	return s.server
+}
 
-	if s.server == nil {
+func (s *Server) clearServer(server *http.Server) {
+	s.serverMu.Lock()
+	defer s.serverMu.Unlock()
+	if s.server == server {
+		s.ready.Store(false)
+		s.server = nil
+	}
+}
+
+// Stop stops accepting admission before draining the current server. Each Start
+// captures its own server so cancellation of an old run cannot stop a newer run.
+func (s *Server) Stop(_ context.Context) error {
+	return s.stopServer(s.currentServer())
+}
+
+func (s *Server) stopServer(server *http.Server) error {
+	if server == nil {
 		return nil
 	}
-
-	// Set server health status to unhealthy
+	s.serverMu.Lock()
+	if s.server == server {
+		s.ready.Store(false)
+	}
+	s.serverMu.Unlock()
+	defer s.clearServer(server)
 	observability.SetWebhookServerHealthStatus("server", false)
-
-	// Create a context with timeout for graceful shutdown
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-
-	if err := s.server.Shutdown(shutdownCtx); err != nil {
-		log.Error(err, "Failed to gracefully shutdown webhook server")
+	if err := server.Shutdown(shutdownCtx); err != nil {
 		if s.eventRecorder != nil {
 			s.eventRecorder.RecordWebhookServerError(nil, "shutdown", err)
 		}
 		return err
 	}
-
 	log.Info("Webhook server stopped successfully")
 	return nil
 }
@@ -240,7 +292,7 @@ func (s *Server) HandleAdmission(w http.ResponseWriter, r *http.Request) {
 	// Extract pod information for metrics
 	podName := "unknown"
 	namespace := "unknown"
-	if admissionReview.Request != nil && admissionReview.Request.Object.Object != nil {
+	if admissionReview.Request != nil && len(admissionReview.Request.Object.Raw) > 0 {
 		var pod corev1.Pod
 		if err := json.Unmarshal(admissionReview.Request.Object.Raw, &pod); err == nil {
 			podName = pod.Name
@@ -261,6 +313,7 @@ func (s *Server) HandleAdmission(w http.ResponseWriter, r *http.Request) {
 			"namespace", namespace,
 			"pod", podName,
 			"patches", len(response.Patches),
+			"message", response.Message,
 			"duration", time.Since(startTime))
 	} else {
 		log.Error(nil, "Admission request denied",
@@ -324,6 +377,7 @@ func (s *Server) HandleAdmission(w http.ResponseWriter, r *http.Request) {
 		"pod", podName,
 		"allowed", response.Allowed,
 		"patches", len(response.Patches),
+		"message", response.Message,
 		"totalDuration", time.Since(startTime))
 }
 
@@ -347,7 +401,7 @@ func (s *Server) HandleReady(w http.ResponseWriter, r *http.Request) {
 	log.V(2).Info("Readiness check requested")
 
 	// Check if server is ready (certificates loaded, mutator initialized)
-	ready := s.server != nil && s.mutator != nil
+	ready := s.ready.Load() && s.mutator != nil
 
 	// Set readiness status metric
 	observability.SetWebhookServerHealthStatus("ready", ready)
@@ -377,13 +431,13 @@ func (s *Server) HandleDebugConfig(w http.ResponseWriter, r *http.Request) {
 		"server_port":   s.port,
 		"cert_path":     s.certPath,
 		logKeyPath:      s.keyPath,
-		"server_ready":  s.server != nil,
+		"server_ready":  s.ready.Load(),
 		"mutator_ready": s.mutator != nil,
 	}
 
 	// Add certificate information if available
-	if s.server != nil && s.server.TLSConfig != nil && len(s.server.TLSConfig.Certificates) > 0 {
-		cert := s.server.TLSConfig.Certificates[0]
+	if server := s.currentServer(); server != nil && server.TLSConfig != nil && len(server.TLSConfig.Certificates) > 0 {
+		cert := server.TLSConfig.Certificates[0]
 		if len(cert.Certificate) > 0 {
 			if x509Cert, err := x509.ParseCertificate(cert.Certificate[0]); err == nil {
 				debugInfo["certificate"] = map[string]interface{}{
@@ -567,13 +621,13 @@ func (s *Server) GetDebugConfiguration() map[string]interface{} {
 		"server_port":   s.port,
 		"cert_path":     s.certPath,
 		logKeyPath:      s.keyPath,
-		"server_ready":  s.server != nil,
+		"server_ready":  s.ready.Load(),
 		"mutator_ready": s.mutator != nil,
 	}
 
 	// Add certificate information if available
-	if s.server != nil && s.server.TLSConfig != nil && len(s.server.TLSConfig.Certificates) > 0 {
-		cert := s.server.TLSConfig.Certificates[0]
+	if server := s.currentServer(); server != nil && server.TLSConfig != nil && len(server.TLSConfig.Certificates) > 0 {
+		cert := server.TLSConfig.Certificates[0]
 		if len(cert.Certificate) > 0 {
 			if x509Cert, err := x509.ParseCertificate(cert.Certificate[0]); err == nil {
 				debugInfo["certificate"] = map[string]interface{}{

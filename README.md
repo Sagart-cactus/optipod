@@ -28,10 +28,10 @@ OptiPod exists to provide a GitOps-safe, policy-driven way to *recommend first*,
 ## What OptiPod will NOT do
 
 - Will not mutate workloads unless explicitly configured
-- Will not override GitOps ownership
+- Will not take over GitOps-owned resource fields without explicit policy permission
 - Will not require a SaaS backend
 
-Note: OptiPod does not currently guard memory decreases — a recommended decrease is applied in full. See the [Safety model](docs/concepts/safety-model.md) for details.
+Memory reductions are blocked by default. Gradual reductions, cooldowns, change thresholds, and bounded OOM recovery are configurable. See the [Safety model](docs/concepts/safety-model.md), [workload feature comparison](docs/workload-parity-comparison.html), and [local validation guide](docs/workload-development.yaml), and [history storage design](docs/workload-history.yaml).
 
 ## Quick Start (safe Recommend mode)
 
@@ -129,7 +129,7 @@ Safety confirmation: as long as `spec.mode: Recommend`, OptiPod will not change 
 OptiPod stores recommendations in two places:
 
 ### Individual Workload Annotations
-Each workload (Deployment, StatefulSet, DaemonSet) gets recommendation annotations:
+Selected workloads get recommendation annotations. Deployments, StatefulSets and DaemonSets are enabled by default; batch workloads, standalone ReplicaSets and Argo Rollouts require explicit selection:
 
 ```yaml
 metadata:
@@ -164,7 +164,7 @@ This design keeps the policy status lightweight while making individual recommen
 1. Discovers workloads selected by your policy (namespaces, labels, workload types)
 2. Reads CPU/memory usage from your metrics backend
 3. Computes recommendations (percentiles over a rolling window + safety factor)
-4. Applies **policy-driven safety** (resource bounds and safety factor; the memory-decrease and change-rate guards are not implemented yet)
+4. Applies **policy-driven safety** (resource bounds, independent safety factors, memory guards, change thresholds, cooldowns, and OOM recovery)
 5. Either:
    - writes **explainable recommendations** as annotations on individual workloads (Recommend mode), or
    - applies changes via **Server-Side Apply (SSA)** (Auto mode)
@@ -216,14 +216,16 @@ spec:
   updateStrategy:
     strategy: ssa                       # Use SSA strategy
     useServerSideApply: true           # Enable SSA features
+    allowInPlaceResize: false          # SSA changes the pod template
+    allowRecreate: true                # Explicitly permit the resulting rollout
 ```
 
 ## Safety model
 
 OptiPod is built around conservative defaults and explicit, policy-driven controls:
 
-- **Policy-driven safety**: min/max bounds and safety factors (the memory-decrease and change-rate guards are not implemented yet).
-- **Memory handling**: recommendations are derived from observed usage and clamped to your explicit bounds; memory decreases are currently applied in full.
+- **Policy-driven safety**: min/max bounds, safety factors, memory-decrease guards, thresholds, cooldowns, and OOM recovery.
+- **Memory handling**: recommendations use observed usage and explicit bounds. Memory reductions are blocked by default; opt-in gradual reductions respect cooldowns and OOM recovery floors.
 - **GitOps-safe**: supports both **webhook strategy** (ArgoCD compatible) and **Server-Side Apply (SSA)** for different environments.
 - **Explainable recommendations**: usage window, percentile choice, and safety margin are visible before applying.
 - **Update strategy control**: allow/disallow in-place resize; block disruptive recreation unless you opt in.

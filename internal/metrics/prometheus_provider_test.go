@@ -18,6 +18,7 @@ package metrics
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -207,7 +208,7 @@ func TestPrometheusProviderValidRangeQueryWindow(t *testing.T) {
 		t.Fatalf("expected 2 captured queries, got %d: %+v", len(queries), queries)
 	}
 	wantCPUQuery := fmt.Sprintf(
-		`rate(container_cpu_usage_seconds_total{namespace="%s",pod="%s",container="%s"}[2h])`,
+		`rate(container_cpu_usage_seconds_total{namespace="%s",pod="%s",container="%s"}[1m])`,
 		providerNamespace, providerPod, providerContainer,
 	)
 	if queries[0].Query != wantCPUQuery {
@@ -245,7 +246,7 @@ func TestPrometheusProviderMissingAndEmptySeries(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected an error for a missing series")
 		}
-		if !strings.Contains(err.Error(), "no data returned from Prometheus") {
+		if !errors.Is(err, ErrNoData) {
 			t.Errorf("unexpected error for a missing series: %v", err)
 		}
 	})
@@ -261,7 +262,7 @@ func TestPrometheusProviderMissingAndEmptySeries(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected an error for an empty series")
 		}
-		if !strings.Contains(err.Error(), "no samples in result") {
+		if !errors.Is(err, ErrNoData) {
 			t.Errorf("unexpected error for an empty series: %v", err)
 		}
 	})

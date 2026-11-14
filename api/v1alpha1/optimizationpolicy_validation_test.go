@@ -641,7 +641,7 @@ func TestProperty_WorkloadTypeValidation(t *testing.T) {
 			err := policy.ValidateCreate()
 			return err != nil
 		},
-		gen.OneConstOf("Job", "CronJob", "Pod", "ReplicaSet", "InvalidType", ""),
+		gen.OneConstOf("UnknownBatchKind", "UnknownScheduledKind", "Pod", "UnknownReplicaSet", "InvalidType", ""),
 	))
 
 	// Property: Policies without workloadTypes field should pass validation (backward compatibility)

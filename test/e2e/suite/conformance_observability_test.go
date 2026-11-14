@@ -218,10 +218,16 @@ var _ = Describe("Supported metrics and structured logs reflect named processing
 		Expect(outcome).NotTo(BeEmpty(),
 			"no parseable structured record reports the policy-selection outcome after policy %q was created", policyName)
 		var outcomeRecord structuredLogRecord
+		// Transient conflicts can produce an earlier zero-count attempt. Require
+		// the successful completed processing already established above.
 		for _, record := range outcome {
-			if record.fieldsString("policy") == policyName {
+			if record.fieldsString("policy") != policyName {
+				continue
+			}
+			count, parseErr := record.fieldsFloat("processed")
+			Expect(parseErr).NotTo(HaveOccurred())
+			if count == 1 {
 				outcomeRecord = record
-				break
 			}
 		}
 		Expect(outcomeRecord.fields).NotTo(BeNil(),

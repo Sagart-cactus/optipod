@@ -18,6 +18,7 @@ package v1alpha1
 
 import (
 	"fmt"
+	"time"
 
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -98,6 +99,18 @@ const (
 
 // OptimizationPolicySpec defines the desired state of OptimizationPolicy
 type OptimizationPolicySpec struct {
+	// HorizontalScaling explicitly manages a native HPA for each selected scalable workload.
+	// +optional
+	HorizontalScaling *HorizontalScalingConfig `json:"horizontalScaling,omitempty"`
+	// DaemonSetSizing opts into per-node admission sizing.
+	// +optional
+	DaemonSetSizing *DaemonSetSizing `json:"daemonSetSizing,omitempty"`
+	// Batch configures completed-execution history.
+	// +optional
+	Batch *BatchConfig `json:"batch,omitempty"`
+	// ResourcePolicy selects containers and resource dimensions to optimize.
+	// +optional
+	ResourcePolicy *ResourcePolicy `json:"resourcePolicy,omitempty"`
 	// Mode defines the operational behavior of the policy
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:Enum=Auto;Recommend;Disabled
@@ -175,17 +188,52 @@ type WorkloadTypeFilter struct {
 }
 
 // WorkloadType represents supported Kubernetes workload types
-// +kubebuilder:validation:Enum=Deployment;StatefulSet;DaemonSet
+// +kubebuilder:validation:Enum=Deployment;StatefulSet;DaemonSet;Job;CronJob;ReplicaSet;Rollout
 type WorkloadType string
 
 const (
 	WorkloadTypeDeployment  WorkloadType = "Deployment"
 	WorkloadTypeStatefulSet WorkloadType = "StatefulSet"
 	WorkloadTypeDaemonSet   WorkloadType = "DaemonSet"
+	WorkloadTypeReplicaSet  WorkloadType = "ReplicaSet"
+	WorkloadTypeRollout     WorkloadType = "Rollout"
+	WorkloadTypeJob         WorkloadType = "Job"
+	WorkloadTypeCronJob     WorkloadType = "CronJob"
 )
 
 // MetricsConfig defines metrics collection and processing configuration
 type MetricsConfig struct {
+	// JVM configures heap-aware memory sizing from existing Prometheus gauges.
+	// +optional
+	JVM *JVMConfig `json:"jvm,omitempty"`
+	// PredictiveCPU enables a bounded upward trend forecast.
+	// +optional
+	PredictiveCPU *PredictiveCPUConfig `json:"predictiveCPU,omitempty"`
+	// StartupIgnore excludes each container's startup observations, including after restarts.
+	// +optional
+	StartupIgnore metav1.Duration `json:"startupIgnore,omitempty"`
+	// MaxSampleAge is the maximum age of the latest observation; defaults to 5m.
+	// +optional
+	MaxSampleAge metav1.Duration `json:"maxSampleAge,omitempty"`
+	// MinimumHistory requires this observed time span before a recommendation is eligible.
+	// +optional
+	MinimumHistory metav1.Duration `json:"minimumHistory,omitempty"`
+	// MinCoveragePercent measures observed time buckets across eligible replica lifetimes.
+	// It is a data completeness measure, not a statistical confidence interval.
+	// +kubebuilder:validation:Minimum=0
+	// +kubebuilder:validation:Maximum=100
+	// +optional
+	MinCoveragePercent int32 `json:"minCoveragePercent,omitempty"`
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=100000
+	// +optional
+	MinSamples *int32 `json:"minSamples,omitempty"`
+	// CPU overrides shared settings for CPU recommendations.
+	// +optional
+	CPU *ResourceMetricsConfig `json:"cpu,omitempty"`
+	// Memory overrides shared settings for memory recommendations.
+	// +optional
+	Memory *ResourceMetricsConfig `json:"memory,omitempty"`
 	// Provider specifies the metrics backend (e.g., "prometheus", "metrics-server")
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:Enum=prometheus;metrics-server;custom
@@ -201,7 +249,7 @@ type MetricsConfig struct {
 	RollingWindow metav1.Duration `json:"rollingWindow,omitempty"`
 
 	// Percentile defines which percentile to use for recommendations
-	// +kubebuilder:validation:Enum=P50;P90;P99
+	// +kubebuilder:validation:Enum=P50;P90;P95;P99;P100
 	// +kubebuilder:default="P90"
 	// +optional
 	Percentile string `json:"percentile,omitempty"`
@@ -211,6 +259,55 @@ type MetricsConfig struct {
 	// +kubebuilder:default=1.2
 	// +optional
 	SafetyFactor *float64 `json:"safetyFactor,omitempty"`
+}
+
+// ResourceMetricsConfig overrides individual shared metrics settings.
+type ResourceMetricsConfig struct {
+	// Source overrides container usage with a scoped gauge in cores or bytes.
+	// +optional
+	Source *MetricSource `json:"source,omitempty"`
+	// +kubebuilder:validation:Enum=P50;P90;P95;P99;P100
+	// +optional
+	Percentile string `json:"percentile,omitempty"`
+	// RollingWindow must be positive and no longer than 30 days.
+	// +optional
+	RollingWindow metav1.Duration `json:"rollingWindow,omitempty"`
+	// SafetyFactor multiplies usage; 1.1 represents a ten percent margin.
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=10
+	// +optional
+	SafetyFactor *float64 `json:"safetyFactor,omitempty"`
+}
+
+// ResourceSettings resolves overrides without changing the policy's legacy defaults.
+func (m MetricsConfig) ResourceSettings(cpu bool) ResourceMetricsConfig {
+	factor := 1.2
+	if m.SafetyFactor != nil {
+		factor = *m.SafetyFactor
+	}
+	r := ResourceMetricsConfig{Percentile: m.Percentile, RollingWindow: m.RollingWindow, SafetyFactor: &factor}
+	if r.Percentile == "" {
+		r.Percentile = "P90"
+	}
+	if r.RollingWindow.Duration == 0 {
+		r.RollingWindow.Duration = 24 * time.Hour
+	}
+	o := m.Memory
+	if cpu {
+		o = m.CPU
+	}
+	if o != nil {
+		if o.Percentile != "" {
+			r.Percentile = o.Percentile
+		}
+		if o.RollingWindow.Duration != 0 {
+			r.RollingWindow = o.RollingWindow
+		}
+		if o.SafetyFactor != nil {
+			r.SafetyFactor = o.SafetyFactor
+		}
+	}
+	return r
 }
 
 // MetricsServerConfig configures how metrics-server is sampled/consumed.
@@ -248,6 +345,22 @@ type ResourceBound struct {
 
 // UpdateStrategy defines how resource updates are applied to workloads
 type UpdateStrategy struct {
+	// PreserveQoS blocks changes between Guaranteed, Burstable and BestEffort.
+	// +optional
+	PreserveQoS bool `json:"preserveQoS,omitempty"`
+	// AllowFieldOwnershipTakeover explicitly permits SSA to take resource fields from other managers.
+	// +optional
+	AllowFieldOwnershipTakeover bool `json:"allowFieldOwnershipTakeover,omitempty"`
+	// OOMRecovery configures bounded emergency memory increases.
+	// +optional
+	OOMRecovery *OOMRecoveryConfig `json:"oomRecovery,omitempty"`
+	// Stability controls thresholds and the interval between resource changes.
+	// +optional
+	Stability *StabilityConfig `json:"stability,omitempty"`
+	// RecommendationTTL bounds how long a stored admission plan remains valid.
+	// +kubebuilder:default="15m"
+	// +optional
+	RecommendationTTL metav1.Duration `json:"recommendationTTL,omitempty"`
 	// Strategy defines how resource updates are applied
 	// +kubebuilder:validation:Enum=ssa;webhook
 	// +kubebuilder:default="webhook"
@@ -263,12 +376,12 @@ type UpdateStrategy struct {
 	// AllowInPlaceResize enables in-place pod resize when supported
 	// +kubebuilder:default=true
 	// +optional
-	AllowInPlaceResize bool `json:"allowInPlaceResize,omitempty"`
+	AllowInPlaceResize bool `json:"allowInPlaceResize"`
 
 	// AllowRecreate enables pod recreation when in-place resize is not available
 	// +kubebuilder:default=false
 	// +optional
-	AllowRecreate bool `json:"allowRecreate,omitempty"`
+	AllowRecreate bool `json:"allowRecreate"`
 
 	// UpdateRequestsOnly controls whether to update only requests or both requests and limits
 	// +kubebuilder:default=true
@@ -284,28 +397,28 @@ type UpdateStrategy struct {
 	// +optional
 	LimitConfig *LimitConfig `json:"limitConfig,omitempty"`
 
-	// AllowUnsafeMemoryDecrease is a work-in-progress field that would disable
-	// memory safety checks when true.
-	// Status: not enforced. The field is part of the CRD schema and is validated,
-	// but no production code reads it, so setting it has no effect.
-	// Memory decreases are currently applied in full, like any other
-	// recommendation, constrained only by resource bounds and the safety factor;
-	// there is no default block on memory decreases.
+	// AllowUnsafeMemoryDecrease explicitly permits full memory decreases.
+	// Otherwise decreases are blocked unless gradualDecreaseConfig is enabled.
 	// +kubebuilder:default=false
 	// +optional
 	AllowUnsafeMemoryDecrease *bool `json:"allowUnsafeMemoryDecrease,omitempty"`
 
-	// GradualDecreaseConfig is a work-in-progress field that would apply large
-	// memory decreases incrementally over multiple reconciliations.
-	// Status: not implemented. The configuration is part of the CRD schema and is
-	// validated, but no production code reads it, so setting it has no effect.
-	// Memory decreases are currently applied in full in a single reconciliation.
+	// GradualDecreaseConfig applies memory reductions in bounded, spaced steps.
 	// +optional
 	GradualDecreaseConfig *GradualDecreaseConfig `json:"gradualDecreaseConfig,omitempty"`
 }
 
 // LimitConfig defines how resource limits are calculated from recommendations
 type LimitConfig struct {
+	// CPUMode overrides updateRequestsOnly for CPU limits.
+	// +kubebuilder:validation:Enum=Preserve;None;Multiplier
+	// +optional
+	CPUMode string `json:"cpuMode,omitempty"`
+	// MemoryMode overrides updateRequestsOnly for memory limits.
+	// Automatic uses max(existing limit, 1.5 * request, 128Mi).
+	// +kubebuilder:validation:Enum=Preserve;None;Multiplier;Automatic
+	// +optional
+	MemoryMode string `json:"memoryMode,omitempty"`
 	// CPULimitMultiplier is the multiplier applied to CPU recommendation to calculate limit
 	// Default: 1.0 (limit equals recommendation)
 	// Example: 1.5 means limit = recommendation * 1.5
@@ -327,16 +440,14 @@ type LimitConfig struct {
 
 // GradualDecreaseConfig defines parameters for gradual memory reduction
 type GradualDecreaseConfig struct {
-	// Enabled would activate gradual decrease functionality
-	// When true, large memory decreases would be applied incrementally over multiple reconciliations
-	// Status: not implemented; no production code reads this field
+	// Enabled activates gradual decrease functionality
+	// When true, large memory decreases are applied incrementally over multiple reconciliations
 	// +kubebuilder:default=false
 	// +optional
 	Enabled bool `json:"enabled,omitempty"`
 
 	// MemoryDecreasePercentage is the maximum percentage to decrease memory per reconciliation
 	// Must be between 1 and 50. Default is 10 (10% per reconciliation).
-	// Status: not implemented; no production code reads this field
 	// +kubebuilder:default=10
 	// +kubebuilder:validation:Minimum=1
 	// +kubebuilder:validation:Maximum=50
@@ -344,16 +455,14 @@ type GradualDecreaseConfig struct {
 	MemoryDecreasePercentage *int `json:"memoryDecreasePercentage,omitempty"`
 
 	// MinimumDecreaseThreshold is the minimum decrease amount to trigger gradual reduction
-	// Decreases smaller than this threshold would be applied immediately.
+	// Decreases smaller than this threshold are applied immediately.
 	// Default is 100Mi.
-	// Status: not implemented; no production code reads this field
 	// +optional
 	MinimumDecreaseThreshold *resource.Quantity `json:"minimumDecreaseThreshold,omitempty"`
 
 	// MaximumTotalDecrease is the maximum total percentage decrease from original value
 	// Must be between 1 and 90. Default is 70 (70% maximum total decrease).
-	// This would prevent excessive optimization that could destabilize workloads.
-	// Status: not implemented; no production code reads this field
+	// This prevents excessive optimization that could destabilize workloads.
 	// +kubebuilder:default=70
 	// +kubebuilder:validation:Minimum=1
 	// +kubebuilder:validation:Maximum=90
@@ -388,6 +497,14 @@ type OptimizationPolicyStatus struct {
 
 // WorkloadTypeStatus provides breakdown by workload type
 type WorkloadTypeStatus struct {
+	// +optional
+	Jobs int `json:"jobs,omitempty"`
+	// +optional
+	CronJobs int `json:"cronJobs,omitempty"`
+	// +optional
+	ReplicaSets int `json:"replicaSets,omitempty"`
+	// +optional
+	Rollouts int `json:"rollouts,omitempty"`
 	// Deployments is the count of Deployment workloads
 	// +optional
 	Deployments int `json:"deployments,omitempty"`
@@ -446,6 +563,15 @@ type WorkloadStatus struct {
 
 // ContainerRecommendation represents resource recommendations for a single container
 type ContainerRecommendation struct {
+	// Emergency identifies an OOM recovery that bypasses routine cooldowns.
+	// +optional
+	Emergency bool `json:"emergency,omitempty"`
+	// MinimumMemoryLimit preserves the safety floor while calculating limits.
+	// +optional
+	MinimumMemoryLimit *resource.Quantity `json:"minimumMemoryLimit,omitempty"`
+	// ValidUntil is the latest safe application time given source freshness.
+	// +optional
+	ValidUntil *metav1.Time `json:"validUntil,omitempty"`
 	// Container is the container name
 	// +kubebuilder:validation:Required
 	Container string `json:"container"`
@@ -518,6 +644,14 @@ func (r *OptimizationPolicy) UpdateWorkloadTypeCount(workloadType WorkloadType, 
 	switch workloadType {
 	case WorkloadTypeDeployment:
 		r.Status.WorkloadsByType.Deployments = count
+	case WorkloadTypeRollout:
+		r.Status.WorkloadsByType.Rollouts = count
+	case WorkloadTypeReplicaSet:
+		r.Status.WorkloadsByType.ReplicaSets = count
+	case WorkloadTypeCronJob:
+		r.Status.WorkloadsByType.CronJobs = count
+	case WorkloadTypeJob:
+		r.Status.WorkloadsByType.Jobs = count
 	case WorkloadTypeStatefulSet:
 		r.Status.WorkloadsByType.StatefulSets = count
 	case WorkloadTypeDaemonSet:
@@ -532,6 +666,14 @@ func (r *OptimizationPolicy) IncrementWorkloadTypeCount(workloadType WorkloadTyp
 	switch workloadType {
 	case WorkloadTypeDeployment:
 		r.Status.WorkloadsByType.Deployments++
+	case WorkloadTypeRollout:
+		r.Status.WorkloadsByType.Rollouts++
+	case WorkloadTypeReplicaSet:
+		r.Status.WorkloadsByType.ReplicaSets++
+	case WorkloadTypeCronJob:
+		r.Status.WorkloadsByType.CronJobs++
+	case WorkloadTypeJob:
+		r.Status.WorkloadsByType.Jobs++
 	case WorkloadTypeStatefulSet:
 		r.Status.WorkloadsByType.StatefulSets++
 	case WorkloadTypeDaemonSet:
@@ -548,6 +690,14 @@ func (r *OptimizationPolicy) GetWorkloadTypeCount(workloadType WorkloadType) int
 	switch workloadType {
 	case WorkloadTypeDeployment:
 		return r.Status.WorkloadsByType.Deployments
+	case WorkloadTypeRollout:
+		return r.Status.WorkloadsByType.Rollouts
+	case WorkloadTypeReplicaSet:
+		return r.Status.WorkloadsByType.ReplicaSets
+	case WorkloadTypeCronJob:
+		return r.Status.WorkloadsByType.CronJobs
+	case WorkloadTypeJob:
+		return r.Status.WorkloadsByType.Jobs
 	case WorkloadTypeStatefulSet:
 		return r.Status.WorkloadsByType.StatefulSets
 	case WorkloadTypeDaemonSet:
@@ -565,6 +715,7 @@ func (r *OptimizationPolicy) GetTotalWorkloadsByType() int {
 
 	return r.Status.WorkloadsByType.Deployments +
 		r.Status.WorkloadsByType.StatefulSets +
+		r.Status.WorkloadsByType.Jobs + r.Status.WorkloadsByType.CronJobs + r.Status.WorkloadsByType.ReplicaSets + r.Status.WorkloadsByType.Rollouts +
 		r.Status.WorkloadsByType.DaemonSets
 }
 
@@ -617,6 +768,30 @@ func (r *OptimizationPolicy) ValidateDelete() error {
 
 // validateOptimizationPolicy performs validation of the OptimizationPolicy
 func (r *OptimizationPolicy) validateOptimizationPolicy() error {
+	if err := r.validateDaemonSetSizing(); err != nil {
+		return err
+	}
+	if err := r.validateHorizontal(); err != nil {
+		return err
+	}
+	if err := r.validateSources(); err != nil {
+		return err
+	}
+	if err := r.validatePredictive(); err != nil {
+		return err
+	}
+	if err := r.validateBatch(); err != nil {
+		return err
+	}
+	if err := r.validateRecovery(); err != nil {
+		return err
+	}
+	if err := r.validateStability(); err != nil {
+		return err
+	}
+	if err := r.validateResourcePolicy(); err != nil {
+		return err
+	}
 	// Validate required fields - mode
 	if r.Spec.Mode == "" {
 		return fmt.Errorf("mode is required and must be one of: Auto, Recommend, Disabled")
@@ -690,10 +865,34 @@ func (r *OptimizationPolicy) validateOptimizationPolicy() error {
 	}
 
 	// Validate safety factor
+	for name, duration := range map[string]time.Duration{"startupIgnore": r.Spec.MetricsConfig.StartupIgnore.Duration, "maxSampleAge": r.Spec.MetricsConfig.MaxSampleAge.Duration, "minimumHistory": r.Spec.MetricsConfig.MinimumHistory.Duration} {
+		if duration < 0 || duration > 30*24*time.Hour {
+			return fmt.Errorf("metricsConfig.%s must be between zero and 720h", name)
+		}
+	}
+	if r.Spec.MetricsConfig.MinCoveragePercent < 0 || r.Spec.MetricsConfig.MinCoveragePercent > 100 {
+		return fmt.Errorf("minCoveragePercent must be between 0 and 100")
+	}
+	if r.Spec.MetricsConfig.MinSamples != nil && *r.Spec.MetricsConfig.MinSamples < 1 {
+		return fmt.Errorf("minSamples must be positive")
+	}
 	if r.Spec.MetricsConfig.SafetyFactor != nil && *r.Spec.MetricsConfig.SafetyFactor < 1.0 {
 		return fmt.Errorf("safety factor must be at least 1.0, got %f", *r.Spec.MetricsConfig.SafetyFactor)
 	}
-
+	for _, cpu := range []bool{true, false} {
+		s := r.Spec.MetricsConfig.ResourceSettings(cpu)
+		switch s.Percentile {
+		case "P50", "P90", "P95", "P99", "P100":
+		default:
+			return fmt.Errorf("invalid resource percentile %q", s.Percentile)
+		}
+		if s.RollingWindow.Duration <= 0 || s.RollingWindow.Duration > 30*24*time.Hour {
+			return fmt.Errorf("resource rollingWindow must be positive and at most 720h")
+		}
+		if *s.SafetyFactor < 1 || *s.SafetyFactor > 10 {
+			return fmt.Errorf("resource safety factor must be between 1 and 10")
+		}
+	}
 	// Validate metrics-server config if provided
 	if r.Spec.MetricsConfig.MetricsServer != nil && r.Spec.MetricsConfig.MetricsServer.MinSamplesRequired != nil {
 		if *r.Spec.MetricsConfig.MetricsServer.MinSamplesRequired < 1 {
@@ -714,6 +913,9 @@ func (r *OptimizationPolicy) validateOptimizationPolicy() error {
 	}
 
 	// Validate strategy field
+	if ttl := r.Spec.UpdateStrategy.RecommendationTTL.Duration; ttl < 0 || ttl > 24*time.Hour {
+		return fmt.Errorf("recommendationTTL must be between zero (default) and 24h")
+	}
 	if r.Spec.UpdateStrategy.Strategy != nil {
 		strategy := *r.Spec.UpdateStrategy.Strategy
 		if strategy != string(StrategySSA) && strategy != string(StrategyWebhook) {
@@ -802,6 +1004,10 @@ func validateWorkloadType(workloadType WorkloadType, fieldName string) error {
 		WorkloadTypeDeployment:  true,
 		WorkloadTypeStatefulSet: true,
 		WorkloadTypeDaemonSet:   true,
+		WorkloadTypeReplicaSet:  true,
+		WorkloadTypeRollout:     true,
+		WorkloadTypeJob:         true,
+		WorkloadTypeCronJob:     true,
 	}
 
 	if !validTypes[workloadType] {

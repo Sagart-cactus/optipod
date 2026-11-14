@@ -20,6 +20,7 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -70,6 +71,9 @@ func mutatorTestPolicy(namespace string) *optipodv1alpha1.OptimizationPolicy {
 }
 
 func newMutatorTestPod(name, namespace string, annotations map[string]string, containers []corev1.Container) *corev1.Pod {
+	if annotations != nil {
+		StampRecommendations(annotations, mutatorTestPolicy(namespace), time.Now())
+	}
 	return &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        name,
