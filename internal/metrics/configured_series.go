@@ -120,7 +120,7 @@ func (s *configuredSeries) readGauge(ctx context.Context, src *api.MetricSource,
 	if err != nil {
 		return nil, err
 	}
-	value, warnings, err := s.base.client.QueryRange(ctx, query, v1.Range{Start: end.Add(-window), End: end, Step: s.SampleInterval(window)})
+	value, warnings, _, err := s.base.client.QueryRange(ctx, query, v1.Range{Start: end.Add(-window), End: end, Step: s.SampleInterval(window)})
 	if err != nil {
 		return nil, err
 	}
@@ -177,7 +177,7 @@ func (s *configuredSeries) SourceTimestamp(ctx context.Context, ns, pod, contain
 		if err != nil {
 			return time.Time{}, err
 		}
-		value, warnings, err := s.base.client.QueryRange(ctx, "timestamp("+selector+")", v1.Range{Start: at, End: at, Step: time.Second})
+		value, warnings, _, err := s.base.client.QueryRange(ctx, "timestamp("+selector+")", v1.Range{Start: at, End: at, Step: time.Second})
 		if err != nil {
 			return time.Time{}, err
 		}

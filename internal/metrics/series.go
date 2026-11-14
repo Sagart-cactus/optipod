@@ -42,7 +42,7 @@ func (p *PrometheusProvider) GetResourceSamples(ctx context.Context, ns, pod, co
 		query = fmt.Sprintf(`rate(container_cpu_usage_seconds_total{namespace=%q,pod=%q,container=%q}[1m])`, ns, pod, container)
 	}
 	end := time.Now()
-	result, warnings, err := p.client.QueryRange(ctx, query, v1.Range{Start: end.Add(-window), End: end, Step: p.SampleInterval(window)})
+	result, warnings, _, err := p.client.QueryRange(ctx, query, v1.Range{Start: end.Add(-window), End: end, Step: p.SampleInterval(window)})
 	if err != nil {
 		return nil, fmt.Errorf("query failed: %w", err)
 	}

@@ -22,7 +22,7 @@ func (p *PrometheusProvider) SourceTimestamp(ctx context.Context, ns, pod, conta
 		metric = "container_cpu_usage_seconds_total"
 	}
 	query := fmt.Sprintf(`timestamp(%s{namespace=%q,pod=%q,container=%q})`, metric, ns, pod, container)
-	value, warnings, err := p.client.QueryRange(ctx, query, v1.Range{Start: at, End: at, Step: time.Second})
+	value, warnings, _, err := p.client.QueryRange(ctx, query, v1.Range{Start: at, End: at, Step: time.Second})
 	if err != nil {
 		return time.Time{}, err
 	}
