@@ -15,7 +15,8 @@ implemented:
     durability: Admission receipt is attached to the pod and copied by the controller to an immutable journal
     retention: Latest 128 records and 30 days on subsequent writes
     limitation: A pod deleted before the controller observes its receipt may leave no durable journal; these are not uniform rollback targets
-  survival: Controller restart and workload deletion preserve journals; namespace or cluster deletion removes them
+  survival: Controller restart and workload deletion preserve local journals; namespace or cluster deletion removes local journals. The optional PostgreSQL console preserves already exported observations.
+  shared_persistence: See docs/persistent-console.yaml for implemented PostgreSQL storage, durable agent queues and authenticated multi-cluster UI.
   limits:
     - Snapshots are capped at 512KiB; admission receipts at 64KiB. These bounds avoid Kubernetes metadata/ConfigMap size limits.
     - Retention runs on subsequent writes, not a global timer. Deleted/inactive workloads can retain records beyond 30 days.
@@ -34,9 +35,12 @@ read:
 recommended_production_storage:
   desired_settings: Git-managed OptimizationPolicy manifests; PR history records intent and reviewer/author identity
   recent_operational_history: The implemented ConfigMap journal, with scoped Kubernetes RBAC
-  long_term_archive:
+  shared_queryable_history:
+    storage: PostgreSQL through the optional console agent and shared API
+    status: Implemented; deployment, retention, backup and polling limitations are documented in docs/persistent-console.yaml
+  optional_cold_archive:
     service: GCS in your existing GCP environment
-    status: Proposed; no bucket, exporter or external deployment was created
+    status: Future option; the implemented exporter targets PostgreSQL, not object storage
     format: Versioned JSON records with cluster identity, namespace, workload UID, record name and phase/update timestamp
     export_behavior: Watch/list with resource-version recovery; checkpoint only after successful write; retry idempotently and archive phase transitions as new objects
     retention: Choose a retention period for operational requirements; bucket lifecycle can expire old archives

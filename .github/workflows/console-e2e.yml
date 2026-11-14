@@ -1,0 +1,80 @@
+name: Persistent console E2E
+
+on:
+  pull_request:
+    paths: ['internal/**', 'api/**', 'cmd/optipod-console/**', 'charts/optipod-console/**', 'hack/console/**', 'test/e2e/**', 'go.mod', 'go.sum', 'Dockerfile.console', '.dockerignore', '.github/workflows/console-e2e.yml']
+  push:
+    branches: [main]
+    paths: ['internal/**', 'api/**', 'cmd/optipod-console/**', 'charts/optipod-console/**', 'hack/console/**', 'test/e2e/**', 'go.mod', 'go.sum', 'Dockerfile.console', '.dockerignore', '.github/workflows/console-e2e.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+concurrency:
+  group: console-e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  persistence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CONSOLE_CONTAINER_RUNTIME: docker
+      KIND_EXPERIMENTAL_PROVIDER: docker
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.14.0
+      - name: Install pinned Kind and kubectl
+        run: |
+          curl -fsSLo /tmp/kind https://kind.sigs.k8s.io/dl/v0.31.0/kind-linux-amd64
+          echo 'eb244cbafcc157dff60cf68693c14c9a75c4e6e6fedaf9cd71c58117cb93e3fa  /tmp/kind' | sha256sum -c - # pragma: allowlist secret
+          curl -fsSLo /tmp/kubectl https://dl.k8s.io/release/v1.34.1/bin/linux/amd64/kubectl
+          echo '7721f265e18709862655affba5343e85e1980639395d5754473dafaadcaa69e3  /tmp/kubectl' | sha256sum -c - # pragma: allowlist secret
+          sudo install /tmp/kind /tmp/kubectl /usr/local/bin/
+      - name: Create isolated primary cluster
+        run: |
+          mkdir -p .dev/console
+          kind create cluster --name optipod-e2e-dev --image kindest/node:v1.35.0@sha256:4613778f3cfcd10e615029370f5786704559103cf27bef934597ba562b269661 --kubeconfig "$PWD/.dev/console/primary.kubeconfig"
+          python3 - <<'PY'
+          import json, os
+          with open('.dev/cluster.json', 'w') as f:
+              json.dump({'Name': 'optipod-e2e-dev', 'Kubeconfig': os.path.abspath('.dev/console/primary.kubeconfig')}, f)
+          PY
+      - name: Install PostgreSQL, API, both agents and dummy workloads
+        run: bash hack/console/run.sh up
+      - name: PostgreSQL integration and multi-cluster restart E2E
+        run: |
+          bash hack/console/run.sh forward > .dev/console/ui-forward.log 2>&1 &
+          ui_pid=$!
+          bash hack/console/run.sh database-forward > .dev/console/db-forward.log 2>&1 &
+          db_pid=$!
+          trap 'kill "$ui_pid" "$db_pid" 2>/dev/null || true' EXIT
+          for _ in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:8876/readyz >/dev/null && python3 -c 'import socket; socket.create_connection(("127.0.0.1",15432),2).close()'; then break; fi
+            sleep 2
+          done
+          bash hack/console/run.sh test 2>&1 | tee .dev/console/e2e.log
+      - name: Validate release image and chart
+        run: | # pragma: allowlist secret - dummy Kubernetes Secret names
+          docker build -f Dockerfile.console -t optipod-console:ci .
+          docker run --rm optipod-console:ci --help
+          helm lint charts/optipod-console --set server.existingSecret=test
+          helm template console charts/optipod-console --set server.existingSecret=test --set agent.enabled=true --set agent.clusterID=test --set agent.serverURL=https://console.example --set agent.existingSecret=test > /tmp/console.yaml
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: console-e2e-results
+          path: .dev/console/*e2e.log
+          retention-days: 14
+          if-no-files-found: warn
+      - name: Remove only this job's clusters
+        if: always()
+        run: |
+          kind delete cluster --name optipod-e2e-dev
+          kind delete cluster --name optipod-e2e-console-peer

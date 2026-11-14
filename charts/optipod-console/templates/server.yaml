@@ -1,0 +1,72 @@
+{{- if .Values.server.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-server
+spec:
+  replicas: {{ .Values.server.replicas }}
+  selector:
+    matchLabels: {app.kubernetes.io/name: optipod-console, app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: server}
+  template:
+    metadata:
+      annotations:
+        optipod.io/config-revision: {{ .Values.server.configRevision | quote }}
+      labels: {app.kubernetes.io/name: optipod-console, app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: server}
+    spec:
+      automountServiceAccountToken: false
+      securityContext: {runAsNonRoot: true, runAsUser: 65532, runAsGroup: 65532, fsGroup: 65532, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: server
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: [serve, --listen=:8080, --config=/etc/console/config.json, --database-url-file=/etc/console/database-url, "--retention-days={{ .Values.server.retentionDays }}"]
+          ports: [{name: http, containerPort: 8080}]
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+          readinessProbe: {httpGet: {path: /readyz, port: http}, initialDelaySeconds: 3}
+          livenessProbe: {httpGet: {path: /healthz, port: http}, initialDelaySeconds: 10}
+          resources: {{ toYaml .Values.server.resources | nindent 12 }}
+          volumeMounts: [{name: config, mountPath: /etc/console, readOnly: true}]
+      volumes:
+        - name: config
+          secret:
+            secretName: {{ required "server.existingSecret is required" .Values.server.existingSecret }}
+            defaultMode: 0440
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-server
+spec:
+  type: {{ .Values.server.service.type }}
+  selector: {app.kubernetes.io/name: optipod-console, app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: server}
+  ports:
+    - name: http
+      port: {{ .Values.server.service.port }}
+      targetPort: http
+      {{- if and (eq .Values.server.service.type "NodePort") .Values.server.service.nodePort }}
+      nodePort: {{ .Values.server.service.nodePort }}
+      {{- end }}
+{{- if .Values.server.ingress.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ .Release.Name }}-server
+  annotations: {{ toYaml .Values.server.ingress.annotations | nindent 4 }}
+spec:
+  {{- if .Values.server.ingress.className }}
+  ingressClassName: {{ .Values.server.ingress.className }}
+  {{- end }}
+  tls:
+    - hosts: [{{ required "server.ingress.host is required" .Values.server.ingress.host | quote }}]
+      secretName: {{ required "server.ingress.tlsSecretName is required" .Values.server.ingress.tlsSecretName }}
+  rules:
+    - host: {{ .Values.server.ingress.host | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service: {name: {{ .Release.Name }}-server, port: {name: http}}
+{{- end }}
+{{- end }}

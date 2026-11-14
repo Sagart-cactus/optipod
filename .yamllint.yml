@@ -2,7 +2,7 @@
 extends: relaxed
 
 ignore: |
-  charts/optipod/templates/**
+  charts/**/templates/**
 
 rules:
   # Allow longer lines for Kubernetes manifests

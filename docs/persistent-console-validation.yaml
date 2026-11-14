@@ -1,0 +1,121 @@
+date: 2026-11-14
+branch: sagar/persistent-shared-console
+base: 6724ae9
+scope: PostgreSQL persistence, authenticated shared read-only console and outbound multi-cluster agents
+local_environment:
+  runtime: Podman 5.7.0 on macOS arm64
+  kubernetes: Kind v0.31.0, Kubernetes v1.35.0
+  primary: optipod-e2e-dev, two nodes, existing optimizer and metrics fixtures
+  peer: optipod-e2e-console-peer, one node, console agent and policy CRD
+  database: PostgreSQL 18.7 on a persistent volume in the primary cluster
+  sources: Three real dummy Deployments per cluster, including identical names across clusters
+results:
+  persistence_and_auth:
+    status: passed
+    tests: 6
+    coverage:
+      - Real PostgreSQL migrations, concurrent startup and future-version refusal
+      - Atomic ingest, duplicate replay, conflicting payload, sequence gaps and cluster/stream fencing
+      - SQL-enforced cluster and namespace isolation, pagination, tombstones and timed retention
+      - Hashed token login, persistent HttpOnly sessions, logout revocation, cross-origin rejection and no workload write API
+      - Signed local OIDC issuer, JWT verification, PKCE, nonce and one-time login state
+    race_detection: passed
+  durable_queue:
+    status: passed
+    tests: 3
+    coverage:
+      - Restart continuity, exclusive writer lock and scoped cluster binding
+      - Outage replay, wrong acknowledgments and bounded queue behavior
+      - State-file failure preserves last recovery copy; abandoned temporary writes are cleaned safely
+    race_detection: passed
+  multi_cluster_e2e:
+    status: passed
+    test: TestMultiClusterPersistence
+    latest_tilt_duration: 13.76s
+    coverage: Real agents against two Kubernetes APIs and PostgreSQL; same-name isolation, outage replay, source namespace deletion and persisted history
+  installed_restart_e2e:
+    status: passed
+    test: TestDeployedConsoleRestartsAndReadOnlyAccess
+    latest_tilt_duration: 35.63s
+    coverage: API pod replacement, both agent pod/PVC restarts, PostgreSQL pod/PVC restart, session survival, six-workload inventory and read-only source RBAC
+  installed_release_image:
+    status: passed after environment recovery
+    image: docker.io/optipod-e2e/console:release-430da701
+    multi_cluster_duration: 12.97s
+    restart_duration: 37.52s
+    coverage: Repeated PostgreSQL/queue race tests, both Kubernetes E2E tests and logical backup restore against the production-Dockerfile binary
+  backup_restore:
+    status: passed
+    coverage: pg_dump and pg_restore into a separate disposable database; checks inventory, journals, sessions, migration version and stream checkpoints
+  controller_regressions:
+    status: passed
+    command: OPTIPOD_E2E_LABELS='reporting || decisions || audit || rollback' TILT_TELEMETRY_OPTOUT=1 bin/tilt ci --timeout 20m
+    selected_specs: 6
+    passed: 6
+    failed: 0
+    duration: 182.352s
+    artifacts: test/e2e/artifacts/run-1794664724-d6559ade
+  fast_regressions:
+    status: passed
+    coverage: API validation, application, controller/envtest, discovery, history, metrics, recommendations, reporting, webhook, clusterless workflows and E2E harness packages
+  smoke_after_ci_fix:
+    status: passed
+    command: bash hack/dev/run.sh test smoke
+    selected_specs: 9
+    passed: 9
+    failed: 0
+    duration: 243.574s
+    coverage: Installed the metrics fixture built by its exact production-style Dockerfile with the corrected build context; exercised admission, recommendation, application and controller restart
+    environment_note: Renewed the retained local cluster's expired 24-hour test webhook certificate before the successful rerun
+    artifacts: test/e2e/artifacts/run-1794669412-2e6c6b64
+  browser:
+    status: passed
+    coverage: Token login/logout, two-cluster fleet, namespace and cluster filters, workload details/allocation chart, policy snapshots, observed decisions and 390px layout
+    overflow: At 390px viewport, document scroll width remained 390px; the table scrolls within its container
+  tooling:
+    tilt_console: Full rebuild/deploy, real PostgreSQL tests, both E2E tests and restore drill passed
+    release_console_image: Production Dockerfile.console built successfully with embedded UI/schema; CLI help smoke passed
+    go_lint: Repository-wide golangci-lint reported zero issues
+    other_checks: Helm lint/render, actionlint, JavaScript syntax, whitespace, YAML, shell and secret scans passed
+    go_hook_note: Go lint ran through the installed repository binary; the pre-commit Go hook could not install with GOPROXY=off, so other hooks ran separately
+fixed_during_validation:
+  - SQL namespace allow-list handling of a nil slice
+  - Helm numeric conversion of queue size, verified through actual agent startup
+  - Queue acknowledgment after a state-file persistence failure
+  - Stale local port-forwards after pod replacement; test harness now waits for working SQL/HTTP connections
+  - Podman build-context traversal omitted source directories; explicit source-directory includes fixed the release build
+  - CI smoke setup exposed an excluded metrics fixture; restored its Go sources to the root build context and verified its exact Dockerfile with Podman
+  - Restore into PostgreSQL's default public schema; cleanup is limited to the newly created disposable restore database
+limits:
+  - Polling preserves observed state and exported journals, not every intermediate change or actor identity
+  - OIDC was tested against a signed local test issuer; organization SSO and production TLS/database deployment remain environment configuration
+  - No large-fleet throughput or multi-region database failure claim is made
+  - Raw usage metrics remain in their original backend; the console chart represents requested allocations
+environment_recovery:
+  incident: A supplementary optimizer-image build exhausted host disk space after functional validation; Podman reported storage I/O errors
+  action: Removed 3.4GiB of regenerable build cache created during this run, restarted the existing VM independently, and trimmed unused disk blocks
+  resources: Podman memory reduced from 28GiB to 16GiB on the 32GiB Mac; keep at least 15GiB host disk free for builds
+  preserved: Existing clusters, PostgreSQL data and agent queue PVCs retained
+  image_cache: One imported release executable was empty after the disk failure; removed only the damaged node image copies, re-imported the original image and matched its SHA-256 checksum
+  supplementary_controller_image: Local build stopped during the storage incident; the production optimizer Docker build subsequently passed in GitHub Actions
+remote_ci:
+  feature_commit: e9db16a
+  persistence:
+    status: passed
+    run: https://github.com/Sagart-cactus/optipod/actions/runs/43607901167
+    multi_cluster_duration: 11.93s
+    installed_restart_duration: 34.54s
+    coverage: PostgreSQL integration, both real-cluster E2E tests, backup restore, production console image and Helm lint/render
+  optimizer_build:
+    status: passed
+    run: https://github.com/Sagart-cactus/optipod/actions/runs/43607901160
+local_logs:
+  installed_release: .dev/console/release-image-e2e.log
+  tilt_console: .dev/console/tilt-console-e2e.log
+  controller: .dev/console/controller-history-e2e.log
+  smoke_after_ci_fix: .dev/console/ci-fix-smoke-e2e-renewed.log
+  repository_tests: .dev/console/repository-tests.log
+  release_console_build: .dev/console/release-image-build.log
+  lint: .dev/console/repository-lint-final.log
+  hooks: .dev/console/precommit-nongo-final.log
+  backup: .dev/console/backup-restore.log

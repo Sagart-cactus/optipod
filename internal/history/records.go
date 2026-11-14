@@ -88,6 +88,13 @@ func Read(ctx context.Context, c client.Reader, namespace, name string) (*Record
 	if err := c.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, cm); err != nil {
 		return nil, err
 	}
+	return FromConfigMap(cm)
+}
+
+// FromConfigMap decodes a consistent list/watch observation without a second
+// API read that could race with pruning or a phase transition.
+func FromConfigMap(cm *corev1.ConfigMap) (*Record, error) {
+	namespace, name := cm.Namespace, cm.Name
 	if cm.Labels[Label] != labelTrue {
 		return nil, fmt.Errorf("%s is not an OptiPod history record", name)
 	}
