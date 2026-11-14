@@ -152,9 +152,11 @@ manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and Cust
 .PHONY: generate
 generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
 	"$(CONTROLLER_GEN)" object:headerFile="hack/boilerplate.go.txt" paths="./..."
-	@# controller-gen v0.22 emits the meta/v1 import without its `v1` alias, which the
-	@# goimports check in CI rejects. Normalise here so `make generate` stays clean.
-	@sed 's|^\([[:space:]]*\)"k8s.io/apimachinery/pkg/apis/meta/v1"|\1v1 "k8s.io/apimachinery/pkg/apis/meta/v1"|' api/v1alpha1/zz_generated.deepcopy.go > api/v1alpha1/zz_generated.deepcopy.go.tmp
+	@# controller-gen v0.22 omits explicit aliases for these versioned imports,
+	@# which goimports requires. Normalise here so regeneration stays clean.
+	@sed -e 's|^\([[:space:]]*\)"k8s.io/apimachinery/pkg/apis/meta/v1"|\1v1 "k8s.io/apimachinery/pkg/apis/meta/v1"|' \
+		-e 's|^\([[:space:]]*\)"k8s.io/api/autoscaling/v2"|\1v2 "k8s.io/api/autoscaling/v2"|' \
+		api/v1alpha1/zz_generated.deepcopy.go > api/v1alpha1/zz_generated.deepcopy.go.tmp
 	@mv api/v1alpha1/zz_generated.deepcopy.go.tmp api/v1alpha1/zz_generated.deepcopy.go
 	@gofmt -w api/v1alpha1/zz_generated.deepcopy.go
 

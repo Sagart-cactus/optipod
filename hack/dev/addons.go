@@ -85,7 +85,9 @@ func installAddons(ctx context.Context, root string, s state) error {
 		return err
 	}
 	hash := sha256.Sum256(data)
-	if hex.EncodeToString(hash[:]) != "b8280994791eaee7eb91c8b84450efcc6e0292fca5aafc18c1b0ebc5d18dbefe" {
+	// SHA256 of the public release manifest.
+	const expectedSHA256 = "b8280994791eaee7eb91c8b84450efcc6e0292fca5aafc18c1b0ebc5d18dbefe" // pragma: allowlist secret
+	if hex.EncodeToString(hash[:]) != expectedSHA256 {
 		return fmt.Errorf("argo release manifest digest mismatch")
 	}
 	path := filepath.Join(root, ".dev/argo-rollouts-v1.10.2.yaml")

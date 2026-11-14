@@ -13,12 +13,32 @@ acceptance:
   evidence_note: Paths under test/e2e/artifacts and .dev are retained local artifacts; the per-spec JSON export above is committed for PR review.
   migration_followup: 1 passed, 0 failed; focused rerun after migration wording, metadata and filename cleanup
   published_migration_results: docs/validation/workload-migration-e2e-results.json
-  source_fingerprint_sha256: 0c9cbeaf674721f23bb295dd680e5913bac14951ef0fa436d7365f9100a721ee
-  fingerprint_scope: sorted repository non-ignored files excluding docs, hashed by path and SHA256; source stayed unchanged throughout the complete run; subsequent migration-only changes are covered by the focused follow-up
+  source_fingerprint_sha256: 0c9cbeaf674721f23bb295dd680e5913bac14951ef0fa436d7365f9100a721ee # pragma: allowlist secret -- tested source checksum
+  fingerprint_scope: sorted repository non-ignored files excluding docs, hashed by path and SHA256; source stayed unchanged throughout the complete run; subsequent migration and CI formatting changes are covered by focused follow-up runs
   additional_checks: unit/envtest/clusterless/harness tests, complete API/internal race detector, zero-issue lint, Helm lint/render and generated CRD consistency
   ui: fleet/history explorer and comparison filters manually checked in the internal browser
   rollout_scope: local Kind only; DPV2 QA/production application acceptance remains part of canary rollout
 runs:
+  - change: named public-manifest checksum to preserve line-length and secret-scanning checks
+    command: local add-on installation followed by Tilt ci with controllers coexist
+    result: passed
+    executed_specs: 9
+    failed_specs: 0
+    skipped_by_label_filter: 88
+    duration_seconds: 48.041
+    evidence: test/e2e/artifacts/run-1794621090-1c8fb7d8/junit.xml
+    checks: real pinned-manifest digest verification, healthy KEDA and Argo install, HPA/KEDA coexistence, Argo and ReplicaSet resize/restart, paused-controller guards
+    controller_runtime_changes: none
+  - change: CI import normalization, final newline and reviewed public-checksum annotations
+    command: Tilt ci with smoke horizontal controllers reporting
+    result: passed
+    executed_specs: 16
+    failed_specs: 0
+    skipped_by_label_filter: 81
+    duration_seconds: 396.743
+    evidence: test/e2e/artifacts/run-1794620245-4fc9ac8b/junit.xml
+    checks: admission, Recommend and Auto modes, repeat reconciles, restart recovery, managed HPA, Argo and ReplicaSet controls, and fleet/history reporting
+    controller_runtime_changes: none; generated import alias only
   - change: vendor-neutral migration wording, metadata, example filenames and feature documentation
     command: Tilt ci with migration
     result: passed

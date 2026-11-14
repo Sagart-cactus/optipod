@@ -1,5 +1,5 @@
 scope: OptiPod workload optimization (node optimization excluded)
-baseline: d68ba81679cd74fea1be7738789716a3436f75e4
+baseline: d68ba81679cd74fea1be7738789716a3436f75e4 # pragma: allowlist secret -- public Git commit
 validation:
   local_runtime: Podman
   cluster: kind Kubernetes v1.35.0 (private kubeconfig)
