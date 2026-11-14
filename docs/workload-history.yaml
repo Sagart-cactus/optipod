@@ -38,15 +38,13 @@ recommended_production_storage:
   shared_queryable_history:
     storage: PostgreSQL through the optional console agent and shared API
     status: Implemented; deployment, retention, backup and polling limitations are documented in docs/persistent-console.yaml
-  optional_cold_archive:
-    service: GCS in your existing GCP environment
-    status: Future option; the implemented exporter targets PostgreSQL, not object storage
-    format: Versioned JSON records with cluster identity, namespace, workload UID, record name and phase/update timestamp
-    export_behavior: Watch/list with resource-version recovery; checkpoint only after successful write; retry idempotently and archive phase transitions as new objects
-    retention: Choose a retention period for operational requirements; bucket lifecycle can expire old archives
-    query_option: Add BigQuery indexing later if cross-cluster timeline queries justify it
-    caution: Bucket retention locking is irreversible; it is not required for an initial archive
+  backup_and_recovery:
+    storage_decision: PostgreSQL is the shared persistence layer; no separate application archive exporter is planned
+    requirements: Automated database backups and point-in-time recovery, independently retained copies, monitored recovery coverage and periodic restore drills
+    scope: Back up the whole console database, schema version and ingest checkpoints; preserve deployment configuration, recoverable credentials and agent queue PVCs separately
+    recovery: Restore into an isolated database, validate history and access controls, and reconcile each agent's stream and sequence before resuming ingestion
+    runbook: See backup_requirements, recovery_procedure and restore_drills in docs/persistent-console.yaml
   actor_attribution: Git history for declared settings plus Kubernetes audit logs for direct API edits
 sources:
   - https://kubernetes.io/docs/concepts/configuration/configmap/
-  - https://docs.cloud.google.com/storage/docs/using-bucket-lock
+  - https://www.postgresql.org/docs/18/continuous-archiving.html
