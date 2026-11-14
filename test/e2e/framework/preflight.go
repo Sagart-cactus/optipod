@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
@@ -41,6 +42,15 @@ var commandWaitDelay = 10 * time.Second
 func execRunner(ctx context.Context, name string, args ...string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.WaitDelay = commandWaitDelay
+	// Kind emits Podman provider notices on stderr. They must never become
+	// part of the kubeconfig identity check's machine-readable YAML.
+	if filepath.Base(name) == kindCommand && len(args) >= 2 && args[0] == "get" && args[1] == "kubeconfig" {
+		out, err := cmd.Output()
+		if e, ok := err.(*exec.ExitError); ok {
+			out = append(out, e.Stderr...)
+		}
+		return out, err
+	}
 	return cmd.CombinedOutput()
 }
 
@@ -48,25 +58,27 @@ func execRunner(ctx context.Context, name string, args ...string) ([]byte, error
 // external dependency is injectable so the checks can be exercised in isolation
 // without a real Docker daemon, Kind binary, or controlled PATH.
 type Preflighter struct {
-	LookPath     func(string) (string, error)
-	Run          commandRunner
-	GOARCH       string
-	DiskPath     string
-	MinDiskBytes uint64
-	ProbePort    func() error
-	Timeout      time.Duration
+	ContainerTool string
+	LookPath      func(string) (string, error)
+	Run           commandRunner
+	GOARCH        string
+	DiskPath      string
+	MinDiskBytes  uint64
+	ProbePort     func() error
+	Timeout       time.Duration
 }
 
 // NewPreflighter builds a Preflighter wired to the real environment.
 func NewPreflighter() *Preflighter {
 	return &Preflighter{
-		LookPath:     exec.LookPath,
-		Run:          execRunner,
-		GOARCH:       runtime.GOARCH,
-		DiskPath:     os.TempDir(),
-		MinDiskBytes: 10 << 30, // 10 GiB headroom for node image, build, and cluster
-		ProbePort:    probeDynamicPort,
-		Timeout:      30 * time.Second,
+		ContainerTool: ContainerRuntime(),
+		LookPath:      exec.LookPath,
+		Run:           execRunner,
+		GOARCH:        runtime.GOARCH,
+		DiskPath:      os.TempDir(),
+		MinDiskBytes:  10 << 30, // 10 GiB headroom for node image, build, and cluster
+		ProbePort:     probeDynamicPort,
+		Timeout:       30 * time.Second,
 	}
 }
 
@@ -114,28 +126,32 @@ func (p *Preflighter) checkArch(_ context.Context) *Blocker {
 }
 
 func (p *Preflighter) checkDockerDaemon(ctx context.Context) *Blocker {
-	if b := p.requireBinary("docker"); b != nil {
+	engine := p.ContainerTool
+	if engine == "" {
+		engine = "docker"
+	}
+	if b := p.requireBinary(engine); b != nil {
 		return b
 	}
 	cctx, cancel := context.WithTimeout(ctx, p.Timeout)
 	defer cancel()
-	if out, err := p.Run(cctx, "docker", "info", "--format", "{{.ServerVersion}}"); err != nil {
+	if out, err := p.Run(cctx, engine, "info"); err != nil {
 		return &Blocker{
 			Check:  "docker-daemon",
-			Reason: fmt.Sprintf("docker daemon is not reachable: %v (%s)", err, strings.TrimSpace(string(out))),
-			Remedy: "start Docker (Docker Desktop or the engine) and ensure the current user can reach it",
+			Reason: fmt.Sprintf("%s engine is not reachable: %v (%s)", engine, err, strings.TrimSpace(string(out))),
+			Remedy: "start the selected container engine and ensure the current user can reach it",
 		}
 	}
 	return nil
 }
 
 func (p *Preflighter) checkKindCLI(ctx context.Context) *Blocker {
-	if b := p.requireBinary("kind"); b != nil {
+	if b := p.requireBinary(kindCommand); b != nil {
 		return b
 	}
 	cctx, cancel := context.WithTimeout(ctx, p.Timeout)
 	defer cancel()
-	out, err := p.Run(cctx, "kind", "version")
+	out, err := p.Run(cctx, kindCommand, "version")
 	if err != nil {
 		return &Blocker{
 			Check:  kindCLIID,

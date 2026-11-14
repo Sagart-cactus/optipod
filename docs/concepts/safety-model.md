@@ -57,7 +57,7 @@ spec:
 
 ### Enforcement
 
-OptiPod clamps all recommendations to configured bounds:
+OptiPod clamps ordinary percentile recommendations to configured bounds. A JVM headroom floor or OOM recovery requirement above the maximum blocks application instead of silently lowering the required allocation:
 
 ```
 If recommendation < min → Use min
@@ -174,49 +174,39 @@ Memory is different from CPU:
 - **Memory OOM**: Pods are killed immediately
 - **No graceful degradation**: Memory limits are hard boundaries
 
-### Current Memory Decrease Behavior
+### Memory decreases and OOM recovery
 
-> **⚠️ Status**: OptiPod currently has **no memory decrease guard**. A recommended memory decrease is applied in full, exactly like any other recommendation, and is constrained only by `resourceBounds` and the safety factor.
-
-The `allowUnsafeMemoryDecrease` field is defined in the CRD schema and is validated, but **no production code reads it**, so setting it has no effect. There is no default block on memory decreases:
-
-```yaml
-spec:
-  updateStrategy:
-    allowUnsafeMemoryDecrease: false  # Accepted, but not enforced today
-```
-
-To limit aggressive memory reductions, constrain them with `resourceBounds` and consider `updateRequestsOnly: true` instead of relying on a guard that is not yet implemented.
-
-**Gradual Memory Decrease (Not Yet Implemented)**
-
-> **⚠️ Status**: The `gradualDecreaseConfig` field is defined in the CRD schema and validated, but **not currently implemented** in the controller. Setting this configuration has no effect on actual behavior.
-
-The planned feature would apply large memory reductions incrementally:
+Memory request and limit reductions are blocked by default. Explicit
+`allowUnsafeMemoryDecrease: true` permits a full reduction. Alternatively,
+`gradualDecreaseConfig.enabled: true` limits each reduction and enforces a
+floor relative to the original allocation. The controller persists accepted
+allocations and cooldown state on the workload, so restarting it does not reset
+these safeguards.
 
 ```yaml
 spec:
   updateStrategy:
+    allowUnsafeMemoryDecrease: false
     gradualDecreaseConfig:
       enabled: true
-      memoryDecreasePercentage: 10      # Max 10% decrease per reconciliation
-      minimumDecreaseThreshold: 100Mi   # Threshold to trigger gradual decrease
-      maximumTotalDecrease: 70          # Max 70% total decrease from original
+      memoryDecreasePercentage: 10
+      minimumDecreaseThreshold: 100Mi
+      maximumTotalDecrease: 70
+    stability:
+      minimumChangePercent: 10
+      cooldown: 15m
 ```
 
-**Planned behavior:**
-- Current memory: 2Gi
-- Recommendation: 1Gi (50% decrease)
-- With gradual decrease (10% per cycle):
-  - Cycle 1: 2Gi → 1.8Gi (10% decrease)
-  - Cycle 2: 1.8Gi → 1.62Gi (10% decrease)
-  - Cycle 3: 1.62Gi → 1.46Gi (10% decrease)
-  - Cycle 4: 1.46Gi → 1.31Gi (10% decrease)
-  - Cycle 5: 1.31Gi → 1.18Gi (10% decrease)
-  - Cycle 6: 1.18Gi → 1.06Gi (10% decrease)
-  - Cycle 7: 1.06Gi → 1Gi (final)
+Observed `OOMKilled` terminations trigger bounded recovery even if metrics are
+missing. The default is a 20% increase, at least 64Mi, with a 24-hour reduction
+freeze and at most three recoveries per hour. Policy bounds, preserved limits,
+resource constraints, and explicit resize/recreate permissions still apply.
+Repeated incidents or a required allocation above the maximum open a circuit
+breaker; investigate and change `oomRecovery.resetToken` to acknowledge it.
 
-**Current behavior**: Memory decreases are applied in full in a single reconciliation. Neither `allowUnsafeMemoryDecrease` nor `gradualDecreaseConfig` changes this yet, because no production code reads them.
+Node-aware DaemonSet sizing uses destination-node capacity on new Pod admission.
+It honors an active OOM floor and never restarts existing Pods. Existing Pod
+rightsizing uses the ordinary metrics-based DaemonSet path instead.
 
 **Memory Limit Multipliers**
 
@@ -244,9 +234,7 @@ metricsConfig:
   safetyFactor: 1.5  # Larger buffer for memory
 ```
 
-**2. Enable Gradual Decrease (Not Yet Implemented):**
-
-> **⚠️ Note**: This feature is not yet implemented. The configuration is accepted but has no effect.
+**2. Enable Gradual Decrease:**
 
 ```yaml
 updateStrategy:
@@ -514,7 +502,7 @@ Before enabling Auto mode:
 - [ ] Validate recommendations in Recommend mode
 - [ ] Set conservative resource bounds
 - [ ] Configure appropriate safety factor (1.2-1.5)
-- [ ] ~~Enable gradual memory decrease~~ (Not yet implemented)
+- [ ] Choose default memory protection or explicitly configure gradual reductions
 - [ ] Choose appropriate update strategy
 - [ ] Test on non-critical workloads first
 - [ ] Set up monitoring and alerts

@@ -1,0 +1,46 @@
+scope: Workload optimization only; all development commands verify an isolated local Kind cluster.
+prerequisites:
+  - Go version from go.mod, Podman, kubectl, Helm, pinned Kind and Tilt binaries on PATH or in bin.
+  - On macOS the dev script uses podman-machine-default-root without changing the default connection.
+bootstrap:
+  - bash hack/dev/run.sh up
+  - bash hack/dev/run.sh backends
+  - bash hack/dev/run.sh addons
+  - bash hack/dev/run.sh jvm
+  - OPTIPOD_E2E_LABELS='!deliberate-failure' TILT_TELEMETRY_OPTOUT=1 bin/tilt ci --timeout 60m
+cluster:
+  name: optipod-e2e-dev
+  topology: two nodes with distinct real kubelet reserved resources
+  config: hack/dev/kind-multi.yaml
+  kubeconfig: private path recorded in .dev/cluster.json; never export it as the default KUBECONFIG
+  kubernetes: v1.35.0, pinned Kind node digest in the harness
+  backends: independent real Prometheus cAdvisor/application scraping and metrics-server
+  add_ons: real KEDA and Argo Rollouts
+feedback:
+  watch: OPTIPOD_E2E_LABELS='smoke || parity' bin/tilt up
+  focused: bash hack/dev/run.sh test 'node-sizing || reporting'
+  reload: bash hack/dev/run.sh reload
+  note: Tilt rebuilds and deploys the controller, then runs installed-controller E2E. Do not edit watched source or runtime-read examples/fixtures during a ci run.
+checks:
+  fast: KUBEBUILDER_ASSETS="$PWD/bin/k8s/1.37.0-darwin-arm64" go test ./api/... ./cmd/... ./internal/... ./test/clusterless/... ./test/e2e/framework/... ./test/e2e/metricsfixture/...
+  generation: make generate manifests
+  chart_crd: copy generated config/crd/bases/optipod.optipod.io_optimizationpolicies.yaml into charts/optipod/crds/optimizationpolicies.yaml
+  artifacts: test/e2e/artifacts/run-*/junit.xml, timings.json and failure diagnostics
+  platform_note: choose the matching envtest asset OS/architecture on other machines
+reporting:
+  build: go build -o bin/optipodctl ./cmd/optipodctl
+  fleet: bin/optipodctl fleet --kubeconfig PRIVATE_FILE --namespace TARGET --output table
+  csv: bin/optipodctl fleet --kubeconfig PRIVATE_FILE --namespace TARGET --output csv
+  history: bin/optipodctl history --kubeconfig PRIVATE_FILE --namespace TARGET --workload-uid UID
+  ui: bin/optipodctl serve --kubeconfig PRIVATE_FILE --namespace TARGET --port 8765
+  access: localhost only, GET only, Kubernetes permissions inherited from the explicit kubeconfig/context; no new cluster credentials or writes
+  retention: normal journals retain 32 records/30 days on subsequent writes, protecting latest/in-progress records; decision transitions retain 64/30 days; observed node admission journals retain 128/30 days
+  node_history: observed admission receipts include destination node, original resources and applied plan; they are not uniform rollback targets
+  scope: only workloads selected by visible OptimizationPolicies; archived/deleted workloads remain available through history
+  costs: requested CPU/memory totals are not monetary savings
+  demo: apply examples/local-demo/fleet.yaml using the private local kubeconfig, then serve namespace optipod-demo
+cleanup:
+  demo: kubectl --kubeconfig PRIVATE_FILE delete -f examples/local-demo/fleet.yaml
+  cluster: bash hack/dev/run.sh down
+migration: docs/workload-migration.yaml
+history_design: docs/workload-history.yaml

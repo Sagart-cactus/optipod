@@ -10,7 +10,8 @@ import (
 func TestNormalizeImageDigest(t *testing.T) {
 	const digest = "sha256:4613778f3cfcd10e615029370f5786704559103cf27bef934597ba562b269661"
 	cases := map[string]string{
-		digest: digest,
+		strings.TrimPrefix(digest, "sha256:"): digest,
+		digest:                                digest,
 		"docker.io/library/optipod-e2e/controller:e2e-1-abcdef12@" + digest: digest,
 		"optipod-e2e/controller:e2e-1-abcdef12":                             "",
 		"":                                                                  "",

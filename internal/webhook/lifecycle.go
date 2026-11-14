@@ -21,6 +21,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"os"
+	"sync"
 	"time"
 
 	admissionregistrationv1 "k8s.io/api/admissionregistration/v1"
@@ -38,6 +39,7 @@ var lifecycleLog = logf.Log.WithName("webhook-lifecycle")
 
 // LifecycleManager manages the webhook lifecycle including registration and cleanup
 type LifecycleManager struct {
+	mu                sync.Mutex
 	client            client.Client
 	webhookName       string
 	serviceName       string
@@ -105,6 +107,8 @@ func NewLifecycleManager(k8sClient client.Client, config LifecycleConfig) *Lifec
 
 // Start starts the webhook lifecycle management
 func (lm *LifecycleManager) Start(ctx context.Context) error {
+	lm.mu.Lock()
+	defer lm.mu.Unlock()
 	lifecycleLog.Info("Starting webhook lifecycle management",
 		"webhookName", lm.webhookName,
 		"serviceName", lm.serviceName,
@@ -121,8 +125,9 @@ func (lm *LifecycleManager) Start(ctx context.Context) error {
 	}
 
 	// Start the webhook server
+	server := lm.server
 	go func() {
-		if err := lm.server.Start(ctx); err != nil {
+		if err := server.Start(ctx); err != nil {
 			lifecycleLog.Error(err, "Webhook server failed")
 		}
 	}()
@@ -138,6 +143,8 @@ func (lm *LifecycleManager) Start(ctx context.Context) error {
 
 // Stop stops the webhook lifecycle management and cleans up resources
 func (lm *LifecycleManager) Stop(ctx context.Context) error {
+	lm.mu.Lock()
+	defer lm.mu.Unlock()
 	lifecycleLog.Info("Stopping webhook lifecycle management")
 
 	// Stop the webhook server first
@@ -185,6 +192,10 @@ func (lm *LifecycleManager) registerWebhook(ctx context.Context) error {
 			},
 		},
 		AdmissionReviewVersions: []string{"v1", "v1beta1"},
+		ReinvocationPolicy: func() *admissionregistrationv1.ReinvocationPolicyType {
+			v := admissionregistrationv1.IfNeededReinvocationPolicy
+			return &v
+		}(),
 		SideEffects: func() *admissionregistrationv1.SideEffectClass {
 			s := admissionregistrationv1.SideEffectClassNone
 			return &s
@@ -297,10 +308,8 @@ func (lm *LifecycleManager) waitForServerReady(ctx context.Context) error {
 	}
 
 	return wait.PollUntilContextTimeout(ctx, 100*time.Millisecond, timeout, true, func(ctx context.Context) (bool, error) {
-		// Check if server is ready by making a health check request
-		// This is a simple check - in a real implementation, you might want to
-		// make an actual HTTP request to the health endpoint
-		if lm.server != nil && lm.server.server != nil {
+		// The atomic readiness flag is set only after the listener is bound.
+		if lm.server != nil && lm.server.CheckReady(nil) == nil {
 			return true, nil
 		}
 		return false, nil
@@ -309,6 +318,8 @@ func (lm *LifecycleManager) waitForServerReady(ctx context.Context) error {
 
 // RotateCertificates handles certificate rotation
 func (lm *LifecycleManager) RotateCertificates(ctx context.Context, newCertPath, newKeyPath string, newCABundle []byte) error {
+	lm.mu.Lock()
+	defer lm.mu.Unlock()
 	lifecycleLog.Info("Rotating webhook certificates",
 		"oldCertPath", lm.certPath,
 		"newCertPath", newCertPath,
@@ -339,8 +350,9 @@ func (lm *LifecycleManager) RotateCertificates(ctx context.Context, newCertPath,
 	lm.server = NewServer(lm.client, lm.certPath, lm.keyPath, lm.server.port, lm.eventRecorder)
 
 	// Start the server again
+	server := lm.server
 	go func() {
-		if err := lm.server.Start(ctx); err != nil {
+		if err := server.Start(ctx); err != nil {
 			lifecycleLog.Error(err, "Failed to restart server after certificate rotation")
 		}
 	}()
@@ -375,6 +387,8 @@ func (lm *LifecycleManager) updateWebhookCABundle(ctx context.Context, caBundle 
 
 // GetHealthStatus returns the health status of the webhook
 func (lm *LifecycleManager) GetHealthStatus() map[string]interface{} {
+	lm.mu.Lock()
+	defer lm.mu.Unlock()
 	status := map[string]interface{}{
 		"webhook_name":      lm.webhookName,
 		"service_name":      lm.serviceName,
@@ -392,7 +406,7 @@ func (lm *LifecycleManager) GetHealthStatus() map[string]interface{} {
 	}
 
 	// Check server status
-	if lm.server != nil && lm.server.server != nil {
+	if lm.server != nil && lm.server.CheckReady(nil) == nil {
 		status["server_status"] = "running"
 	} else {
 		status["server_status"] = "stopped"

@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 	"regexp"
 	"runtime"
@@ -45,8 +46,8 @@ type ImageBuilder struct {
 func NewImageBuilder(repoRoot string) *ImageBuilder {
 	return &ImageBuilder{
 		RepoRoot:     repoRoot,
-		DockerPath:   "docker",
-		KindPath:     "kind",
+		DockerPath:   ContainerRuntime(),
+		KindPath:     kindCommand,
 		Run:          execRunner,
 		BuildTimeout: defaultBuildTimeout,
 	}
@@ -85,11 +86,40 @@ func (b *ImageBuilder) build(ctx context.Context, dockerfile, repo string) (*Bui
 		return nil, err
 	}
 	ref := repo + ":" + tag
+	if b.DockerPath == podmanCommand {
+		ref = "docker.io/" + ref
+	}
 
 	// The checkout's .dockerignore excludes everything but Go sources, so a
 	// relative -f resolves against the client's working directory and fails;
 	// pass the absolute Dockerfile path, which docker reads directly from disk.
 	dockerfilePath := filepath.Join(b.RepoRoot, dockerfile)
+	buildContext := b.RepoRoot
+	// Opt-in local development path: reuse the host Go cross-compile cache,
+	// then package the identical production entry point in the runtime image.
+	if os.Getenv("OPTIPOD_E2E_HOST_BUILD") == "1" {
+		dir, err := os.MkdirTemp("", "optipod-build-")
+		if err != nil {
+			return nil, err
+		}
+		defer func() { _ = os.RemoveAll(dir) }()
+		pkg := "./cmd"
+		if repo == MetricsFixtureImageRepo {
+			pkg = "./test/e2e/metricsfixture"
+		}
+		buildCtx, cancel := context.WithTimeout(ctx, b.BuildTimeout)
+		defer cancel()
+		out, err := b.Run(buildCtx, "env", "CGO_ENABLED=0", "GOOS=linux", "GOARCH="+strings.TrimPrefix(b.platform(), "linux/"),
+			"go", "-C", b.RepoRoot, "build", "-trimpath", "-o", filepath.Join(dir, "app"), pkg)
+		if err != nil {
+			return nil, fmt.Errorf("cross-compile %s: %w (%s)", pkg, err, tailOutput(string(out)))
+		}
+		dockerfilePath = filepath.Join(dir, "Dockerfile")
+		if err := os.WriteFile(dockerfilePath, []byte("FROM gcr.io/distroless/static:nonroot\nCOPY app /manager\nUSER 65532:65532\nENTRYPOINT [\"/manager\"]\n"), 0600); err != nil {
+			return nil, err
+		}
+		buildContext = dir
+	}
 
 	cctx, cancel := context.WithTimeout(ctx, b.BuildTimeout)
 	defer cancel()
@@ -97,7 +127,7 @@ func (b *ImageBuilder) build(ctx context.Context, dockerfile, repo string) (*Bui
 		"--platform", b.platform(),
 		"-t", ref,
 		"-f", dockerfilePath,
-		b.RepoRoot)
+		buildContext)
 	if err != nil {
 		return nil, fmt.Errorf("build image %s: %w (%s)", ref, err, tailOutput(string(out)))
 	}
@@ -122,7 +152,22 @@ func (b *ImageBuilder) build(ctx context.Context, dockerfile, repo string) (*Bui
 func (b *ImageBuilder) LoadImage(ctx context.Context, clusterName, ref string) (string, error) {
 	cctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()
-	out, err := b.Run(cctx, b.KindPath, "load", "docker-image", ref, "--name", clusterName)
+	args := []string{"load", "docker-image", ref, nameFlag, clusterName}
+	if b.DockerPath == podmanCommand {
+		// Kind's docker-image lookup assumes Docker's inspect format. An
+		// explicit archive also works with the remote Podman service on macOS.
+		dir, err := os.MkdirTemp("", "optipod-image-")
+		if err != nil {
+			return "", err
+		}
+		defer func() { _ = os.RemoveAll(dir) }()
+		archive := filepath.Join(dir, "image.tar")
+		if out, err := b.Run(cctx, b.DockerPath, "save", "--format", "docker-archive", "--output", archive, ref); err != nil {
+			return "", fmt.Errorf("save %s: %w (%s)", ref, err, tailOutput(string(out)))
+		}
+		args = []string{"load", "image-archive", archive, nameFlag, clusterName}
+	}
+	out, err := b.Run(cctx, b.KindPath, args...)
 	if err != nil {
 		return "", fmt.Errorf("load image %s into cluster %s: %w (%s)", ref, clusterName, err, tailOutput(string(out)))
 	}
@@ -189,6 +234,9 @@ var digestPattern = regexp.MustCompile(`sha256:[0-9a-f]{64}`)
 // reference form: Docker's "sha256:..." ID, or a containerd-style
 // "registry/name@sha256:..." pullable ID as reported in pod status.
 func NormalizeImageDigest(ref string) string {
+	if regexp.MustCompile(`^[0-9a-f]{64}$`).MatchString(ref) {
+		return "sha256:" + ref
+	}
 	return digestPattern.FindString(ref)
 }
 

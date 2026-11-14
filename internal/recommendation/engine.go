@@ -18,6 +18,7 @@ package recommendation
 
 import (
 	"fmt"
+	"time"
 
 	"k8s.io/apimachinery/pkg/api/resource"
 
@@ -27,9 +28,16 @@ import (
 
 // Recommendation represents a computed resource recommendation for a container
 type Recommendation struct {
-	CPU         resource.Quantity
-	Memory      resource.Quantity
-	Explanation string
+	// ResourceOverride is internal-only and used for an explicitly requested journal rollback.
+	ResourceOverride   map[string]any
+	PreserveCPU        bool
+	PreserveMemory     bool
+	Emergency          bool
+	MinimumMemoryLimit *resource.Quantity
+	ValidUntil         time.Time
+	CPU                resource.Quantity
+	Memory             resource.Quantity
+	Explanation        string
 }
 
 // Engine computes resource recommendations based on metrics and policy configuration
@@ -53,8 +61,10 @@ func (e *Engine) ComputeRecommendation(
 	}
 
 	// Select percentile based on policy configuration
-	cpuPercentile := selectPercentile(containerMetrics.CPU, policy.Spec.MetricsConfig.Percentile)
-	memoryPercentile := selectPercentile(containerMetrics.Memory, policy.Spec.MetricsConfig.Percentile)
+	cpuConfig := policy.Spec.MetricsConfig.ResourceSettings(true)
+	memoryConfig := policy.Spec.MetricsConfig.ResourceSettings(false)
+	cpuPercentile := selectPercentile(containerMetrics.CPU, cpuConfig.Percentile)
+	memoryPercentile := selectPercentile(containerMetrics.Memory, memoryConfig.Percentile)
 
 	// Apply safety factor
 	safetyFactor := 1.2 // default
@@ -62,18 +72,23 @@ func (e *Engine) ComputeRecommendation(
 		safetyFactor = *policy.Spec.MetricsConfig.SafetyFactor
 	}
 
-	cpuWithSafety := multiplyQuantity(cpuPercentile, safetyFactor)
-	memoryWithSafety := multiplyQuantity(memoryPercentile, safetyFactor)
+	cpuWithSafety := multiplyQuantity(cpuPercentile, *cpuConfig.SafetyFactor)
+	memoryWithSafety := multiplyQuantity(memoryPercentile, *memoryConfig.SafetyFactor)
 
+	if policy.Spec.MetricsConfig.JVM != nil && policy.ControlsResource("memory") {
+		floor := containerMetrics.Memory.P100
+		if floor.Cmp(policy.Spec.ResourceBounds.Memory.Max) > 0 {
+			return nil, fmt.Errorf("JVM memory floor exceeds policy maximum; raise the bound or review JVM heap/native configuration")
+		}
+		if memoryWithSafety.Cmp(floor) < 0 {
+			memoryWithSafety = floor.DeepCopy()
+		}
+	}
 	// Clamp to bounds
 	cpuRecommendation := clampToBounds(cpuWithSafety, policy.Spec.ResourceBounds.CPU)
 	memoryRecommendation := clampToBounds(memoryWithSafety, policy.Spec.ResourceBounds.Memory)
 
-	// Debug: Log the final values
-	fmt.Printf("DEBUG ENGINE: CPU recommendation: %s (millivalue=%d, value=%d, format=%v)\n",
-		cpuRecommendation.String(), cpuRecommendation.MilliValue(), cpuRecommendation.Value(), cpuRecommendation.Format)
-	fmt.Printf("DEBUG ENGINE: Memory recommendation: %s (millivalue=%d, value=%d, format=%v)\n",
-		memoryRecommendation.String(), memoryRecommendation.MilliValue(), memoryRecommendation.Value(), memoryRecommendation.Format)
+	cpuRecommendation, forecastExplanation := predictiveCPU(containerMetrics.CPU.Points, cpuRecommendation, policy)
 
 	// Generate explanation
 	percentileStr := policy.Spec.MetricsConfig.Percentile
@@ -91,8 +106,26 @@ func (e *Engine) ComputeRecommendation(
 		policy.Spec.ResourceBounds.Memory.Min.String(),
 		policy.Spec.ResourceBounds.Memory.Max.String(),
 	)
+	if policy.Spec.MetricsConfig.CPU != nil || policy.Spec.MetricsConfig.Memory != nil {
+		explanation = fmt.Sprintf("CPU %s over %s x %.2f; memory %s over %s x %.2f; clamped to policy bounds",
+			cpuConfig.Percentile, cpuConfig.RollingWindow.Duration, *cpuConfig.SafetyFactor,
+			memoryConfig.Percentile, memoryConfig.RollingWindow.Duration, *memoryConfig.SafetyFactor)
+	}
 
+	if policy.Spec.MetricsConfig.JVM != nil {
+		explanation += "; JVM maximum heap, non-heap, native reserve and observed working set protected"
+	}
+	if policy.Spec.MetricsConfig.CPU != nil && policy.Spec.MetricsConfig.CPU.Source != nil {
+		explanation += "; custom CPU gauge: " + policy.Spec.MetricsConfig.CPU.Source.Name
+	}
+	if policy.Spec.MetricsConfig.Memory != nil && policy.Spec.MetricsConfig.Memory.Source != nil {
+		explanation += "; custom memory gauge: " + policy.Spec.MetricsConfig.Memory.Source.Name
+	}
+	if forecastExplanation != "" {
+		explanation += "; " + forecastExplanation
+	}
 	return &Recommendation{
+		ValidUntil:  containerMetrics.ValidUntil,
 		CPU:         cpuRecommendation,
 		Memory:      memoryRecommendation,
 		Explanation: explanation,
@@ -106,6 +139,10 @@ func selectPercentile(resourceMetrics metrics.ResourceMetrics, percentile string
 		return resourceMetrics.P50
 	case "P99":
 		return resourceMetrics.P99
+	case "P95":
+		return resourceMetrics.P95
+	case "P100":
+		return resourceMetrics.P100
 	case "P90", "":
 		return resourceMetrics.P90
 	default:

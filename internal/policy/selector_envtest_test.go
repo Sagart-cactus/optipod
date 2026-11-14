@@ -256,7 +256,7 @@ func TestSelectBestPolicyAgainstRealAPI(t *testing.T) {
 		}
 	})
 
-	t.Run("a disabled policy is excluded even with the highest weight", func(t *testing.T) {
+	t.Run("a highest-weight disabled policy is an authoritative exclusion", func(t *testing.T) {
 		ns := "sel-dis-ns"
 		workload := createSelectionNamespace(ctx, t, ns)
 		createSelectionPolicy(ctx, t, "p-off", func(p *optipodv1alpha1.OptimizationPolicy) {
@@ -270,10 +270,10 @@ func TestSelectBestPolicyAgainstRealAPI(t *testing.T) {
 		})
 
 		winner, err := selectBest(ctx, t, workload)
-		requireWinner(t, winner, err, "p-on")
+		requireWinner(t, winner, err, "p-off")
 
-		if got := matchingNames(ctx, t, workload); len(got) != 1 || got[0] != "p-on" {
-			t.Errorf("GetMatchingPolicies = %v, expected the disabled policy to be excluded", got)
+		if got := matchingNames(ctx, t, workload); len(got) != 2 || got[0] != "p-off" {
+			t.Errorf("GetMatchingPolicies = %v, expected the disabled policy to win", got)
 		}
 	})
 

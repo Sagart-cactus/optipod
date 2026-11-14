@@ -39,13 +39,14 @@ type ClusterOptions struct {
 	Keep          bool
 	KindPath      string
 	NodeImage     string
+	ConfigPath    string
 	Run           commandRunner
 }
 
 // OptionsFromEnv derives cluster options from the environment. KEEP_CLUSTER
 // opts into retention; everything else uses safe defaults.
 func OptionsFromEnv() ClusterOptions {
-	return ClusterOptions{Keep: keepClusterRequested()}
+	return ClusterOptions{Keep: keepClusterRequested(), ConfigPath: filepath.Join(DefaultRepoRoot(), "hack/dev/kind-multi.yaml")}
 }
 
 // Environment variables for explicit focused reuse of a retained harness
@@ -109,7 +110,7 @@ func (o ClusterOptions) kind() string {
 	if o.KindPath != "" {
 		return o.KindPath
 	}
-	return "kind"
+	return kindCommand
 }
 
 // CreateCluster provisions a uniquely named owned Kind cluster with a private
@@ -154,10 +155,13 @@ func CreateCluster(ctx context.Context, opts ClusterOptions) (*Cluster, error) {
 
 	args := []string{
 		"create", "cluster",
-		"--name", name,
+		nameFlag, name,
 		"--kubeconfig", c.Kubeconfig,
 		"--image", nodeImage,
 		"--wait", "120s",
+	}
+	if opts.ConfigPath != "" {
+		args = append(args, "--config", opts.ConfigPath)
 	}
 	if out, err := c.run(cctx, c.kindPath, args...); err != nil {
 		// Attempting creation establishes ownership; tear down any partial cluster
@@ -239,7 +243,7 @@ func (c *Cluster) Delete(ctx context.Context) error {
 
 	cctx, cancel := context.WithTimeout(ctx, defaultCleanupTimeout)
 	defer cancel()
-	out, err := c.run(cctx, c.kindPath, "delete", "cluster", "--name", c.Name, "--kubeconfig", c.Kubeconfig)
+	out, err := c.run(cctx, c.kindPath, "delete", "cluster", nameFlag, c.Name, "--kubeconfig", c.Kubeconfig)
 	if err != nil && !isNotFound(string(out)) {
 		return fmt.Errorf("delete kind cluster %q: %w (%s)", c.Name, err, strings.TrimSpace(string(out)))
 	}

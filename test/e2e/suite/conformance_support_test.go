@@ -188,11 +188,10 @@ func updatePolicy(ctx context.Context, namespace, name string, mutate func(*opti
 	}
 }
 
-// touchPolicy performs a benign spec-annotation update on the named policy.
-// Any policy object update triggers the production controller's watch-driven
-// reconcile; conformance specs use the touch to observe selection outcomes
-// promptly instead of waiting for the requeue timer. The annotation is never
-// read by production code.
+// touchPolicy records a phase marker on the named policy without changing its
+// generation or invalidating a plan. The controller watches generation changes,
+// so callers must observe a completed reconcile through pod events or the requeue
+// timer; this annotation alone does not trigger processing.
 func touchPolicy(ctx context.Context, namespace, name string) {
 	const touchKey = optipodAnnotationPrefix + "e2e-observe-touch"
 	updatePolicy(ctx, namespace, name, func(p *optipodv1alpha1.OptimizationPolicy) {

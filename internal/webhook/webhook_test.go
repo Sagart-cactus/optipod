@@ -36,6 +36,7 @@ import (
 	"github.com/leanovate/gopter/prop"
 	admissionregistrationv1 "k8s.io/api/admissionregistration/v1"
 	appsv1 "k8s.io/api/apps/v1"
+	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -186,6 +187,7 @@ func createFakeClient(policies ...*optipodv1alpha1.OptimizationPolicy) client.Cl
 	_ = optipodv1alpha1.AddToScheme(scheme)
 	_ = corev1.AddToScheme(scheme)
 	_ = appsv1.AddToScheme(scheme)
+	_ = autoscalingv2.AddToScheme(scheme)
 	_ = admissionregistrationv1.AddToScheme(scheme)
 
 	objects := make([]client.Object, len(policies))
@@ -205,6 +207,7 @@ func createFakeClientWithWorkloads(policies []*optipodv1alpha1.OptimizationPolic
 	_ = optipodv1alpha1.AddToScheme(scheme)
 	_ = corev1.AddToScheme(scheme)
 	_ = appsv1.AddToScheme(scheme)
+	_ = autoscalingv2.AddToScheme(scheme)
 	_ = admissionregistrationv1.AddToScheme(scheme)
 
 	objects := make([]client.Object, 0, len(policies)+len(workloads))
@@ -237,6 +240,7 @@ func TestProperty_WebhookPodModificationBehavior(t *testing.T) {
 	properties.Property("webhook modifies pods with annotations and matching policies", prop.ForAll(
 		func(pod *corev1.Pod, policy *optipodv1alpha1.OptimizationPolicy) bool {
 			// Create fake client with policy
+			StampRecommendations(pod.Annotations, policy, time.Now())
 			client := createFakeClient(policy)
 			eventRecorder := createTestEventRecorder()
 			mutator := NewMutator(client, eventRecorder)

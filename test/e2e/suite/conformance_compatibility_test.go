@@ -111,10 +111,10 @@ var _ = Describe("Older optional-field policies still work", Label("conformance"
 		Expect(persisted.Spec.UpdateStrategy.LimitConfig).To(BeNil(),
 			"the omitted limit configuration must remain absent (requests-only defaults)")
 		Expect(persisted.Spec.UpdateStrategy.GradualDecreaseConfig).To(BeNil(),
-			"the omitted gradual-decrease configuration must remain absent (not implemented in production)")
+			"the omitted gradual-decrease configuration must remain absent (explicit opt-in)")
 		if persisted.Spec.UpdateStrategy.AllowUnsafeMemoryDecrease != nil {
 			Expect(*persisted.Spec.UpdateStrategy.AllowUnsafeMemoryDecrease).To(BeFalse(),
-				"the persisted allowUnsafeMemoryDecrease default must not enable anything (no production guard reads it)")
+				"the persisted allowUnsafeMemoryDecrease default must keep memory reductions blocked")
 		}
 
 		By("waiting for the legacy Recommend policy to write exact recommendations")

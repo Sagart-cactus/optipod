@@ -32,6 +32,7 @@ var log = logf.Log.WithName("metrics-sampler")
 
 // TargetKey identifies a workload container across pod restarts.
 type TargetKey struct {
+	PodName      string
 	Namespace    string
 	WorkloadKind string
 	WorkloadName string
@@ -40,6 +41,7 @@ type TargetKey struct {
 
 // Sample represents a single metrics-server observation.
 type Sample struct {
+	PodName    string
 	Timestamp  time.Time
 	CPUMilli   int64
 	MemoryByte int64
@@ -53,6 +55,7 @@ type samplingTarget struct {
 
 // sampleRing is a fixed-size ring buffer for samples.
 type sampleRing struct {
+	mu      sync.RWMutex
 	samples []Sample
 	start   int
 	count   int
@@ -68,6 +71,8 @@ func newSampleRing(capacity int) *sampleRing {
 }
 
 func (r *sampleRing) append(sample Sample) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	if r.count < len(r.samples) {
 		index := (r.start + r.count) % len(r.samples)
 		r.samples[index] = sample
@@ -80,6 +85,8 @@ func (r *sampleRing) append(sample Sample) {
 }
 
 func (r *sampleRing) valuesSince(cutoff time.Time) []Sample {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	if r.count == 0 {
 		return nil
 	}
@@ -103,11 +110,12 @@ type podKey struct {
 
 // timeSeriesStore holds samples and active targets in memory.
 type timeSeriesStore struct {
-	mu       sync.RWMutex
-	series   map[TargetKey]*sampleRing
-	targets  map[TargetKey]*samplingTarget
-	podIndex map[podKey]TargetKey
-	capacity int
+	retention time.Duration
+	mu        sync.RWMutex
+	series    map[TargetKey]*sampleRing
+	targets   map[podKey]*samplingTarget
+	podIndex  map[podKey]TargetKey
+	capacity  int
 }
 
 func newTimeSeriesStore(capacity int) *timeSeriesStore {
@@ -116,7 +124,7 @@ func newTimeSeriesStore(capacity int) *timeSeriesStore {
 	}
 	return &timeSeriesStore{
 		series:   make(map[TargetKey]*sampleRing),
-		targets:  make(map[TargetKey]*samplingTarget),
+		targets:  make(map[podKey]*samplingTarget),
 		podIndex: make(map[podKey]TargetKey),
 		capacity: capacity,
 	}
@@ -125,15 +133,6 @@ func newTimeSeriesStore(capacity int) *timeSeriesStore {
 func (s *timeSeriesStore) registerTarget(key TargetKey, podName string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-
-	if existing, ok := s.targets[key]; ok {
-		oldKey := podKey{
-			Namespace: key.Namespace,
-			PodName:   existing.podName,
-			Container: key.Container,
-		}
-		delete(s.podIndex, oldKey)
-	}
 
 	pkey := podKey{
 		Namespace: key.Namespace,
@@ -146,7 +145,7 @@ func (s *timeSeriesStore) registerTarget(key TargetKey, podName string) {
 		podName:  podName,
 		lastSeen: time.Now(),
 	}
-	s.targets[key] = target
+	s.targets[pkey] = target
 	s.podIndex[pkey] = key
 
 	if _, exists := s.series[key]; !exists {
@@ -173,6 +172,13 @@ func (s *timeSeriesStore) appendSample(key TargetKey, sample Sample) {
 	if !exists {
 		ring = newSampleRing(s.capacity)
 		s.series[key] = ring
+	}
+	// metrics-server can return the same timestamp on successive scrapes.
+	// Repeated reads must not manufacture additional confidence.
+	for _, existing := range ring.valuesSince(sample.Timestamp) {
+		if existing.Timestamp.Equal(sample.Timestamp) && existing.PodName == sample.PodName {
+			return
+		}
 	}
 	ring.append(sample)
 }
@@ -213,13 +219,28 @@ func (s *timeSeriesStore) evictStaleTargets(ttl time.Duration) {
 	for key, target := range s.targets {
 		if target.lastSeen.Before(cutoff) {
 			delete(s.targets, key)
-			delete(s.series, key)
-			pkey := podKey{
-				Namespace: key.Namespace,
-				PodName:   target.podName,
-				Container: key.Container,
+		}
+	}
+	retention := s.retention
+	if retention <= 0 {
+		retention = ttl
+	}
+	for key, ring := range s.series {
+		active := false
+		for _, target := range s.targets {
+			if target.key == key {
+				active = true
+				break
 			}
-			delete(s.podIndex, pkey)
+		}
+		if active || len(ring.valuesSince(time.Now().Add(-retention))) > 0 {
+			continue
+		}
+		delete(s.series, key)
+		for pod, owner := range s.podIndex {
+			if owner == key {
+				delete(s.podIndex, pod)
+			}
 		}
 	}
 }
@@ -237,6 +258,7 @@ func NewMetricsServerSampler(metricsClientset metricsclientset.Interface, store 
 	if interval <= 0 {
 		interval = 30 * time.Second
 	}
+	store.retention = time.Duration(store.capacity) * interval
 	return &MetricsServerSampler{
 		metricsClientset: metricsClientset,
 		store:            store,
@@ -271,6 +293,7 @@ func (s *MetricsServerSampler) sampleOnce(ctx context.Context) {
 	targets := s.store.listTargets()
 
 	if len(targets) == 0 {
+		s.store.evictStaleTargets(s.targetTTL)
 		log.V(1).Info("No targets registered, skipping sampling")
 		return
 	}
@@ -302,9 +325,13 @@ func (s *MetricsServerSampler) sampleOnce(ctx context.Context) {
 		}
 
 		sample := Sample{
-			Timestamp:  time.Now(),
+			PodName:    target.podName,
+			Timestamp:  podMetrics.Timestamp.Time,
 			CPUMilli:   containerMetrics.Usage.Cpu().MilliValue(),
 			MemoryByte: containerMetrics.Usage.Memory().Value(),
+		}
+		if sample.Timestamp.IsZero() {
+			continue
 		}
 		s.store.appendSample(target.key, sample)
 		successCount++

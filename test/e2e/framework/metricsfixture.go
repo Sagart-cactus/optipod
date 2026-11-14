@@ -27,17 +27,23 @@ const (
 // samples for one namespace/pod/container target of the in-cluster fixture.
 // The JSON tags are the fixture server's wire format.
 type FixtureSeries struct {
-	Namespace   string    `json:"namespace"`
-	Pod         string    `json:"pod"`
-	Container   string    `json:"container"`
-	Mode        string    `json:"mode,omitempty"` // empty means FixtureModePresent
-	CPUCores    []float64 `json:"cpuCores,omitempty"`
-	MemoryBytes []float64 `json:"memoryBytes,omitempty"`
+	AgeSeconds     float64   `json:"ageSeconds,omitempty"`
+	SpacingSeconds float64   `json:"spacingSeconds,omitempty"`
+	FixedEnd       float64   `json:"fixedEnd,omitempty"`
+	Namespace      string    `json:"namespace"`
+	Pod            string    `json:"pod"`
+	Container      string    `json:"container"`
+	Mode           string    `json:"mode,omitempty"` // empty means FixtureModePresent
+	CPUCores       []float64 `json:"cpuCores,omitempty"`
+	MemoryBytes    []float64 `json:"memoryBytes,omitempty"`
 }
 
 // RecordedQuery is one query_range request the fixture observed, proving what
 // the deployed controller actually requested.
 type RecordedQuery struct {
+	Start string    `json:"start"`
+	End   string    `json:"end"`
+	Step  string    `json:"step"`
 	Time  time.Time `json:"time"`
 	Query string    `json:"query"`
 }

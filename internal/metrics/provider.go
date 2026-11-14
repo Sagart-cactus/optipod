@@ -42,16 +42,23 @@ type SamplingTargetRegistrar interface {
 
 // ContainerMetrics contains resource usage statistics for a single container.
 type ContainerMetrics struct {
-	CPU    ResourceMetrics
-	Memory ResourceMetrics
+	ValidUntil time.Time
+	CPU        ResourceMetrics
+	Memory     ResourceMetrics
 }
 
 // ResourceMetrics contains percentile-based statistics for a resource type.
 type ResourceMetrics struct {
-	P50     resource.Quantity // 50th percentile (median)
-	P90     resource.Quantity // 90th percentile
-	P99     resource.Quantity // 99th percentile
-	Samples int               // Number of data points used to compute percentiles
+	FirstSample     time.Time
+	LastSample      time.Time
+	CoveragePercent float64
+	Points          []Point
+	P50             resource.Quantity // 50th percentile (median)
+	P90             resource.Quantity // 90th percentile
+	P95             resource.Quantity // 95th percentile
+	P99             resource.Quantity // 99th percentile
+	P100            resource.Quantity // Maximum observed usage
+	Samples         int               // Number of data points used to compute percentiles
 }
 
 // MetricsError represents an error from the metrics provider.

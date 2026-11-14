@@ -15,6 +15,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -101,6 +102,22 @@ var _ = BeforeSuite(func(ctx context.Context) {
 		fmt.Printf("=== phase %-14s %s\n", phase.Name, phase.Duration)
 	}
 	fmt.Printf("=== owned cluster: %s (private kubeconfig: %s)\n", env.Cluster.Name, env.Cluster.Kubeconfig)
+})
+
+// Preserve workload state and controller logs before per-spec namespace cleanup.
+// Later tests may restart the controller, so suite-end diagnostics alone lose it.
+var _ = JustAfterEach(func() {
+	sr := CurrentSpecReport()
+	if !sr.Failed() || env == nil || artifacts == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	defer cancel()
+	scope := framework.DiagnosticsScope{ClusterName: env.Cluster.Name, Namespaces: diagnosticsNamespaces(), FailureSummary: specFailureText(sr), Pins: framework.PinManifest()}
+	dir := filepath.Join(artifacts.DiagnosticsDir(), fmt.Sprintf("failure-%02d-before-cleanup", len(run.failureTexts)+1))
+	if _, err := framework.CollectDiagnostics(ctx, env.Clients, scope, dir); err != nil {
+		_, _ = fmt.Fprintf(GinkgoWriter, "Pre-cleanup diagnostics: %s\n", framework.Redact(err.Error()))
+	}
 })
 
 var _ = ReportAfterEach(func(sr types.SpecReport) {

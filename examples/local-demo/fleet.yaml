@@ -1,0 +1,90 @@
+# Disposable local fixtures. Apply only to the harness-owned Kind cluster.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: optipod-demo
+  labels:
+    optipod.io/e2e-owned: "true"
+---
+apiVersion: optipod.optipod.io/v1alpha1
+kind: OptimizationPolicy
+metadata:
+  name: node-agents
+  namespace: optipod-demo
+spec:
+  mode: Auto
+  selector:
+    namespaces:
+      allow: [optipod-demo]
+    workloadSelector:
+      matchLabels:
+        optipod-demo: "true"
+    workloadTypes:
+      include: [DaemonSet]
+  metricsConfig:
+    provider: prometheus
+    rollingWindow: 1h
+    percentile: P95
+    safetyFactor: 1.2
+  resourceBounds:
+    cpu: {min: 1m, max: "4"}
+    memory: {min: 16Mi, max: 1Gi}
+  updateStrategy:
+    strategy: webhook
+    rolloutStrategy: onNextRestart
+    updateRequestsOnly: false
+    allowInPlaceResize: false
+    allowRecreate: false
+    limitConfig:
+      cpuMode: None
+      memoryMode: Multiplier
+      memoryLimitMultiplier: 1.2
+  daemonSetSizing:
+    default: {cpuPercent: 1, memoryPercent: 0.3}
+    containers:
+      logger: {cpuPercent: 0.5, memoryPercent: 0.2}
+  reconciliationInterval: 5s
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: node-agent
+  namespace: optipod-demo
+  labels: {app: node-agent, optipod-demo: "true"}
+spec:
+  selector:
+    matchLabels: {app: node-agent}
+  template:
+    metadata:
+      labels: {app: node-agent, optipod.io/webhook-enabled: "true"}
+      annotations: {optipod.io/webhook-enabled: "true"}
+    spec:
+      tolerations: [{operator: Exists}]
+      containers:
+      - name: agent
+        image: registry.k8s.io/pause:3.10@sha256:ee6521f290b2168b6e0935a181d4cff9be1ac3f505666ef0e3c98fae8199917a
+        resources:
+          requests: {cpu: 100m, memory: 64Mi}
+          limits: {memory: 512Mi}
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: log-agent
+  namespace: optipod-demo
+  labels: {app: log-agent, optipod-demo: "true"}
+spec:
+  selector:
+    matchLabels: {app: log-agent}
+  template:
+    metadata:
+      labels: {app: log-agent, optipod.io/webhook-enabled: "true"}
+      annotations: {optipod.io/webhook-enabled: "true"}
+    spec:
+      tolerations: [{operator: Exists}]
+      containers:
+      - name: logger
+        image: registry.k8s.io/pause:3.10@sha256:ee6521f290b2168b6e0935a181d4cff9be1ac3f505666ef0e3c98fae8199917a
+        resources:
+          requests: {cpu: 500m, memory: 256Mi}
+          limits: {memory: 512Mi}

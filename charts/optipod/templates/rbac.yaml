@@ -35,7 +35,35 @@ rules:
   - optimizationpolicies/finalizers
   verbs:
   - update
+# Durable optimization history
+- apiGroups: [""]
+  resources: [configmaps]
+  verbs: [get, list, watch, create, update, patch, delete]
 # Core resources
+- apiGroups: [""]
+  resources: [pods/eviction]
+  verbs: [create]
+- apiGroups: [argoproj.io]
+  resources: [rollouts]
+  verbs: [get, list, watch, patch, update]
+- apiGroups: [batch]
+  resources: [jobs, cronjobs]
+  verbs: [get, list, watch, update, patch]
+- apiGroups: [""]
+  resources: [limitranges, resourcequotas]
+  verbs: [get, list, watch]
+- apiGroups: [autoscaling]
+  resources: [horizontalpodautoscalers]
+  verbs: [get, list, watch, create, update, patch, delete]
+- apiGroups: [keda.sh]
+  resources: [scaledobjects]
+  verbs: [get, list, watch]
+- apiGroups: [""]
+  resources: [pods/resize]
+  verbs: [patch, update]
+- apiGroups: [policy]
+  resources: [poddisruptionbudgets]
+  verbs: [get, list, watch]
 - apiGroups:
   - ""
   resources:
@@ -50,6 +78,7 @@ rules:
   - ""
   resources:
   - namespaces
+  - nodes
   verbs:
   - get
   - list
@@ -111,6 +140,24 @@ metadata:
     {{- include "optipod.webhook.labels" . | nindent 4 }}
 rules:
 # Read OptimizationPolicies to match against pods
+- apiGroups: [""]
+  resources: [configmaps]
+  verbs: [get]
+- apiGroups: [argoproj.io]
+  resources: [rollouts]
+  verbs: [get, list, watch, patch, update]
+- apiGroups: [batch]
+  resources: [jobs, cronjobs]
+  verbs: [get, list, watch, update, patch]
+- apiGroups: [""]
+  resources: [limitranges, resourcequotas]
+  verbs: [get, list, watch]
+- apiGroups: [autoscaling]
+  resources: [horizontalpodautoscalers]
+  verbs: [get, list, watch]
+- apiGroups: [keda.sh]
+  resources: [scaledobjects]
+  verbs: [get, list, watch]
 - apiGroups:
   - optipod.optipod.io
   resources:
@@ -125,6 +172,7 @@ rules:
   resources:
   - pods
   - namespaces
+  - nodes
   verbs:
   - get
   - list

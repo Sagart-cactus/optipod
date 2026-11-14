@@ -277,7 +277,7 @@ webhooks:
   sideEffects: None
   failurePolicy: Ignore
   timeoutSeconds: 10
-  reinvocationPolicy: Never
+  reinvocationPolicy: IfNeeded
 `, WebhookConfigurationName, PodMutatorWebhookName, WebhookServiceName,
 		SystemNamespace, WebhookPath, WebhookServicePort, caBundle)
 }

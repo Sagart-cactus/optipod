@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "suite": "OptiPod installed-controller Kind suite",
+  "runId": "run-1794619193-4ca9a06e",
+  "startedAt": "2026-11-14T08:19:53",
+  "command": "OPTIPOD_E2E_LABELS='migration' TILT_TELEMETRY_OPTOUT=1 bin/tilt ci --timeout 15m",
+  "environment": {
+    "runtime": "Podman",
+    "cluster": "isolated two-node Kind",
+    "kubernetes": "v1.35.0"
+  },
+  "durationSeconds": 15.137327083,
+  "specs": {
+    "passed": 1,
+    "failed": 0,
+    "skippedByLabelFilter": 96
+  },
+  "cases": [
+    {
+      "name": "[It] Parity: migration validates both translated QA profiles and applies an explicitly promoted canary [parity, migration]",
+      "status": "passed",
+      "durationSeconds": 14.067495875
+    }
+  ],
+  "suiteHooks": [
+    {
+      "name": "[BeforeSuite]",
+      "status": "passed",
+      "durationSeconds": 1.067076875
+    },
+    {
+      "name": "[AfterSuite]",
+      "status": "passed",
+      "durationSeconds": 5.3333e-05
+    }
+  ],
+  "originalJUnitSHA256": "4641e8cbe435667985bbaf5b9683705a48ee59988589186587ef269302be053d",
+  "testedSourceFingerprintSHA256": "db5792115d811f1abc43cf89b8944cea46ff57edb6cf23396d586e91d1fc8860",
+  "fingerprintMethod": "SHA256 of compact JSON array of sorted [path, file SHA256] entries; non-ignored files excluding docs",
+  "scope": "Focused rerun after vendor-neutral migration wording, metadata and filename changes. The controller implementation is unchanged from the complete 96-spec regression.",
+  "exportNote": "Only the selected spec and suite hooks are included; raw runtime output and local filesystem paths are omitted."
+}

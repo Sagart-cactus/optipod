@@ -136,10 +136,10 @@ func TestOptimizationPolicy_ValidateCreate_FieldErrors(t *testing.T) {
 			name: "unsupported workload type is rejected with its list index",
 			mutate: func(p *OptimizationPolicy) {
 				p.Spec.Selector.WorkloadTypes = &WorkloadTypeFilter{
-					Include: []WorkloadType{WorkloadTypeDeployment, WorkloadType("Job")},
+					Include: []WorkloadType{WorkloadTypeDeployment, WorkloadType("UnknownBatchKind")},
 				}
 			},
-			wantSubstring: []string{"workloadTypes.include[1]", `invalid workload type "Job"`, "Deployment, StatefulSet, DaemonSet"},
+			wantSubstring: []string{"workloadTypes.include[1]", `invalid workload type "UnknownBatchKind"`, "Deployment, StatefulSet, DaemonSet"},
 		},
 		{
 			name:          "missing metrics provider is rejected",

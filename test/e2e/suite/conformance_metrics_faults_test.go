@@ -102,7 +102,7 @@ var _ = Describe("Provider faults skip without false application and processing 
 			mode        string
 			fragment    string
 		}{
-			{"an empty (successful, result-less) metrics response", framework.FixtureModeMissing, "no data returned from Prometheus"},
+			{"an empty (successful, result-less) metrics response", framework.FixtureModeMissing, "insufficient samples"},
 			{"an invalid (wrong result type) metrics response", framework.FixtureModeInvalid, "unexpected result type"},
 			{"an unavailable metrics provider response", framework.FixtureModeUnavailable, "query failed"},
 		}

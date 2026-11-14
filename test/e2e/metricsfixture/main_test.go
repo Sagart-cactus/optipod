@@ -86,8 +86,8 @@ func TestQueryRangePresentReturnsConfiguredMatrixSamples(t *testing.T) {
 	if len(values) != 3 {
 		t.Fatalf("values = %d, want 3", len(values))
 	}
-	// Timestamps follow start+i*step; values carry the configured samples in order.
-	if values[0][0].(float64) != 1000 || values[1][0].(float64) != 1030 {
+	// Synthetic samples end at the requested end, within a fresh test pod lifetime.
+	if values[0][0].(float64) != 1299.8 || values[1][0].(float64) != 1299.9 {
 		t.Fatalf("unexpected timestamps: %v", values)
 	}
 	if values[2][1].(string) != "0.3" {

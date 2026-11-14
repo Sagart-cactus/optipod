@@ -37,4 +37,4 @@ webhooks:
   # Change to "Fail" for stricter enforcement in production
   failurePolicy: Ignore
   timeoutSeconds: 10
-  reinvocationPolicy: Never
+  reinvocationPolicy: IfNeeded

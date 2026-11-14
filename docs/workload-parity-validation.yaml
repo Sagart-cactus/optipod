@@ -1,0 +1,286 @@
+environment:
+  runtime: Podman 5.7 (existing macOS VM, explicit root connection)
+  cluster: optipod-e2e-dev
+  kubernetes: v1.35.0
+  kind: v0.31.0
+  tilt: v0.37.8
+  isolation: private kubeconfig validated against the named Kind cluster
+acceptance:
+  status: passed-local-validation
+  completed: '2026-11-14'
+  full_suite: 96 passed, 0 failed, 0 pending; one deliberately failing diagnostic exercise excluded
+  published_per_spec_results: docs/validation/workload-parity-e2e-results.json
+  evidence_note: Paths under test/e2e/artifacts and .dev are retained local artifacts; the per-spec JSON export above is committed for PR review.
+  migration_followup: 1 passed, 0 failed; focused rerun after migration wording, metadata and filename cleanup
+  published_migration_results: docs/validation/workload-migration-e2e-results.json
+  source_fingerprint_sha256: 0c9cbeaf674721f23bb295dd680e5913bac14951ef0fa436d7365f9100a721ee # pragma: allowlist secret -- tested source checksum
+  fingerprint_scope: sorted repository non-ignored files excluding docs, hashed by path and SHA256; source stayed unchanged throughout the complete run; subsequent migration and CI formatting changes are covered by focused follow-up runs
+  additional_checks: unit/envtest/clusterless/harness tests, complete API/internal race detector, zero-issue lint, Helm lint/render and generated CRD consistency
+  ui: fleet/history explorer and comparison filters manually checked in the internal browser
+  rollout_scope: local Kind only; DPV2 QA/production application acceptance remains part of canary rollout
+runs:
+  - change: named public-manifest checksum to preserve line-length and secret-scanning checks
+    command: local add-on installation followed by Tilt ci with controllers coexist
+    result: passed
+    executed_specs: 9
+    failed_specs: 0
+    skipped_by_label_filter: 88
+    duration_seconds: 48.041
+    evidence: test/e2e/artifacts/run-1794621090-1c8fb7d8/junit.xml
+    checks: real pinned-manifest digest verification, healthy KEDA and Argo install, HPA/KEDA coexistence, Argo and ReplicaSet resize/restart, paused-controller guards
+    controller_runtime_changes: none
+  - change: CI import normalization, final newline and reviewed public-checksum annotations
+    command: Tilt ci with smoke horizontal controllers reporting
+    result: passed
+    executed_specs: 16
+    failed_specs: 0
+    skipped_by_label_filter: 81
+    duration_seconds: 396.743
+    evidence: test/e2e/artifacts/run-1794620245-4fc9ac8b/junit.xml
+    checks: admission, Recommend and Auto modes, repeat reconciles, restart recovery, managed HPA, Argo and ReplicaSet controls, and fleet/history reporting
+    controller_runtime_changes: none; generated import alias only
+  - change: vendor-neutral migration wording, metadata, example filenames and feature documentation
+    command: Tilt ci with migration
+    result: passed
+    executed_specs: 1
+    failed_specs: 0
+    skipped_by_label_filter: 96
+    duration_seconds: 15.137
+    evidence: test/e2e/artifacts/run-1794619193-4ca9a06e/junit.xml
+    published_results: docs/validation/workload-migration-e2e-results.json
+    checks: both example profiles validate; explicit Recommend-to-Auto canary resizes in place; CLI outputs and warnings verified; migration unit tests and affected-package lint pass
+    controller_runtime_changes: none
+  - change: final complete regression after correcting recovery-policy priority and paused-Argo test assertions
+    command: Tilt ci with '!deliberate-failure'
+    result: passed
+    executed_specs: 96
+    failed_specs: 0
+    skipped_specs: 1
+    duration_seconds: 2429.154
+    evidence: test/e2e/artifacts/run-1794589599-4f240f92/junit.xml
+    checks: all workload conformance and P0-P2 parity cases, both real metrics backends, actual in-place resize, OOM, rollback, history, KEDA, managed HPA, Argo, real JVM, reporting and diagnostic redaction
+  - change: explicit recovery-policy priority and case-independent paused-Argo assertion with unchanged-resource proof
+    command: Tilt ci with webhook controllers policy-safety
+    result: passed
+    executed_specs: 9
+    duration_seconds: 209.278
+    evidence: test/e2e/artifacts/run-1794589318-1d62b697/junit.xml
+    runtime_changes_after_previous_full_run: none; only two E2E files changed
+  - change: complete regression of the frozen controller implementation
+    command: Tilt ci with '!deliberate-failure'
+    result: 94 passed and 2 failed; both failures traced to E2E assertions/setup, corrected for rerun
+    passed_specs: 94
+    failed_specs: 2
+    skipped_specs: 1
+    duration_seconds: 2440.590
+    evidence: test/e2e/artifacts/run-1794586754-0d2b0151/junit.xml
+    findings: recovery probe used a new equal-weight policy that lost deterministic name ordering; paused-Argo test matched uppercase Argo while the final guard correctly blocked with a lowercase error
+    runtime_changes_after_run: none
+  - change: leadership-aware restart readiness and exact existing-pod resource assertions
+    command: Tilt ci with batch decisions multi-container
+    result: passed
+    executed_specs: 5
+    duration_seconds: 322.022
+    evidence: test/e2e/artifacts/run-1794586360-6affb50d/junit.xml
+    checks: disabled/skipped policy snapshots survive edits restart and deletion; suspended Job warm-up; CronJob retained peak applied after webhook recovery; whole-workload partial-data revocation and complete recovery through webhook and SSA
+  - change: final fast checks after decision history and restart-test readiness fixes
+    command: Go API command internal envtest harness and clusterless suites; E2E compile; golangci-lint
+    result: passed; lint reports zero issues
+    evidence: .dev/final-fast-last.log and .dev/final-lint-last.log
+  - change: complete API and internal race-detector regression
+    command: go test -race ./api/... ./internal/...
+    result: passed
+    evidence: .dev/final-race-all.log
+  - change: disabled decision history and two real metrics backends with restart and partial-data recovery checks
+    command: Tilt ci with batch decisions multi-container live-metrics
+    result: 4 passed and 3 failed; real metrics backends and disabled history passed; remaining test ordering and stale existing-pod expectation corrected for rerun
+    executed_specs: 7
+    duration_seconds: 663.469
+    evidence: test/e2e/artifacts/run-1794560890-fe67d7ed/junit.xml
+    findings: Job ran before replacement leadership; CronJob admission failed open during webhook restart; existing onNextRestart pods correctly retained their actual original resources after plan revocation
+  - change: policy snapshots, decision reasons, Automatic memory limits and final safety refinements
+    command: Tilt ci with batch automatic-limits decisions audit reporting migration node-sizing modes metrics-fault observability multi-container
+    result: 17 passed and 1 failed; partial-data test accepted an old Event before the new reconcile, corrected in the next run
+    executed_specs: 18
+    duration_seconds: 748.730
+    evidence: test/e2e/artifacts/run-1794559979-bcd58985/junit.xml
+  - change: metrics ring and webhook lifecycle synchronization
+    command: go test -race ./internal/history ./internal/metrics ./internal/webhook ./internal/report
+    result: passed after fixing two race-detector findings
+    evidence: .dev/final-race-fixed.log
+  - change: first complete regression before final fixes
+    command: bash hack/dev/run.sh test 'smoke || conformance || parity || live-metrics'
+    result: failed; fixes and final rerun required
+    passed_specs: 85
+    failed_specs: 6
+    skipped_specs: 2
+    duration_seconds: 2329.478
+    evidence: test/e2e/artifacts/run-1794557149-bad21cf2/junit.xml
+    findings: CronJob restart failure; outdated SSA permission, metrics error, observability and partial-data expectations; migration example changed during old compiled run
+  - change: fleet/history API, durable node admission receipts, final admission checks and sidecar reinvocation
+    command: Tilt ci with reporting node-sizing and sidecars labels
+    result: passed
+    executed_specs: 5
+    duration_seconds: 79.948
+    evidence: test/e2e/artifacts/run-1794556986-964bfda7/junit.xml
+  - change: two real nodes with different allocatable resources plus in-place resize regression
+    command: Tilt ci with node-sizing and resize labels
+    result: passed
+    executed_specs: 4
+    duration_seconds: 35.686
+    evidence: test/e2e/artifacts/run-1794556736-7e011768/junit.xml
+  - change: managed HPA and coexistence with transient-conflict retry
+    command: Tilt ci with horizontal and coexist labels
+    result: passed
+    executed_specs: 7
+    duration_seconds: 111.770
+    evidence: test/e2e/artifacts/run-1794556173-4bb5447e/junit.xml
+  - change: real Java heap and custom CPU gauges through Prometheus with missing-source and impossible-bound revocation
+    command: Tilt ci with jvm and predictive labels
+    result: passed
+    executed_specs: 2
+    duration_seconds: 112.300
+    evidence: test/e2e/artifacts/run-1794555258-e7e6ae7e/junit.xml
+  - change: bounded predictive CPU cap and maximum plus all-replica history
+    command: bash hack/dev/run.sh test predictive-or-metrics-history
+    result: passed
+    executed_specs: 3
+    duration_seconds: 43.304
+    evidence: test/e2e/artifacts/run-1794555099-733e345f/junit.xml
+  - change: Argo and standalone ReplicaSet resize/restart plus paused Argo protection and CronJob kind preservation
+    command: Tilt ci with controllers and batch labels
+    result: passed
+    executed_specs: 6
+    duration_seconds: 78.879
+    evidence: test/e2e/artifacts/run-1794554709-b049d352/junit.xml
+  - change: strict migration translation and Recommend-to-Auto QA canary
+    command: bash hack/dev/run.sh test migration
+    result: passed
+    executed_specs: 1
+    duration_seconds: 7.095
+    evidence: test/e2e/artifacts/run-1794554136-ae098ba8/junit.xml
+  - change: durable journal and guarded rollback through in-place and SSA paths plus actual OOM regression
+    command: Tilt ci with rollback audit and oom labels
+    result: passed
+    executed_specs: 5
+    duration_seconds: 162.052
+    evidence: test/e2e/artifacts/run-1794553750-48450e36/junit.xml
+  - change: quota LimitRange QoS preserved limits and explicit ownership for both template patch methods
+    command: Tilt ci with constraints and resize labels
+    result: passed
+    executed_specs: 10
+    duration_seconds: 68.782
+    evidence: test/e2e/artifacts/run-1794552393-984e7b36/junit.xml
+  - change: P1 regression checkpoint before durable history
+    command: make test-fast
+    result: passed
+    evidence: .dev/fast-p1-checkpoint.log
+  - change: native and injected sidecar controls including admission reinvocation
+    command: bash hack/dev/run.sh test sidecars
+    result: passed
+    executed_specs: 3
+    duration_seconds: 57.836
+    evidence: test/e2e/artifacts/run-1794551822-6b6e1437/junit.xml
+    checks: native sidecar kubelet allocation with unchanged pod UID; one-shot init preserved; native SSA ownership retained on opt-out; real injected sidecar absent from template; admission ordering; exclusions
+  - change: HPA KEDA coexistence admission race conflict retry and completed Job CronJob history
+    command: Tilt ci with batch coexist and validity labels
+    result: passed
+    executed_specs: 9
+    duration_seconds: 89.996
+    evidence: test/e2e/artifacts/run-1794551283-b6aa0f47/junit.xml
+    checks: real KEDA-generated HPA; per-container utilization; absolute metrics; late HPA admission guard; multiple batch executions; retained peak across controller restart
+  - change: lifecycle coverage with both real metrics providers
+    command: Tilt ci with lifecycle and real-metrics labels
+    result: passed
+    executed_specs: 9
+    duration_seconds: 345.785
+    evidence: test/e2e/artifacts/run-1794550159-8033ea29/junit.xml
+  - change: OOM recovery durable circuit breaker and reset
+    command: Tilt ci with recovery resize stability and freshness labels
+    result: passed
+    executed_specs: 8
+    duration_seconds: 121.610
+    evidence: test/e2e/artifacts/run-1794549707-60bcfd8b/junit.xml
+  - change: actual pod resize API with kubelet convergence and guarded restart fallback
+    command: Tilt ci with resize resource-controls and validity labels
+    result: passed
+    executed_specs: 9
+    duration_seconds: 49.885
+    evidence: test/e2e/artifacts/run-1794549213-672d4e13/junit.xml
+    checks: unchanged pod UID and zero container restarts; kubelet resources; explicit fallback permission; PDB guard
+  - change: persistent cooldown thresholds default memory guards and gradual decrease
+    command: bash hack/dev/run.sh test 'stability || freshness || resource-controls'
+    result: passed
+    executed_specs: 8
+    duration_seconds: 65.672
+    evidence: test/e2e/artifacts/run-1794548516-07bd885c/junit.xml
+    note: includes controller replacement and unchanged cooldown timestamp; default guard protects memory limits too
+  - change: source-bounded admission expiry and immediate revocation on lost metrics
+    command: Tilt ci with freshness metrics-history and resource-controls labels
+    result: passed
+    executed_specs: 7
+    duration_seconds: 47.430
+    evidence: test/e2e/artifacts/run-1794548159-a8ba49d3/junit.xml
+  - change: resource exclusions and explicit CPU-limit removal
+    command: Tilt ci with resource-controls label
+    result: passed
+    executed_specs: 4
+    duration_seconds: 25.160
+    evidence: test/e2e/artifacts/run-1794547828-e2e7f6ba/junit.xml
+    finding: SSA interprets null quantity as zero; limit deletion uses atomic strategic merge
+  - change: real Prometheus one-minute CPU rates and one-minute minimum history for both backends
+    result: both live backend scenarios passed
+    executed_backend_specs: 2
+    evidence: test/e2e/artifacts/run-1794547272-bbc3a65f/junit.xml
+    note: combined run had an unrelated SSA limit-removal failure; fixed and reverified above
+  - change: real Prometheus and metrics-server baseline with live CPU memory workloads
+    command: bash hack/dev/run.sh test live-metrics
+    result: passed
+    executed_specs: 2
+    duration_seconds: 245.20
+    evidence: test/e2e/artifacts/run-1794546843-a95e486f/junit.xml
+    finding: five-minute Prometheus CPU rates understate new-container usage; tightened accuracy test and shorter rate window follow
+  - change: source scrape timestamps rather than query evaluation timestamps
+    command: Tilt ci with metrics-history and resources labels
+    result: passed
+    executed_specs: 3
+    duration_seconds: 27.34
+    evidence: test/e2e/artifacts/run-1794546715-6e5632ff/junit.xml
+  - change: all-replica collection and startup freshness history guards
+    command: Tilt ci with metrics-history resources and validity labels
+    result: passed
+    executed_specs: 5
+    duration_seconds: 33.58
+    evidence: test/e2e/artifacts/run-1794546485-ed589378/junit.xml
+  - change: independent CPU memory settings and admission startup readiness
+    command: Tilt ci with resources and validity labels
+    result: passed
+    executed_specs: 3
+    duration_seconds: 23.31
+    evidence: test/e2e/artifacts/run-1794546003-fd97a5cc/junit.xml
+  - change: recommendation expiry revision binding and idempotent immediate rollouts
+    command: bash hack/dev/run.sh test validity
+    result: passed
+    executed_specs: 2
+    duration_seconds: 7.82
+    evidence: test/e2e/artifacts/run-1794545701-e151ccae/junit.xml
+  - change: baseline
+    command: make test-fast
+    result: passed
+    evidence: .dev/fast-baseline.log
+  - change: baseline installed controller
+    command: bash hack/dev/run.sh test smoke
+    result: passed
+    executed_specs: 9
+    duration_seconds: 239.66
+    evidence: test/e2e/artifacts/run-1794544524-c7a8c0e8/junit.xml
+  - change: policy selection and final mutation guards
+    command: focused Go tests for policy webhook discovery application controller and framework
+    result: passed
+    evidence: .dev/policy-fast.log and .dev/policy-final-fast.log
+  - change: policy selection and final mutation guards
+    command: bin/tilt ci --timeout 15m
+    result: passed
+    executed_specs: 10
+    duration_seconds: 250.06
+    evidence: .dev/tilt-policy.log

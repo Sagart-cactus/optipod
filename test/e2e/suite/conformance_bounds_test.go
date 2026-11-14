@@ -25,10 +25,8 @@ import (
 //   - clamp the below-bounds container to the exact CPU/memory minima,
 //   - keep the within-bounds container at the exact P90*1.2 arithmetic,
 //   - clamp the above-bounds container to the exact CPU/memory maxima,
-//   - apply the recommended memory DECREASE in full: production has no
-//     memory-decrease guard (the allowUnsafeMemoryDecrease/gradualDecrease
-//     fields are schema-validated but read by no production code), so the
-//     decreased value reaches the workload like any other recommendation,
+//   - apply a memory decrease in full only with the explicit unsafe-decrease
+//     opt-in; default blocking and gradual decrease are tested separately,
 //   - write limits consistent with the policy's configured multipliers next
 //     to the applied requests, in both the recommendation annotations and
 //     the applied pod template and pods.
@@ -42,7 +40,7 @@ import (
 var _ = Describe("Resource bounds and memory-decrease application", Label("conformance", "safety"), func() {
 	const waitTimeout = 3 * time.Minute
 
-	It("clamps below and above the bounds, keeps within-bounds math exact, derives limits consistently and applies a memory decrease in full", func(ctx context.Context) {
+	It("clamps below and above the bounds, keeps within-bounds math exact, derives limits consistently and applies an explicitly authorized memory decrease in full", func(ctx context.Context) {
 		ns := specNamespace(ctx, "conf-bounds")
 		DeferCleanup(func(ctx context.Context) {
 			Expect(framework.DeleteNamespace(ctx, env.Clients, ns.Name)).To(Succeed(),
@@ -69,6 +67,8 @@ var _ = Describe("Resource bounds and memory-decrease application", Label("confo
 			framework.WithResourceBounds("200m", "1", "128Mi", "512Mi"),
 			framework.WithLimitsConfig(1.5, 1.25),
 			framework.WithReconciliationInterval(30*time.Second))
+		allowDecrease := true
+		policy.Spec.UpdateStrategy.AllowUnsafeMemoryDecrease = &allowDecrease
 		// updateRequestsOnly=false cannot be sent through the typed client
 		// (omitempty drops the explicit false and the API server re-applies
 		// the schema default true), so the policy is created through the raw

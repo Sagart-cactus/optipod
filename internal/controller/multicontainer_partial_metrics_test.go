@@ -151,6 +151,7 @@ func createPartialTwoContainerFixture(ctx context.Context, namespace, deployment
 		},
 	}
 	Expect(k8sClient.Create(ctx, deployment)).To(Succeed())
+	markEnvtestDeploymentReady(ctx, deployment)
 
 	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
@@ -195,8 +196,10 @@ func createPartialTwoContainerFixture(ctx context.Context, namespace, deployment
 				},
 			},
 			UpdateStrategy: optipodv1alpha1.UpdateStrategy{
-				Strategy:           &ssaStrategy,
-				UpdateRequestsOnly: true,
+				AllowRecreate:               true,
+				AllowFieldOwnershipTakeover: true,
+				Strategy:                    &ssaStrategy,
+				UpdateRequestsOnly:          true,
 			},
 		},
 	}
