@@ -31,7 +31,7 @@ OptiPod exists to provide a GitOps-safe, policy-driven way to *recommend first*,
 - Will not take over GitOps-owned resource fields without explicit policy permission
 - Will not require a SaaS backend
 
-Memory reductions are blocked by default. Gradual reductions, cooldowns, change thresholds, and bounded OOM recovery are configurable. See the [Safety model](docs/concepts/safety-model.md), [workload feature comparison](docs/workload-parity-comparison.html), and [local validation guide](docs/workload-development.yaml), and [history storage design](docs/workload-history.yaml).
+Memory reductions are blocked by default. Gradual reductions, cooldowns, change thresholds, and bounded OOM recovery are configurable. See the [Safety model](docs/concepts/safety-model.md), [workload feature comparison](docs/workload-parity-comparison.html), and [local validation guide](docs/workload-development.yaml), [history storage design](docs/workload-history.yaml), and [persistent multi-cluster console](docs/persistent-console.yaml).
 
 ## Quick Start (safe Recommend mode)
 

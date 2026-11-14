@@ -1,0 +1,44 @@
+image:
+  repository: optipod-console
+  tag: "0.1.0"
+  pullPolicy: IfNotPresent
+
+server:
+  enabled: true
+  replicas: 1
+  # Existing Secret containing config.json and database-url. Never put tokens
+  # or database passwords in Helm values. OIDC secret files can live here too.
+  existingSecret: ""
+  retentionDays: 90
+  configRevision: ""
+  service:
+    type: ClusterIP
+    port: 8080
+    nodePort: null
+  ingress:
+    enabled: false
+    className: ""
+    host: ""
+    tlsSecretName: ""
+    annotations: {}
+  resources:
+    requests: {cpu: 100m, memory: 128Mi}
+    limits: {memory: 512Mi}
+
+agent:
+  enabled: false
+  clusterID: ""
+  serverURL: ""
+  # Existing Secret containing token; this credential is bound to clusterID
+  # by the server configuration and cannot read the console API.
+  existingSecret: ""
+  namespaces: []
+  interval: 1m
+  queueBytes: 268435456
+  allowInsecureHTTP: false
+  persistence:
+    size: 1Gi
+    storageClass: ""
+  resources:
+    requests: {cpu: 100m, memory: 128Mi}
+    limits: {memory: 512Mi}

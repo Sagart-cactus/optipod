@@ -1,0 +1,127 @@
+scope: Shared read-only multi-cluster OptiPod console with PostgreSQL persistence
+status: Implemented; local Podman validation, no external deployment
+architecture:
+  flow: Kubernetes API and existing journals -> one agent per cluster -> durable PVC queue -> HTTPS ingest API -> PostgreSQL -> authenticated read-only browser
+  controller: Existing optimizer remains independent of the console, database and agents
+  server: cmd/optipod-console serve; stateless replicas share PostgreSQL sessions and migrations
+  agent: cmd/optipod-console agent; outbound-only, one writer per stable cluster ID
+  deployment: Separate charts/optipod-console chart; existing optimizer chart is unchanged
+  database: External PostgreSQL; version 18.7 exercised locally
+stored_data:
+  inventory: Latest observed policy-selected workloads, actual pods, allocations and recommendations, keyed by cluster ID and workload UID
+  policies: Current observed OptimizationPolicy spec and distinct observed revisions
+  history: Decision, application, rollback and admission journal observations including their available before/after resources and policy snapshots
+  samples: Observed requested CPU and memory totals; raw usage series stay in Prometheus
+  identity: Cluster registration, kube-system UID, queue stream ID, sequence checkpoints and receipt digests
+  access: Hashed browser sessions and short-lived OIDC login state
+  authority: Git and Kubernetes remain authoritative for desired policy; this database is an observed-state projection
+read_only_ui:
+  features:
+    - All-cluster and single-cluster fleet views, namespace/name/mode filters and removed-workload visibility
+    - Actual pod readiness, requests, recommendations, policy settings and observed change history
+    - Requested CPU allocation chart for the latest 100 observations; this is not measured CPU usage or monetary savings
+    - Policy revision inspection and diff of the latest observed revisions
+    - Keyset pagination, current-page JSON export and stale-cluster indication
+    - Responsive navigation and explicit read-only access
+  summary: Summary cards cover the selected cluster and authorization grants; table search/namespace filters do not narrow the summary cards
+  endpoints: GET /api/me, /api/clusters, /api/summary, /api/workloads, /api/policies, /api/revisions, /api/history, /api/samples
+  pagination: limit 1..200 and opaque-to-clients nextCursor; cluster, namespace, uid, search, mode and deleted filters where applicable
+  mutations: No policy, resource, approval or rollback write routes; only login/logout and authenticated agent ingest use POST
+  freshness: Manual refresh; cluster warning after 3 minutes without a recent capture or receipt
+installation:
+  image_build: podman build -f Dockerfile.console -t YOUR_REGISTRY/optipod-console:YOUR_VERSION .
+  image_distribution: Push the built image to your own registry and set image.repository and image.tag; no published image is assumed
+  database:
+    - Provision a dedicated PostgreSQL database and role; the server needs DDL during versioned startup migrations and DML during operation
+    - Keep the DSN in a Kubernetes Secret file, never Helm values; production DSNs should use sslmode=verify-full and trusted CA configuration
+    - Size and operate the database independently, including backups, disk alerts, connection capacity and restore drills
+    - Migrations are transactionally serialized with an advisory lock; older servers reject a newer schema version
+  credentials:
+    - Generate distinct cryptographically random tokens of at least 32 characters for each cluster and any token-based reader
+    - Hash tokens with optipod-console hash-token reading stdin; put only the SHA-256 hashes in server config.json
+    - Put each raw agent token in that cluster's separate Secret under key token
+    - The server Secret must contain config.json and database-url; optional OIDC client secret file is mounted from the same Secret
+    - Keep secrets out of Git; external Secret changes require a server rollout, for example by changing server.configRevision
+  config_example: |
+    {
+      "publicURL": "https://optipod.example.com",
+      "agents": [
+        {"id": "qa", "name": "QA", "tokenHash": "REPLACE_WITH_QA_SHA256"},
+        {"id": "prod", "name": "Production", "tokenHash": "REPLACE_WITH_PROD_SHA256"}
+      ],
+      "readers": [
+        {"subject": "https://id.example.com|OIDC_SUBJECT", "clusters": ["qa", "prod"]},
+        {"subject": "qa-reader", "tokenHash": "REPLACE_WITH_READER_SHA256", "clusters": ["qa"], "namespaces": ["applications"]}
+      ],
+      "oidc": {"issuer": "https://id.example.com", "clientID": "optipod-console", "clientSecretFile": "/etc/console/oidc-client-secret"}
+    }
+  config_notes:
+    - Replace hash placeholders with actual 64-character lowercase hex hashes; remove unused reader or OIDC entries
+    - OIDC identity is the verified issuer plus a vertical bar plus stable subject, not a mutable display name or email
+    - Configure the provider redirect URI as publicURL + /auth/callback; issuer discovery requires HTTPS
+    - Reader cluster grants are explicit; omitted namespaces means all namespaces within those clusters
+    - Readers with no tokenHash can sign in only through their configured OIDC identity
+  server_example: >- # pragma: allowlist secret - Kubernetes Secret names only
+    helm upgrade --install console charts/optipod-console --kubeconfig CENTRAL_PRIVATE_FILE -n optipod-console --create-namespace
+    --set image.repository=YOUR_REGISTRY/optipod-console --set image.tag=YOUR_VERSION --set server.existingSecret=console-server
+    --set server.ingress.enabled=true --set server.ingress.host=optipod.example.com --set server.ingress.tlsSecretName=console-tls
+  agent_example: >- # pragma: allowlist secret - Kubernetes Secret names only
+    helm upgrade --install console charts/optipod-console --kubeconfig SOURCE_PRIVATE_FILE -n optipod-console --create-namespace
+    --set image.repository=YOUR_REGISTRY/optipod-console --set image.tag=YOUR_VERSION --set server.enabled=false
+    --set agent.enabled=true --set agent.clusterID=qa --set agent.serverURL=https://optipod.example.com --set agent.existingSecret=console-agent
+  networking: TLS ingress must preserve the public Host header, allow POST /api/ingest and bodies up to 8MiB; sources need outbound access only
+  source_permissions: Agent RBAC grants get/list/watch for workload/reporting resources and ConfigMaps; no writes and no Secret reads
+  collection_scope: agent.namespaces limits exported data but does not narrow the chart's cluster-wide read RBAC
+  central_permissions: Server has no Kubernetes service-account token and receives no source kubeconfigs
+reliability:
+  acknowledgment: PostgreSQL commits inventory/history/checkpoints together before acknowledging; replay of the same sequence/digest is a no-op
+  fencing: First accepted batch binds the credential's cluster ID to kube-system UID and persistent stream ID; a different cluster, stream or sequence gap is rejected
+  queue: Atomic writes and fsync, one process lock, ordered delivery, acknowledged-file cleanup only after the sequence is durable
+  queue_bounds: Default 256MiB of pending payloads on a 1Gi PVC; state metadata is additional; individual observations max 4MiB and HTTP batches max 8MiB/100 objects
+  outage: Pending observations survive agent restart; retries retain data; the UI reports stale capture/receipt timestamps
+  full_queue: Collection is deferred and queueFull=true is logged; queued observations remain, but changes during the gap can be missed
+  deletion: Only a completed collection tombstones absent inventory; previously exported history survives source namespace/cluster deletion
+  optimizer_availability: Console/database outages and full queues do not pause or block the source optimizer
+  identity_recovery:
+    - Preserve the agent PVC and cluster registration across upgrades and token rotations
+    - A lost queue PVC or database restore behind acknowledged sequences requires explicit re-enrollment; automatic stream resets are rejected
+    - Retain the old cluster registration and history, assign a new cluster ID/token, and install an agent with a new PVC; grant readers both IDs for continuity
+    - For database point-in-time recovery, coordinate restored checkpoints with agent queues before restarting ingestion
+  observability: /healthz checks the process, /readyz checks PostgreSQL; the UI shows last successful capture/receipt and collection warnings
+retention_and_backups:
+  defaults: Clock-driven hourly pruning of history and samples older than 90 days; configurable server.retentionDays from 1 to 3650
+  policy_revisions: Old revisions expire except the latest per cluster and policy UID
+  preserved: Current/tombstoned inventory, latest policy revisions, cluster identities and receipt digests are retained; these need capacity planning
+  receipts: Receipt digests currently have no pruning policy so delayed duplicate deliveries remain verifiable
+  sessions: Browser sessions expire after 8 hours; OIDC login state after 5 minutes; expired rows are pruned
+  backup: Use managed PostgreSQL backups/PITR or pg_dump; test restores into a new isolated database before recovery
+  local_restore_test: bash hack/console/backup-test.sh restores a logical backup into a new disposable database and checks six demo workloads, history, sessions and stream checkpoints
+  not_a_backup: The local PostgreSQL StatefulSet and agent PVCs are test fixtures, not a production HA or backup solution
+limits:
+  - Collection is polling, not a complete audit stream. Intermediate settings, journal phases, or records deleted before collection can be absent.
+  - No actor attribution is invented. Use Git history and Kubernetes audit logs for who changed desired settings or edited the API directly.
+  - Existing retained ConfigMap journals are imported on first observation; data already expired or deleted before enrollment cannot be recovered.
+  - Namespace deletion preserves only observations successfully exported to PostgreSQL; a queued observation is protected only while its queue PVC survives.
+  - Raw Prometheus/metrics-server usage is not copied to PostgreSQL. Existing optimizer metric-provider behavior is unchanged.
+  - Browser access is read-only; operational changes and rollback continue through the existing controlled Kubernetes/Git workflows.
+  - A webhook application record describes a published admission plan; inspect actual pod resources for resulting allocations.
+local_development:
+  prerequisites: Existing owned optipod-e2e-dev Podman cluster, Go from go.mod, Kind v0.31.0, kubectl, Helm and Tilt
+  local_capacity: Keep at least 15GiB host disk free for builds; a 16GiB Podman VM leaves headroom on a 32GiB development Mac
+  bootstrap_primary_if_absent: bash hack/dev/run.sh up
+  bootstrap_console: bash hack/console/run.sh up
+  second_cluster: optipod-e2e-console-peer; three real dummy Deployments and a Recommend policy per cluster
+  forward_database: bash hack/console/run.sh database-forward
+  forward_ui: bash hack/console/run.sh forward
+  url: http://127.0.0.1:8876
+  local_reader_token: .dev/console/viewer-token (generated locally, ignored by Git)
+  test: bash hack/console/run.sh test
+  watch: OPTIPOD_CONSOLE_DEV=1 TILT_TELEMETRY_OPTOUT=1 bin/tilt up
+  tilt_note: Stop manually launched port-forwards before using Tilt; Tilt owns both forwards and rebuilds/deploys before every E2E run
+  private_state: .dev/cluster.json and .dev/console/peer.kubeconfig; scripts refuse ambient/default or unowned kubeconfigs
+  local_only_http: Explicit cleartext opt-in is used only within the isolated Kind network; production agents require HTTPS
+  evidence: docs/persistent-console-validation.yaml
+ci:
+  workflow: .github/workflows/console-e2e.yml
+  coverage: Real PostgreSQL, two Kind clusters, installed API/agent/database restarts, auth and scope isolation, queue replay, backup restore, release image and Helm packaging
+  provider: Docker on the isolated CI runner; local validation uses Podman

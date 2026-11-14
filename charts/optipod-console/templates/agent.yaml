@@ -1,0 +1,103 @@
+{{- if .Values.agent.enabled }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ .Release.Name }}-agent
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ .Release.Name }}-agent
+rules:
+  - apiGroups: [""]
+    resources: [pods, namespaces, events, configmaps]
+    verbs: [get, list, watch]
+  - apiGroups: [apps]
+    resources: [deployments, replicasets, statefulsets, daemonsets]
+    verbs: [get, list, watch]
+  - apiGroups: [batch]
+    resources: [jobs, cronjobs]
+    verbs: [get, list, watch]
+  - apiGroups: [autoscaling]
+    resources: [horizontalpodautoscalers]
+    verbs: [get, list, watch]
+  - apiGroups: [argoproj.io]
+    resources: [rollouts]
+    verbs: [get, list, watch]
+  - apiGroups: [keda.sh]
+    resources: [scaledobjects]
+    verbs: [get, list, watch]
+  - apiGroups: [optipod.optipod.io]
+    resources: [optimizationpolicies]
+    verbs: [get, list, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ .Release.Name }}-agent
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: {{ .Release.Name }}-agent}
+subjects: [{kind: ServiceAccount, name: {{ .Release.Name }}-agent, namespace: {{ .Release.Namespace }}}]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-agent
+spec:
+  clusterIP: None
+  selector: {app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: agent}
+  ports: [{name: reserved, port: 9999}]
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ .Release.Name }}-agent
+spec:
+  serviceName: {{ .Release.Name }}-agent
+  replicas: 1
+  selector:
+    matchLabels: {app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: agent}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: agent}
+    spec:
+      serviceAccountName: {{ .Release.Name }}-agent
+      securityContext: {runAsNonRoot: true, runAsUser: 65532, runAsGroup: 65532, fsGroup: 65532, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: agent
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - agent
+            - "--cluster-id={{ required "agent.clusterID is required" .Values.agent.clusterID }}"
+            - "--server-url={{ required "agent.serverURL is required" .Values.agent.serverURL }}"
+            - --token-file=/etc/agent/token
+            - --queue-dir=/var/lib/optipod-console
+            - "--interval={{ .Values.agent.interval }}"
+            - "--queue-bytes={{ int64 .Values.agent.queueBytes }}"
+            {{- if .Values.agent.namespaces }}
+            - "--namespaces={{ join "," .Values.agent.namespaces }}"
+            {{- end }}
+            {{- if .Values.agent.allowInsecureHTTP }}
+            - --allow-insecure-http
+            {{- end }}
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+          resources: {{ toYaml .Values.agent.resources | nindent 12 }}
+          volumeMounts:
+            - {name: queue, mountPath: /var/lib/optipod-console}
+            - {name: token, mountPath: /etc/agent, readOnly: true}
+      volumes:
+        - name: token
+          secret:
+            secretName: {{ required "agent.existingSecret is required" .Values.agent.existingSecret }}
+            defaultMode: 0440
+  volumeClaimTemplates:
+    - metadata: {name: queue}
+      spec:
+        accessModes: [ReadWriteOnce]
+        {{- if .Values.agent.persistence.storageClass }}
+        storageClassName: {{ .Values.agent.persistence.storageClass | quote }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.agent.persistence.size }}
+{{- end }}

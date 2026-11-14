@@ -1,0 +1,6 @@
+apiVersion: v2
+name: optipod-console
+description: Persistent read-only multi-cluster OptiPod console and export agent
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
