@@ -34,7 +34,7 @@ installation:
   database:
     - Provision a dedicated PostgreSQL database and role; the server needs DDL during versioned startup migrations and DML during operation
     - Keep the DSN in a Kubernetes Secret file, never Helm values; production DSNs should use sslmode=verify-full and trusted CA configuration
-    - Size and operate the database independently, including backups, disk alerts, connection capacity and restore drills
+    - Size and operate the database independently; satisfy backup_requirements and rehearse recovery_procedure before production use
     - Migrations are transactionally serialized with an advisory lock; older servers reject a newer schema version
   credentials:
     - Generate distinct cryptographically random tokens of at least 32 characters for each cluster and any token-based reader
@@ -84,9 +84,9 @@ reliability:
   optimizer_availability: Console/database outages and full queues do not pause or block the source optimizer
   identity_recovery:
     - Preserve the agent PVC and cluster registration across upgrades and token rotations
-    - A lost queue PVC or database restore behind acknowledged sequences requires explicit re-enrollment; automatic stream resets are rejected
+    - A lost queue PVC requires explicit re-enrollment; a database restore requires checkpoint reconciliation and re-enrollment if missing batches cannot be replayed
     - Retain the old cluster registration and history, assign a new cluster ID/token, and install an agent with a new PVC; grant readers both IDs for continuity
-    - For database point-in-time recovery, coordinate restored checkpoints with agent queues before restarting ingestion
+    - Follow recovery_procedure before restarting ingestion after database recovery; automatic stream resets and sequence gaps are rejected
   observability: /healthz checks the process, /readyz checks PostgreSQL; the UI shows last successful capture/receipt and collection warnings
 retention_and_backups:
   defaults: Clock-driven hourly pruning of history and samples older than 90 days; configurable server.retentionDays from 1 to 3650
@@ -94,9 +94,71 @@ retention_and_backups:
   preserved: Current/tombstoned inventory, latest policy revisions, cluster identities and receipt digests are retained; these need capacity planning
   receipts: Receipt digests currently have no pruning policy so delayed duplicate deliveries remain verifiable
   sessions: Browser sessions expire after 8 hours; OIDC login state after 5 minutes; expired rows are pruned
-  backup: Use managed PostgreSQL backups/PITR or pg_dump; test restores into a new isolated database before recovery
+  backup: Production requires automated PostgreSQL backups and point-in-time recovery; logical pg_dump exports can supplement these but do not provide PITR
   local_restore_test: bash hack/console/backup-test.sh restores a logical backup into a new disposable database and checks six demo workloads, history, sessions and stream checkpoints
   not_a_backup: The local PostgreSQL StatefulSet and agent PVCs are test fixtures, not a production HA or backup solution
+backup_requirements:
+  ownership: Name the database and console recovery owners; record the backup schedule, retention, recovery credentials and escalation route before production use
+  recovery_objectives: Define maximum acceptable data loss (RPO) and time to restore service (RTO); verify both in timed restore drills rather than assuming a backup schedule meets them
+  automation:
+    - Enable managed PostgreSQL automated backups and PITR, or operate tested physical base backups with a continuous recoverable WAL archive
+    - Retain the base backups and WAL needed for the entire declared recovery window; monitor the latest restorable point, backup failures and archive lag
+    - Take a verified recovery point before database/schema upgrades and significant operational changes
+    - Logical pg_dump exports are consistent snapshots useful for portability and isolated restore tests; they cannot substitute for a base backup and WAL replay
+  complete_restore_set:
+    - Back up the entire dedicated console database, including op_schema, op_clusters, op_batches, inventory, policies, revisions, history, samples and sessions
+    - Preserve role/ownership and required database configuration separately; pg_dump of one database does not include cluster-wide roles
+    - Retain the matching console image digest, chart version, Helm configuration, cluster ID mapping and reader grants in version control
+    - Keep database credentials, agent tokens, OIDC secrets and encryption keys recoverable through the approved secret-management process; never put them in Git or backup logs
+    - Preserve each agent's complete queue directory, including state.json and pending batch files; take coordinated queue snapshots with that agent stopped
+  protection:
+    - Encrypt backups and restrict read, restore and deletion access to the recovery owners; audit use of that access
+    - Keep recovery copies outside the source database or Kubernetes volume's failure boundary, with retention that survives accidental deletion of the live service
+    - Treat replicas and volume persistence as availability measures; retain independent recoverable backups
+  retention: Database backup retention and the PITR window are separate from server.retentionDays; define both explicitly, including how deletion requirements apply to retained backups
+  monitoring: Alert on stale or failed backups, an RPO breach, missing WAL/recovery coverage, insufficient disk space, queueFull warnings and stale cluster capture/receipt times
+  implementation_boundary: The Helm chart connects to external PostgreSQL; it does not provision production backup schedules, PITR, queue snapshots or disaster-recovery automation
+recovery_procedure:
+  isolate:
+    - Record the incident time, chosen restore point and expected data-loss window; preserve the damaged database and all agent queues for investigation
+    - Stop all console server replicas and agents before cutover; block access to the old ingest endpoint and retain every agent PVC
+    - The source optimizer remains independent and may continue operating; collection is paused, so intermediate changes can be missed or local journals can expire
+  restore:
+    - Restore the chosen backup/PITR point into a new isolated database using the database provider's supported recovery procedure; keep application traffic disconnected
+    - Restore required roles and permissions, then verify the complete schema and data; use a console release compatible with the restored op_schema version
+    - Do not mix individual history tables with checkpoints from another restore point; they must represent one transactionally consistent database
+    - Compare restored cluster identities, checkpoint sequences and receipt digests against each preserved agent queue before allowing writes
+    - Clear op_sessions in the isolated restored database before reopening access; this revokes restored sessions and pending OIDC login state that may have been invalidated after the restore point
+  reconcile_agents:
+    identity: Each existing cluster ID must still match its kube-system UID and the queue's stream ID
+    replay: Resume the existing identity only when every missing batch after op_clusters.last_seq is available in sequence; retries at already committed sequences must match op_batches digests
+    empty_queue: An empty pending queue is safe to resume only when its persisted sequence equals the restored database checkpoint and its identity matches
+    gap_example: A database restored to sequence 100 cannot accept pending sequence 121 if the agent already deleted acknowledged batches 101 through 120
+    unresolved_gap:
+      - Keep the old registration, historical rows and original queue snapshot; do not edit sequence numbers, receipt digests or stream IDs to bypass fencing
+      - Disable the old agent credential and register a new unique cluster ID with a new token and a new queue PVC; do not mount the old queue under the new identity
+      - Update reader grants to include both old and new cluster IDs; deploy one agent writer for the new identity and verify its initial complete collection
+      - Current inventory and remaining Kubernetes journals can be collected again; re-enrollment cannot reconstruct history absent from both the source and the restored database, so document any unrecovered gap
+  validate_and_cut_over:
+    - Keep browser access restricted during validation; start the compatible server against the restored database using the new database-url Secret and a server rollout
+    - Resume one reconciled agent first; confirm successful acknowledgments, advancing checkpoints, a draining queue and fresh inventory without identity or sequence conflicts
+    - Verify cluster/namespace access isolation, policy revisions, representative decision/action history, allocation samples and fresh token/OIDC login
+    - Resume the remaining reconciled agents, reopen browser access and confirm every cluster is fresh; keep the previous database isolated to prevent two active ingest destinations
+    - Record measured RPO/RTO, any missing history and any new cluster IDs, then verify the replacement database has working backups and PITR before closing recovery
+restore_drills:
+  schedule: Run before production launch, at least quarterly, and after changes to the database major version, schema, backup mechanism or recovery configuration
+  production_acceptance:
+    - Restore a representative production backup/PITR point into an isolated environment and measure data loss and total recovery time against the declared RPO/RTO
+    - Verify schema version, roles, inventory, policies/revisions, history, samples, cluster checkpoints and receipt digests; test session revocation and fresh authentication
+    - Use dedicated test agents to exercise both matching-checkpoint replay and the explicit re-enrollment path for a missing acknowledged batch; never connect live agents to a drill database
+    - Record the tested backup identifier, restore point, compatible application version, results and remaining gaps
+  local_command: bash hack/console/backup-test.sh
+  local_coverage: The existing local drill checks a logical restore into a disposable database for schema version, six demo workloads, history, sessions and stream checkpoints
+  local_limits: This logical restore drill does not establish production PITR, RPO/RTO, complete receipt verification or recovery from a database rewind behind acknowledged agent sequences
+backup_references:
+  logical_backups: https://www.postgresql.org/docs/18/backup-dump.html
+  pitr: https://www.postgresql.org/docs/18/continuous-archiving.html
+  consistent_volume_backups: https://www.postgresql.org/docs/18/backup-file.html
 limits:
   - Collection is polling, not a complete audit stream. Intermediate settings, journal phases, or records deleted before collection can be absent.
   - No actor attribution is invented. Use Git history and Kubernetes audit logs for who changed desired settings or edited the API directly.
