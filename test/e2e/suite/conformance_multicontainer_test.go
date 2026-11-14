@@ -26,8 +26,8 @@ import (
 // stores both containers' recommendations and the installed mutator mutates
 // BOTH on a naturally admitted pod. A user then adds an unrelated sidecar
 // container to the pod template without registering metrics for it: the
-// sidecar has no stored recommendation, so freshly admitted pods carry
-// app/worker's applied values while the sidecar stays untouched. With one
+// sidecar has no stored recommendation and remains untouched. The controller
+// revokes the old plan when it observes incomplete metrics. With one
 // required container's metrics missing, the deployed processor skips the WHOLE
 // workload (an explicit WorkloadSkipped event naming the missing container)
 // even though the two containers with data have changed metric input, so no
@@ -110,9 +110,7 @@ var _ = Describe("Multi-container outcomes and partial metrics on installed stra
 		expectAppliedContainerRequests(fresh[0].Spec.Containers, samples, "the naturally admitted pod")
 		expectUnappliedContainerRequests(kept[0].Spec.Containers, samples,
 			"the pre-existing pod under onNextRestart rollout")
-		// Register series for the new pod too: the processor samples one
-		// arbitrary live pod per container (its cache list order is
-		// unspecified), so all pods need series for determinism.
+		// Every owned replica contributes observations, including the new pod.
 		registerWorkloadSeries(ctx, ns.Name, workloadName, samples)
 		beforeEditUIDs := podUIDs(ctx, ns.Name, podSelector)
 
@@ -125,10 +123,16 @@ var _ = Describe("Multi-container outcomes and partial metrics on installed stra
 		replacedPods := waitForReplacedReadyPods(ctx, ns.Name, podSelector, beforeEditUIDs)
 		for i := range replacedPods {
 			what := fmt.Sprintf("the fresh pod after the sidecar edit (%d)", i)
-			// The mutator patches containers with stored recommendations, so
-			// app/worker keep their applied values while the unrelated
-			// sidecar (no stored keys, no metrics) stays untouched.
-			expectAppliedContainerRequests(replacedPods[i].Spec.Containers, samples, what)
+			// Admission may precede or follow revocation of the previous plan.
+			// Each pod must receive the complete old plan or the original pair;
+			// a missing new container must never cause a partial new plan.
+			cpu, _ := containerRequests(replacedPods[i].Spec.Containers, samples[0].name)
+			Expect(cpu).NotTo(BeNil())
+			if cpu.String() == samples[0].expectedCPU {
+				expectAppliedContainerRequests(replacedPods[i].Spec.Containers, samples, what)
+			} else {
+				expectUnappliedContainerRequests(replacedPods[i].Spec.Containers, samples, what)
+			}
 			sidecarCPU, sidecarMemory := containerRequests(replacedPods[i].Spec.Containers, sidecar.name)
 			Expect(sidecarCPU).NotTo(BeNil(), "%s lost the sidecar container", what)
 			Expect(sidecarMemory).NotTo(BeNil(), "%s lost the sidecar memory request", what)
@@ -162,6 +166,10 @@ var _ = Describe("Multi-container outcomes and partial metrics on installed stra
 		By("waiting for the whole-workload skip signal naming the missing sidecar metrics")
 		waitForPolicyEvent(ctx, ns.Name, policyName, "WorkloadSkipped", skipPhase,
 			"Missing metrics:", "sidecar")
+		// A previous missing-data Event can fall inside the event clock-skew
+		// tolerance. Require a completed post-input reconcile before checking
+		// the fixture trace or unchanged resources.
+		waitForReconcileAfter(ctx, ns.Name, policyName, skipPhase, waitTimeout)
 
 		By("asserting the partial data produced no partial application")
 		skipped := &appsv1.Deployment{}
@@ -194,11 +202,18 @@ var _ = Describe("Multi-container outcomes and partial metrics on installed stra
 			"the partial-data reconcile edited the sidecar's template memory request")
 		Expect(podUIDs(ctx, ns.Name, podSelector)).To(Equal(afterEditUIDs),
 			"the partial-data reconcile rolled workload pods")
-		// The controller queried the two containers that DO have data (it
-		// samples one live pod per container; the registered series cover
-		// every live pod), so the skip is the production decision, not an
-		// absence of collection.
+		// The controller queried every owned replica, so the skip is an
+		// observed incomplete-data decision, not an absence of collection.
 		expectFixtureQueriedAfter(ctx, partialSeries, skipPhase)
+
+		By("proving that incomplete metrics revoked the plan for subsequent admission")
+		Expect(skipped.Annotations).NotTo(HaveKey("optipod.io/recommendation-expires-at"))
+		probe := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "partial-data-probe", Namespace: ns.Name,
+			Labels: skipped.Spec.Template.Labels, OwnerReferences: replacedPods[0].OwnerReferences},
+			Spec: *skipped.Spec.Template.Spec.DeepCopy()}
+		admitted, err := env.Clients.Kube.CoreV1().Pods(ns.Name).Create(ctx, probe, metav1.CreateOptions{DryRun: []string{metav1.DryRunAll}})
+		Expect(err).NotTo(HaveOccurred())
+		expectUnappliedContainerRequests(admitted.Spec.Containers, append(append([]containerSamples{}, samples...), sidecar), "admission after partial-data revocation")
 
 		By("registering the sidecar's own metrics so the workload has complete data again")
 		complete := buildWorkloadSeries(ctx, ns.Name, workloadName, changed)
@@ -209,12 +224,8 @@ var _ = Describe("Multi-container outcomes and partial metrics on installed stra
 		completePhase := time.Now()
 		Expect(env.Fixture.ClearTrace(ctx)).To(Succeed(),
 			"reset the trace so the complete-data reconcile is attributable")
-		// Reconciles are watch-driven, so the new series alone would never be
-		// consumed: the policy touch triggers the complete-data reconcile.
-		// The recommendation-annotation write is throttled for 30s after the
-		// last successful write, and the skip reconcile stored nothing, so
-		// the window from the baseline write is waited out first — otherwise
-		// the trigger would leave the changed recommendations unstored.
+		// Let the annotation throttle window expire; the policy's periodic
+		// reconciliation consumes the fixture's newly complete series.
 		waitForAnnotationThrottleWindow(ctx, ns.Name, workloadName)
 		touchPolicy(ctx, ns.Name, policyName)
 
@@ -257,19 +268,27 @@ var _ = Describe("Multi-container outcomes and partial metrics on installed stra
 		finalPods, err := framework.WaitForPodCountReady(ctx, env.Clients, ns.Name, podSelector, 3,
 			framework.WaitOptions{Timeout: waitTimeout})
 		Expect(err).NotTo(HaveOccurred(), "the complete-data workload never had three ready pods")
+		freshCount := 0
 		for i := range finalPods {
 			if _, existed := afterEditUIDs[finalPods[i].UID]; existed {
-				// The pre-existing pods keep the values they were admitted
-				// with: app/worker applied, sidecar untouched.
-				expectAppliedContainerRequests(finalPods[i].Spec.Containers, samples,
-					"the pre-existing pod after the complete-data reconcile")
+				// Admission during the sidecar edit can precede or follow plan
+				// revocation. Each existing pod must retain its actual admitted
+				// values under onNextRestart, regardless of that ordering.
+				for _, previous := range replacedPods {
+					if previous.UID == finalPods[i].UID {
+						Expect(finalPods[i].Spec.Containers).To(Equal(previous.Spec.Containers),
+							"the pre-existing pod changed during complete-data recovery")
+					}
+				}
 				continue
 			}
+			freshCount++
 			// The freshly admitted pod carries every container's complete-
 			// data outcome, including the sidecar's own values.
 			expectAppliedContainerRequests(finalPods[i].Spec.Containers, completeSamples,
 				"the freshly admitted pod with complete data")
 		}
+		Expect(freshCount).To(Equal(1), "recovery scale-up must admit exactly one pod with the complete new plan")
 
 		By("waiting for the policy's reconciliation summary")
 		waitForPolicyStatus(ctx, ns.Name, policyName, policyStatusWait{
@@ -342,6 +361,10 @@ var _ = Describe("Multi-container outcomes and partial metrics on installed stra
 		By("waiting for the whole-workload skip signal naming the missing sidecar metrics")
 		waitForPolicyEvent(ctx, ns.Name, policyName, "WorkloadSkipped", skipPhase,
 			"Missing metrics:", "sidecar")
+		// A previous missing-data Event can fall inside the event clock-skew
+		// tolerance. Require a completed post-input reconcile before checking
+		// the fixture trace or unchanged resources.
+		waitForReconcileAfter(ctx, ns.Name, policyName, skipPhase, waitTimeout)
 
 		By("asserting the skip left every container's applied values with no churn")
 		expectSteadyWorkload(ctx, steady, ns.Name, workload, podSelector, "the partial-metrics skip reconcile")

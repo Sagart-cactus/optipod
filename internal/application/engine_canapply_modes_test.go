@@ -99,6 +99,7 @@ func TestCanApplyModeDecisions(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			engine := newEngine(tt.dryRun)
 			policy := createMockPolicy(tt.allowInPlace, tt.allowRecreate)
+			policy.Spec.UpdateStrategy.RolloutStrategy = strPtrTest("immediate")
 			policy.Spec.Mode = optipodv1alpha1.PolicyMode(tt.policyMode)
 
 			decision, err := engine.CanApply(

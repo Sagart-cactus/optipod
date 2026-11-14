@@ -61,6 +61,20 @@ func (m *mockDiscoveryClient) ServerVersion() (*version.Info, error) {
 	return m.serverVersion, nil
 }
 
+// Legacy fixtures advertise resize for their newer test versions. Production
+// detects the actual API resource, not this test-data convention.
+func (m *mockDiscoveryClient) ServerResourcesForGroupVersion(_ string) (*metav1.APIResourceList, error) {
+	list := &metav1.APIResourceList{}
+	minor := 0
+	if m.serverVersion != nil {
+		_, _ = fmt.Sscanf(m.serverVersion.Minor, "%d", &minor)
+	}
+	if minor >= 29 {
+		list.APIResources = []metav1.APIResource{{Name: "pods/resize", Verbs: metav1.Verbs{"patch"}}}
+	}
+	return list, nil
+}
+
 // Feature: k8s-workload-rightsizing, Property 20: Feature gate detection
 // For any Kubernetes cluster version 1.29 or higher, the system should correctly detect
 // whether the InPlacePodVerticalScaling feature gate is enabled.
@@ -68,7 +82,7 @@ func (m *mockDiscoveryClient) ServerVersion() (*version.Info, error) {
 func TestProperty_FeatureGateDetection(t *testing.T) {
 	properties := gopter.NewProperties(nil)
 
-	properties.Property("versions >= 1.29 should support in-place resize", prop.ForAll(
+	properties.Property("advertised resize subresource is supported", prop.ForAll(
 		func(minor int) bool {
 			// Generate versions from 1.29 to 1.50
 			if minor < 29 || minor > 50 {
@@ -86,7 +100,7 @@ func TestProperty_FeatureGateDetection(t *testing.T) {
 				discoveryClient: mockDiscovery,
 			}
 
-			supported, err := engine.detectInPlaceResize(context.Background())
+			supported, err := engine.detectInPlaceResize()
 			if err != nil {
 				return false
 			}
@@ -97,7 +111,7 @@ func TestProperty_FeatureGateDetection(t *testing.T) {
 		gen.IntRange(29, 50),
 	))
 
-	properties.Property("versions < 1.29 should not support in-place resize", prop.ForAll(
+	properties.Property("absent resize subresource is unsupported", prop.ForAll(
 		func(minor int) bool {
 			// Generate versions from 1.20 to 1.28
 			if minor < 20 || minor >= 29 {
@@ -115,7 +129,7 @@ func TestProperty_FeatureGateDetection(t *testing.T) {
 				discoveryClient: mockDiscovery,
 			}
 
-			supported, err := engine.detectInPlaceResize(context.Background())
+			supported, err := engine.detectInPlaceResize()
 			if err != nil {
 				return false
 			}
@@ -157,6 +171,8 @@ func TestProperty_InPlaceResizePreference(t *testing.T) {
 
 			// Create a mock policy
 			policy := createMockPolicy(allowInPlace, allowRecreate)
+			mode := "immediate"
+			policy.Spec.UpdateStrategy.RolloutStrategy = &mode
 
 			// Create a mock workload
 			workload := createMockWorkload()
@@ -208,6 +224,7 @@ func TestProperty_InPlaceResizePreference(t *testing.T) {
 
 			// Create a mock policy with in-place allowed (but it won't be supported)
 			policy := createMockPolicy(true, allowRecreate)
+			policy.Spec.UpdateStrategy.RolloutStrategy = strPtrTest("immediate")
 
 			// Create a mock workload
 			workload := createMockWorkload()
@@ -1163,13 +1180,13 @@ func (m *mockResourceInterfaceWithCapture) Patch(ctx context.Context, name strin
 	return &unstructured.Unstructured{}, nil
 }
 
-// Feature: server-side-apply-support, Property 8: Force flag is set for SSA
-// For any SSA patch operation, the Force option should be set to true
+// Feature: server-side-apply-support, Property 8: Force flag follows policy for SSA
+// For any SSA patch operation, Force must follow explicit ownership permission
 // Validates: Requirements 1.3
 func TestProperty_SSAForceFlag(t *testing.T) {
 	properties := gopter.NewProperties(nil)
 
-	properties.Property("SSA Force flag is set to true", prop.ForAll(
+	properties.Property("SSA Force flag follows explicit ownership permission", prop.ForAll(
 		func(cpuReq, memReq int64, updateRequestsOnly bool) bool {
 			// Generate reasonable resource values
 			if cpuReq < 100 || cpuReq > 4000 || memReq < 128 || memReq > 8192 {
@@ -1203,6 +1220,7 @@ func TestProperty_SSAForceFlag(t *testing.T) {
 			// Create policy
 			policy := createMockPolicy(true, false)
 			policy.Spec.UpdateStrategy.UpdateRequestsOnly = updateRequestsOnly
+			policy.Spec.UpdateStrategy.AllowFieldOwnershipTakeover = updateRequestsOnly
 
 			// Apply with SSA
 			err := engine.ApplyWithSSA(context.Background(), workload, testContainerRecommendations(rec), policy)
@@ -1215,7 +1233,7 @@ func TestProperty_SSAForceFlag(t *testing.T) {
 				return false
 			}
 
-			if *capturedPatchOptions.Force != true {
+			if *capturedPatchOptions.Force != policy.Spec.UpdateStrategy.AllowFieldOwnershipTakeover {
 				return false
 			}
 
@@ -1673,7 +1691,7 @@ func TestProperty_SSALoggingIncludesFieldManager(t *testing.T) {
 				return false
 			}
 
-			if capturedPatchOptions.Force == nil || *capturedPatchOptions.Force != true {
+			if capturedPatchOptions.Force == nil || *capturedPatchOptions.Force != policy.Spec.UpdateStrategy.AllowFieldOwnershipTakeover {
 				return false
 			}
 
@@ -1981,6 +1999,7 @@ func TestProperty_DirectRecommendationApplication(t *testing.T) {
 				Spec: optipodv1alpha1.OptimizationPolicySpec{
 					Mode: optipodv1alpha1.ModeAuto,
 					UpdateStrategy: optipodv1alpha1.UpdateStrategy{
+						RolloutStrategy:    strPtrTest("immediate"),
 						AllowInPlaceResize: allowInPlace,
 						AllowRecreate:      allowRecreate,
 						UpdateRequestsOnly: true,
@@ -2101,6 +2120,7 @@ func TestProperty_DirectRecommendationApplication(t *testing.T) {
 				Spec: optipodv1alpha1.OptimizationPolicySpec{
 					Mode: optipodv1alpha1.ModeAuto,
 					UpdateStrategy: optipodv1alpha1.UpdateStrategy{
+						RolloutStrategy:    strPtrTest("immediate"),
 						AllowInPlaceResize: true,
 						AllowRecreate:      true,
 						UpdateRequestsOnly: false, // Test with limits updates too
@@ -2837,8 +2857,8 @@ func TestOptimizationApplication(t *testing.T) {
 		}
 
 		// Verify Force flag is set
-		if capturedPatchOptions.Force == nil || *capturedPatchOptions.Force != true {
-			t.Error("expected Force flag to be true")
+		if capturedPatchOptions.Force == nil || *capturedPatchOptions.Force != policy.Spec.UpdateStrategy.AllowFieldOwnershipTakeover {
+			t.Error("expected Force flag to follow explicit ownership permission")
 		}
 
 		// Verify patch type is ApplyPatchType
@@ -3064,8 +3084,8 @@ func TestProperty_SSACompatibilityPreservation(t *testing.T) {
 				if capturedPatchOptions.FieldManager != FieldManagerName {
 					return false
 				}
-				// Should use Force=true
-				if capturedPatchOptions.Force == nil || !*capturedPatchOptions.Force {
+				// Force follows explicit ownership permission
+				if capturedPatchOptions.Force == nil || *capturedPatchOptions.Force != policy.Spec.UpdateStrategy.AllowFieldOwnershipTakeover {
 					return false
 				}
 			} else {
@@ -3333,3 +3353,5 @@ func stringPtr(s string) *string {
 func testContainerRecommendations(rec *recommendation.Recommendation) []ContainerRecommendation {
 	return []ContainerRecommendation{{Container: "test-container", Recommendation: rec}}
 }
+
+func strPtrTest(s string) *string { return &s }

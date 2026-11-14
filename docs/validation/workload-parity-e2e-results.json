@@ -1,0 +1,933 @@
+{
+  "schemaVersion": 1,
+  "suite": "OptiPod installed-controller Kind suite",
+  "runId": "run-1794589599-4f240f92",
+  "startedAt": "2026-11-14T00:06:39+07:00",
+  "environment": {
+    "runtime": "Podman",
+    "cluster": "isolated two-node Kind",
+    "kubernetes": "v1.35.0",
+    "kind": "v0.31.0",
+    "tilt": "v0.37.8"
+  },
+  "command": "OPTIPOD_E2E_LABELS='!deliberate-failure' TILT_TELEMETRY_OPTOUT=1 bin/tilt ci --timeout 60m",
+  "durationSeconds": 2429.15410125,
+  "specs": {
+    "passed": 96,
+    "failed": 0,
+    "skipped": 1
+  },
+  "suiteHooks": [
+    {
+      "name": "[BeforeSuite]",
+      "status": "passed",
+      "durationSeconds": 1.068833583
+    },
+    {
+      "name": "[AfterSuite]",
+      "status": "passed",
+      "durationSeconds": 7.2875e-05
+    }
+  ],
+  "originalJUnitSHA256": "278d0cf6a18c25927fa5738b07b549a6f4ba2d378ad6b39d40de08fbb0845ac2",
+  "testedSourceFingerprintSHA256": "0c9cbeaf674721f23bb295dd680e5913bac14951ef0fa436d7365f9100a721ee",
+  "exportNote": "Per-spec results extracted from local JUnit. Runtime source was frozen throughout the run. Raw system output and local filesystem paths are omitted; suite setup/teardown entries are reported separately from the 97 specs.",
+  "cases": [
+    {
+      "name": "SSA and webhook strategy boundaries on the installed workload applies SSA fields, records webhook metadata without template migration, admits changed recommendations on fresh pods, and re-applies on the return to SSA",
+      "status": "passed",
+      "durationSeconds": 150.344999583,
+      "labels": [
+        "conformance",
+        "strategy"
+      ]
+    },
+    {
+      "name": "Parity: bounded CPU forecasting raises a real pod within the forecast cap and respects policy maximums",
+      "status": "passed",
+      "durationSeconds": 24.102766459,
+      "labels": [
+        "parity",
+        "predictive"
+      ]
+    },
+    {
+      "name": "Parity: resource and container controls preserves excluded resources and containers while applying limit modes SSA CPU only",
+      "status": "passed",
+      "durationSeconds": 4.139276333,
+      "labels": [
+        "parity",
+        "resource-controls"
+      ]
+    },
+    {
+      "name": "Parity: resource and container controls preserves excluded resources and containers while applying limit modes SSA memory only",
+      "status": "passed",
+      "durationSeconds": 4.031521875,
+      "labels": [
+        "parity",
+        "resource-controls"
+      ]
+    },
+    {
+      "name": "Parity: resource and container controls preserves excluded resources and containers while applying limit modes webhook CPU only",
+      "status": "passed",
+      "durationSeconds": 4.019791792,
+      "labels": [
+        "parity",
+        "resource-controls"
+      ]
+    },
+    {
+      "name": "Parity: resource and container controls preserves excluded resources and containers while applying limit modes webhook memory only",
+      "status": "passed",
+      "durationSeconds": 4.157438583,
+      "labels": [
+        "parity",
+        "resource-controls"
+      ]
+    },
+    {
+      "name": "Parity: independent resource recommendations applies CPU P95 and memory maximum with different margins and windows",
+      "status": "passed",
+      "durationSeconds": 4.104824834,
+      "labels": [
+        "parity",
+        "resources"
+      ]
+    },
+    {
+      "name": "Concurrent policy and workload edits settle on current policy behavior surfaces an explicit conflict, preserves the newest unrelated user field and applies the current policy outcome",
+      "status": "passed",
+      "durationSeconds": 9.860756292,
+      "labels": [
+        "conformance",
+        "concurrency"
+      ]
+    },
+    {
+      "name": "Parity: actual OOM recovery recovers without metrics, preserves pod identity, freezes reductions and latches repeated failures",
+      "status": "passed",
+      "durationSeconds": 42.305941,
+      "labels": [
+        "parity",
+        "oom",
+        "Serial"
+      ]
+    },
+    {
+      "name": "Deliberate failure diagnostics validation fails a deliberate assertion so the suite captures pre-teardown redacted diagnostics",
+      "status": "skipped",
+      "durationSeconds": 0.0,
+      "labels": [
+        "deliberate-failure"
+      ],
+      "reason": "Intentional failure exercise excluded by !deliberate-failure label filter."
+    },
+    {
+      "name": "Webhook TLS, readiness and configured failure policy verifies the served certificate and endpoint, then proves Ignore admits unmutated during an outage and Fail rejects, with mutation restored",
+      "status": "passed",
+      "durationSeconds": 22.187712292,
+      "labels": [
+        "conformance",
+        "webhook"
+      ]
+    },
+    {
+      "name": "Namespace and workload label selectors affect only eligible objects processes the matching object and leaves the non-matching one untouched a workload label selector processes only the labeled Deployment",
+      "status": "passed",
+      "durationSeconds": 6.076680167,
+      "labels": [
+        "conformance",
+        "selectors"
+      ]
+    },
+    {
+      "name": "Namespace and workload label selectors affect only eligible objects processes the matching object and leaves the non-matching one untouched a deny list takes precedence over the allow list for a namespace",
+      "status": "passed",
+      "durationSeconds": 6.151883292,
+      "labels": [
+        "conformance",
+        "selectors"
+      ]
+    },
+    {
+      "name": "Namespace and workload label selectors affect only eligible objects processes the matching object and leaves the non-matching one untouched a namespace label selector processes only the labeled namespace",
+      "status": "passed",
+      "durationSeconds": 6.095026625,
+      "labels": [
+        "conformance",
+        "selectors"
+      ]
+    },
+    {
+      "name": "Parity: completed execution history uses completed Job observations without mutating its immutable template or restarting it",
+      "status": "passed",
+      "durationSeconds": 14.304551333,
+      "labels": [
+        "parity",
+        "batch"
+      ]
+    },
+    {
+      "name": "Parity: completed execution history warms up across distinct CronJob executions and retains their peak across controller restart",
+      "status": "passed",
+      "durationSeconds": 53.526971792,
+      "labels": [
+        "parity",
+        "batch"
+      ]
+    },
+    {
+      "name": "Default webhook strategy mutates every container on naturally admitted pods mutates every eligible container on newly admitted pods under the default webhook strategy",
+      "status": "passed",
+      "durationSeconds": 70.158550584,
+      "labels": [
+        "smoke",
+        "modes",
+        "auto",
+        "webhook"
+      ]
+    },
+    {
+      "name": "Parity: final admission policy controls stops previously enabled mutations on Recommend and on a higher-weight Disabled exclusion",
+      "status": "passed",
+      "durationSeconds": 6.34828325,
+      "labels": [
+        "parity",
+        "policy-safety"
+      ]
+    },
+    {
+      "name": "Parity: node-aware DaemonSets sizes new pods from two real nodes, retains existing pods, and rejects ambiguous destinations",
+      "status": "passed",
+      "durationSeconds": 10.14943675,
+      "labels": [
+        "parity",
+        "node-sizing"
+      ]
+    },
+    {
+      "name": "Overlapping policies choose a consistent observed winner selects a winner by supported inputs and observes it through the workload the higher weight wins and deleting the winner flips the effect to the runner-up",
+      "status": "passed",
+      "durationSeconds": 64.231448958,
+      "labels": [
+        "conformance",
+        "policy"
+      ]
+    },
+    {
+      "name": "Overlapping policies choose a consistent observed winner selects a winner by supported inputs and observes it through the workload an omitted weight uses the API default and beats a lower explicit weight",
+      "status": "passed",
+      "durationSeconds": 4.108113167,
+      "labels": [
+        "conformance",
+        "policy"
+      ]
+    },
+    {
+      "name": "Overlapping policies choose a consistent observed winner selects a winner by supported inputs and observes it through the workload equal weights resolve deterministically by name",
+      "status": "passed",
+      "durationSeconds": 4.101000375,
+      "labels": [
+        "conformance",
+        "policy"
+      ]
+    },
+    {
+      "name": "Overlapping policies choose a consistent observed winner selects a winner by supported inputs and observes it through the workload a higher-weight Recommend winner blocks Auto until a weight change flips the application",
+      "status": "passed",
+      "durationSeconds": 64.231235792,
+      "labels": [
+        "conformance",
+        "policy"
+      ]
+    },
+    {
+      "name": "Harness diagnostics and reporting machinery collects an actionable redacted bundle from the live cluster",
+      "status": "passed",
+      "durationSeconds": 5.052927958,
+      "labels": [
+        "diagnostics"
+      ]
+    },
+    {
+      "name": "Resource bounds and memory-decrease application clamps below and above the bounds, keeps within-bounds math exact, derives limits consistently and applies an explicitly authorized memory decrease in full",
+      "status": "passed",
+      "durationSeconds": 6.324167333,
+      "labels": [
+        "conformance",
+        "safety"
+      ]
+    },
+    {
+      "name": "Resource bounds and memory-decrease application denies an inverted CPU bound with an actionable invalid status and never clamps the workload",
+      "status": "passed",
+      "durationSeconds": 4.068889416,
+      "labels": [
+        "conformance",
+        "safety"
+      ]
+    },
+    {
+      "name": "Parity: guarded rollback restores original resources and stays paused using ssa",
+      "status": "passed",
+      "durationSeconds": 38.235564458,
+      "labels": [
+        "parity",
+        "rollback",
+        "Serial"
+      ]
+    },
+    {
+      "name": "Parity: guarded rollback restores original resources and stays paused using webhook",
+      "status": "passed",
+      "durationSeconds": 43.288734208,
+      "labels": [
+        "parity",
+        "rollback",
+        "Serial"
+      ]
+    },
+    {
+      "name": "Parity: guarded rollback rejects rollback after an independent template change",
+      "status": "passed",
+      "durationSeconds": 5.053034875,
+      "labels": [
+        "parity",
+        "rollback",
+        "Serial"
+      ]
+    },
+    {
+      "name": "Parity: sidecar controls optimizes opted-in native sidecars while preserving one-shot init containers SSA native sidecar",
+      "status": "passed",
+      "durationSeconds": 30.363361375,
+      "labels": [
+        "parity",
+        "sidecars"
+      ]
+    },
+    {
+      "name": "Parity: sidecar controls optimizes opted-in native sidecars while preserving one-shot init containers in-place native sidecar",
+      "status": "passed",
+      "durationSeconds": 19.160216416,
+      "labels": [
+        "parity",
+        "sidecars"
+      ]
+    },
+    {
+      "name": "Parity: sidecar controls learns a real injected sidecar and applies it on admission without adding it to the workload template",
+      "status": "passed",
+      "durationSeconds": 6.136399667,
+      "labels": [
+        "parity",
+        "sidecars"
+      ]
+    },
+    {
+      "name": "Policy API admission and reconciliation readiness admits a minimal valid policy and reconciles it to a Ready status",
+      "status": "passed",
+      "durationSeconds": 2.014680583,
+      "labels": [
+        "smoke",
+        "install",
+        "policy"
+      ]
+    },
+    {
+      "name": "Policy API admission and reconciliation readiness rejects malformed schema values with an actionable API cause",
+      "status": "passed",
+      "durationSeconds": 0.008046417,
+      "labels": [
+        "smoke",
+        "install",
+        "policy"
+      ]
+    },
+    {
+      "name": "Policy API admission and reconciliation readiness reports a runtime-invalid policy clearly and never mutates its workloads",
+      "status": "passed",
+      "durationSeconds": 4.023218042,
+      "labels": [
+        "smoke",
+        "install",
+        "policy"
+      ]
+    },
+    {
+      "name": "Parity: real pod resize changes kubelet allocated resources without replacing or restarting containers",
+      "status": "passed",
+      "durationSeconds": 4.157187708,
+      "labels": [
+        "parity",
+        "resize"
+      ]
+    },
+    {
+      "name": "Parity: real pod resize requires explicit recreate permission when a QoS change prevents resize",
+      "status": "passed",
+      "durationSeconds": 6.080000916,
+      "labels": [
+        "parity",
+        "resize"
+      ]
+    },
+    {
+      "name": "Parity: real pod resize blocks rolling restarts while a PDB has no disruption allowance",
+      "status": "passed",
+      "durationSeconds": 6.072701542,
+      "labels": [
+        "parity",
+        "resize"
+      ]
+    },
+    {
+      "name": "Multi-container outcomes and partial metrics on installed strategies mutates every container with complete metrics, leaves an unrelated metrics-less sidecar untouched, and skips the whole workload on partial data",
+      "status": "passed",
+      "durationSeconds": 110.332803542,
+      "labels": [
+        "conformance",
+        "multi-container"
+      ]
+    },
+    {
+      "name": "Multi-container outcomes and partial metrics on installed strategies applies a three-container workload-wide SSA set, skips whole-workload on partial data and re-applies the full set after restoration",
+      "status": "passed",
+      "durationSeconds": 104.155112667,
+      "labels": [
+        "conformance",
+        "multi-container"
+      ]
+    },
+    {
+      "name": "Live TLS webhook admission through the installed API mutates an eligible pod at API creation and admits ineligible pods unchanged",
+      "status": "passed",
+      "durationSeconds": 4.205242292,
+      "labels": [
+        "smoke",
+        "webhook",
+        "admission"
+      ]
+    },
+    {
+      "name": "Parity: recommendation validity and stable rollout admits expired and superseded plans without applying their resources",
+      "status": "passed",
+      "durationSeconds": 0.447024959,
+      "labels": [
+        "parity",
+        "validity"
+      ]
+    },
+    {
+      "name": "Parity: recommendation validity and stable rollout keeps pod identities and the template stable after an immediate plan is applied",
+      "status": "passed",
+      "durationSeconds": 6.299715417,
+      "labels": [
+        "parity",
+        "validity"
+      ]
+    },
+    {
+      "name": "Parity: stale plan revocation caps admission validity at the source deadline and revokes on lost metrics",
+      "status": "passed",
+      "durationSeconds": 10.11693825,
+      "labels": [
+        "parity",
+        "freshness"
+      ]
+    },
+    {
+      "name": "Parity: decision and settings history retains skipped reasons and exact policy settings across edits, restart and deletion",
+      "status": "passed",
+      "durationSeconds": 38.243494792,
+      "labels": [
+        "parity",
+        "decisions",
+        "audit"
+      ]
+    },
+    {
+      "name": "Parity: migration validates both translated QA profiles and applies an explicitly promoted canary",
+      "status": "passed",
+      "durationSeconds": 6.113681875,
+      "labels": [
+        "parity",
+        "migration"
+      ]
+    },
+    {
+      "name": "Older optional-field policies still work accepts a policy omitting newer optional fields and follows persisted production defaults on workloads",
+      "status": "passed",
+      "durationSeconds": 70.168723542,
+      "labels": [
+        "conformance",
+        "compatibility"
+      ]
+    },
+    {
+      "name": "Real metrics backends observes live CPU and memory load and applies its recommendations Prometheus with kubelet cAdvisor scraping",
+      "status": "passed",
+      "durationSeconds": 118.094840292,
+      "labels": [
+        "live-metrics",
+        "Serial"
+      ]
+    },
+    {
+      "name": "Real metrics backends observes live CPU and memory load and applies its recommendations metrics-server with asynchronous sample history",
+      "status": "passed",
+      "durationSeconds": 134.083030167,
+      "labels": [
+        "live-metrics",
+        "Serial"
+      ]
+    },
+    {
+      "name": "Disabled, Recommend and Auto transitions change actual workload outcomes moves a matching policy through Disabled, Recommend, Auto and back to Disabled with distinct observed outcomes",
+      "status": "passed",
+      "durationSeconds": 146.295549125,
+      "labels": [
+        "conformance",
+        "modes"
+      ]
+    },
+    {
+      "name": "Parity: horizontal scaler coexistence protects utilization denominators and still optimizes other resources HPA absolute usage",
+      "status": "passed",
+      "durationSeconds": 4.142095542,
+      "labels": [
+        "parity",
+        "coexist"
+      ]
+    },
+    {
+      "name": "Parity: horizontal scaler coexistence protects utilization denominators and still optimizes other resources HPA container utilization",
+      "status": "passed",
+      "durationSeconds": 6.147937834,
+      "labels": [
+        "parity",
+        "coexist"
+      ]
+    },
+    {
+      "name": "Parity: horizontal scaler coexistence protects utilization denominators and still optimizes other resources HPA resource utilization",
+      "status": "passed",
+      "durationSeconds": 4.184531708,
+      "labels": [
+        "parity",
+        "coexist"
+      ]
+    },
+    {
+      "name": "Parity: horizontal scaler coexistence protects utilization denominators and still optimizes other resources real KEDA CPU scaler",
+      "status": "passed",
+      "durationSeconds": 5.07925325,
+      "labels": [
+        "parity",
+        "coexist"
+      ]
+    },
+    {
+      "name": "Parity: horizontal scaler coexistence rechecks a newly created HPA at admission before applying a stored plan",
+      "status": "passed",
+      "durationSeconds": 3.085051959,
+      "labels": [
+        "parity",
+        "coexist"
+      ]
+    },
+    {
+      "name": "Parity: JVM and custom Prometheus gauges uses a real JVM heap floor and custom CPU gauge, and fails closed on missing data or impossible bounds",
+      "status": "passed",
+      "durationSeconds": 82.314707959,
+      "labels": [
+        "parity",
+        "jvm",
+        "custom-metrics",
+        "Serial"
+      ]
+    },
+    {
+      "name": "Explicit SSA managed-field ownership on the installed workload applies intended request fields under the optipod field manager and preserves unrelated fields",
+      "status": "passed",
+      "durationSeconds": 18.088547167,
+      "labels": [
+        "smoke",
+        "ssa",
+        "managed-fields"
+      ]
+    },
+    {
+      "name": "Parity: automatic memory limits preserves higher limits while enforcing the minimum and request ratio SSA",
+      "status": "passed",
+      "durationSeconds": 6.054413917,
+      "labels": [
+        "parity",
+        "automatic-limits"
+      ]
+    },
+    {
+      "name": "Parity: automatic memory limits preserves higher limits while enforcing the minimum and request ratio admission",
+      "status": "passed",
+      "durationSeconds": 6.059717834,
+      "labels": [
+        "parity",
+        "automatic-limits"
+      ]
+    },
+    {
+      "name": "Parity: automatic memory limits preserves higher limits while enforcing the minimum and request ratio in-place",
+      "status": "passed",
+      "durationSeconds": 4.072417208,
+      "labels": [
+        "parity",
+        "automatic-limits"
+      ]
+    },
+    {
+      "name": "Parity: additional workload controllers optimizes ReplicaSet through resize and resolves owning UIDs",
+      "status": "passed",
+      "durationSeconds": 4.063541042,
+      "labels": [
+        "parity",
+        "controllers"
+      ]
+    },
+    {
+      "name": "Parity: additional workload controllers optimizes ReplicaSet through restart and resolves owning UIDs",
+      "status": "passed",
+      "durationSeconds": 6.093233042,
+      "labels": [
+        "parity",
+        "controllers"
+      ]
+    },
+    {
+      "name": "Parity: additional workload controllers optimizes Rollout through resize and resolves owning UIDs",
+      "status": "passed",
+      "durationSeconds": 6.092191416,
+      "labels": [
+        "parity",
+        "controllers"
+      ]
+    },
+    {
+      "name": "Parity: additional workload controllers optimizes Rollout through restart and resolves owning UIDs",
+      "status": "passed",
+      "durationSeconds": 4.07628025,
+      "labels": [
+        "parity",
+        "controllers"
+      ]
+    },
+    {
+      "name": "Parity: durable resource journal keeps immutable before/after plans across restarts and workload deletion without recording renewals",
+      "status": "passed",
+      "durationSeconds": 40.104492167,
+      "labels": [
+        "parity",
+        "audit"
+      ]
+    },
+    {
+      "name": "Parity: resource constraints blocks unsafe plans before storing or applying them QoS preservation",
+      "status": "passed",
+      "durationSeconds": 4.05781325,
+      "labels": [
+        "parity",
+        "constraints"
+      ]
+    },
+    {
+      "name": "Parity: resource constraints blocks unsafe plans before storing or applying them namespace LimitRange",
+      "status": "passed",
+      "durationSeconds": 4.1705435,
+      "labels": [
+        "parity",
+        "constraints"
+      ]
+    },
+    {
+      "name": "Parity: resource constraints blocks unsafe plans before storing or applying them namespace quota",
+      "status": "passed",
+      "durationSeconds": 6.068445917,
+      "labels": [
+        "parity",
+        "constraints"
+      ]
+    },
+    {
+      "name": "Parity: resource constraints blocks unsafe plans before storing or applying them preserved container limit",
+      "status": "passed",
+      "durationSeconds": 4.087925625,
+      "labels": [
+        "parity",
+        "constraints"
+      ]
+    },
+    {
+      "name": "Parity: resource constraints requires explicit field ownership takeover for every template patch path SSA",
+      "status": "passed",
+      "durationSeconds": 6.038808125,
+      "labels": [
+        "parity",
+        "constraints"
+      ]
+    },
+    {
+      "name": "Parity: resource constraints requires explicit field ownership takeover for every template patch path limit-removal strategic merge",
+      "status": "passed",
+      "durationSeconds": 6.080406291,
+      "labels": [
+        "parity",
+        "constraints"
+      ]
+    },
+    {
+      "name": "Parity: resource constraints rechecks a LimitRange created after a valid admission plan",
+      "status": "passed",
+      "durationSeconds": 3.1393377080000002,
+      "labels": [
+        "parity",
+        "constraints"
+      ]
+    },
+    {
+      "name": "Parity: replica metrics and confidence queries every owned replica and selects the combined P95",
+      "status": "passed",
+      "durationSeconds": 4.057166833,
+      "labels": [
+        "parity",
+        "metrics-history"
+      ]
+    },
+    {
+      "name": "Parity: replica metrics and confidence blocks stale startup and insufficient-history samples before recovering",
+      "status": "passed",
+      "durationSeconds": 10.088225292,
+      "labels": [
+        "parity",
+        "metrics-history"
+      ]
+    },
+    {
+      "name": "Shipped controller RBAC succeeds while restricted access is denied runs the deployed controller on the shipped roles with no compensating grants and denies a restricted identity",
+      "status": "passed",
+      "durationSeconds": 4.071826875,
+      "labels": [
+        "conformance",
+        "rbac"
+      ]
+    },
+    {
+      "name": "Supported metrics and structured logs reflect named processing exposes named OptiPod metric series and parseable structured log records for a policy reconciliation",
+      "status": "passed",
+      "durationSeconds": 64.292228458,
+      "labels": [
+        "conformance",
+        "observability"
+      ]
+    },
+    {
+      "name": "Workload-type include/exclude filters select only eligible kinds processes exactly the eligible kinds and leaves excluded kinds untouched an include list processes only the Deployment",
+      "status": "passed",
+      "durationSeconds": 8.121305916,
+      "labels": [
+        "conformance",
+        "selectors"
+      ]
+    },
+    {
+      "name": "Workload-type include/exclude filters select only eligible kinds processes exactly the eligible kinds and leaves excluded kinds untouched an exclude list processes the StatefulSet and DaemonSet and skips the Deployment",
+      "status": "passed",
+      "durationSeconds": 8.124739416,
+      "labels": [
+        "conformance",
+        "selectors"
+      ]
+    },
+    {
+      "name": "Workload-type include/exclude filters select only eligible kinds processes exactly the eligible kinds and leaves excluded kinds untouched exclude takes precedence over include for the same kind",
+      "status": "passed",
+      "durationSeconds": 8.146138916,
+      "labels": [
+        "conformance",
+        "selectors"
+      ]
+    },
+    {
+      "name": "Workload-type include/exclude filters select only eligible kinds processes exactly the eligible kinds and leaves excluded kinds untouched an omitted type filter processes all three kinds (compatibility)",
+      "status": "passed",
+      "durationSeconds": 8.117991417,
+      "labels": [
+        "conformance",
+        "selectors"
+      ]
+    },
+    {
+      "name": "Explicit immediate webhook rollout mutates newly generated pods per workload kind triggers the template restart marker and admits every recommended container value on fresh ready Deployment, StatefulSet and DaemonSet pods",
+      "status": "passed",
+      "durationSeconds": 10.21546025,
+      "labels": [
+        "conformance",
+        "rollout"
+      ]
+    },
+    {
+      "name": "Parity: workload metrics lifecycle retains a retired pod peak across replacement and controller restart",
+      "status": "passed",
+      "durationSeconds": 40.31886225,
+      "labels": [
+        "parity",
+        "metrics-lifecycle",
+        "Serial"
+      ]
+    },
+    {
+      "name": "Parity: workload metrics lifecycle rejects incomplete replica coverage and recovers when both replicas have samples",
+      "status": "passed",
+      "durationSeconds": 6.06044925,
+      "labels": [
+        "parity",
+        "metrics-lifecycle",
+        "Serial"
+      ]
+    },
+    {
+      "name": "Parity: opt-in native HPA scales real load, preserves utilization requests, refuses drift, and cleans up on disable or deletion",
+      "status": "passed",
+      "durationSeconds": 64.227948834,
+      "labels": [
+        "parity",
+        "horizontal",
+        "Serial"
+      ]
+    },
+    {
+      "name": "Parity: opt-in native HPA never adopts or replaces a foreign HPA",
+      "status": "passed",
+      "durationSeconds": 18.066924042,
+      "labels": [
+        "parity",
+        "horizontal",
+        "Serial"
+      ]
+    },
+    {
+      "name": "Controller restart recovery restarts into a fresh ready pod and reconciles changed metrics into a new recommendation",
+      "status": "passed",
+      "durationSeconds": 84.129647833,
+      "labels": [
+        "smoke",
+        "failure-recovery"
+      ]
+    },
+    {
+      "name": "Each eligible workload kind receives exact recommendations and applied resources applies the fixture-derived values to the eligible kind and rolls its pod Deployment",
+      "status": "passed",
+      "durationSeconds": 6.058750833,
+      "labels": [
+        "conformance",
+        "selectors"
+      ]
+    },
+    {
+      "name": "Each eligible workload kind receives exact recommendations and applied resources applies the fixture-derived values to the eligible kind and rolls its pod StatefulSet",
+      "status": "passed",
+      "durationSeconds": 6.074358041,
+      "labels": [
+        "conformance",
+        "selectors"
+      ]
+    },
+    {
+      "name": "Each eligible workload kind receives exact recommendations and applied resources applies the fixture-derived values to the eligible kind and rolls its pod DaemonSet",
+      "status": "passed",
+      "durationSeconds": 4.071632625,
+      "labels": [
+        "conformance",
+        "selectors"
+      ]
+    },
+    {
+      "name": "Parity: persistent stability guards enforces memory safety and percentage thresholds bounded gradual decrease with durable cooldown",
+      "status": "passed",
+      "durationSeconds": 36.09317975,
+      "labels": [
+        "parity",
+        "stability",
+        "Serial"
+      ]
+    },
+    {
+      "name": "Parity: persistent stability guards enforces memory safety and percentage thresholds default blocks reductions",
+      "status": "passed",
+      "durationSeconds": 4.058761083,
+      "labels": [
+        "parity",
+        "stability",
+        "Serial"
+      ]
+    },
+    {
+      "name": "Parity: persistent stability guards enforces memory safety and percentage thresholds explicit unsafe decrease opt-in",
+      "status": "passed",
+      "durationSeconds": 4.054173916,
+      "labels": [
+        "parity",
+        "stability",
+        "Serial"
+      ]
+    },
+    {
+      "name": "Webhook onNextRestart rollout timing does not restart running pods stores recommendation metadata without restarting pods and a deliberate restart admits the recommended values",
+      "status": "passed",
+      "durationSeconds": 70.112423792,
+      "labels": [
+        "conformance",
+        "webhook"
+      ]
+    },
+    {
+      "name": "Parity: fleet and history explorer serves actual allocations and durable before/after records through a read-only API",
+      "status": "passed",
+      "durationSeconds": 8.28979,
+      "labels": [
+        "parity",
+        "reporting"
+      ]
+    },
+    {
+      "name": "Recommend and Auto modes with deterministic deployed metrics writes exact per-container recommendations without changing requests, limits or pods",
+      "status": "passed",
+      "durationSeconds": 4.060675208,
+      "labels": [
+        "smoke",
+        "modes",
+        "recommend"
+      ]
+    },
+    {
+      "name": "Recommend and Auto modes with deterministic deployed metrics applies both containers' exact values under an explicit Auto SSA policy and stays steady across a repeat reconcile",
+      "status": "passed",
+      "durationSeconds": 70.1365945,
+      "labels": [
+        "smoke",
+        "modes",
+        "auto",
+        "ssa"
+      ]
+    },
+    {
+      "name": "Provider faults skip without false application and processing resumes after restoration reports independent empty, invalid and unavailable faults without new application and recovers after valid data returns",
+      "status": "passed",
+      "durationSeconds": 136.387125708,
+      "labels": [
+        "conformance",
+        "metrics-fault"
+      ]
+    }
+  ]
+}

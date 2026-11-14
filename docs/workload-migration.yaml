@@ -1,0 +1,35 @@
+format: explicit workload migration configuration; see examples/migration and internal/migration/configuration.go
+input: effective settings in the documented migration schema; not an arbitrary console/API export wrapper
+command: go run ./cmd/optipodctl migrate -f examples/migration/qa-stability-1.yaml --namespace qa-canary --name qa-stability-1 --startup-mode ignore --coverage-percent 90 --minimum-history 24h
+output: Kubernetes OptimizationPolicy YAML on stdout; review notes on stderr and policy annotations
+behavior:
+  unknown_fields: rejected
+  unsupported_percentiles: rejected rather than rounded
+  missing_bounds_or_limits: rejected rather than inferred
+  mode: Recommend unless the source explicitly disables optimization
+  provider: Prometheus, configured on the controller
+  source_confidence: not converted to temporal coverage; supplied gates are independent
+  deferred: onNextRestart waits for natural admission; it does not opportunistically resize running pods
+  automatic_memory_limit: max(existing limit, 1.5 times recommended request, 128Mi); existing higher limits are never reduced
+  ownership: no forced SSA takeover or pod recreation enabled
+examples:
+  observed_profile_settings:
+    qa-stability-1: CPU P99 and memory maximum, 1.10 margins, seven days, two-minute startup period, immediate
+    qa-resiliency-1: CPU P95 and memory maximum, 1.15 CPU and 1.20 memory margins, seven days, two-minute startup period, deferred
+  explicit_review_required: source namespace/selectors, startup mode and resource bounds
+  illustrative_values: 50m-to-4 CPU and 64Mi-to-8Gi memory
+  note: Resource bounds are illustrative. Replace them with reviewed workload-specific settings.
+rollout:
+  - Export effective profile and per-workload overrides from the previously used clusters; DPV2 QA/prod may not reflect the established setup.
+  - Translate and review each profile; unknown fields stop translation. Validate generated YAML with server-side dry-run.
+  - Run Recommend using Prometheus with retained history. Verify peak periods and data-quality gates before selecting a canary.
+  - Disable existing workload automation from that canary before setting OptiPod Auto; two writers must not control the same resources.
+  - Test quotas, PDBs, HPA/KEDA, OOM recovery, actual pod resize and rollback. Keep explicit selectors during expansion.
+  - Compare requested CPU/memory and workload reliability. Reduced requests are not cash savings while node provisioning is unchanged.
+metrics_server: Test separately. Its bounded memory history warms again on controller restart; it is not equivalent to retained Prometheus history.
+rollback:
+  request: annotate workload metadata optipod.io/rollback-to with its optipod.io/latest-record value
+  requirements: latest immutable bound Auto record, same workload UID and policy revision, no conflicting resource/template change, no active OOM floor violation
+  outcome: restores controlled CPU/memory fields and sets optipod.io/paused=true
+  resume: clear both optipod.io/paused and optipod.io/rollback-to after investigation
+  retention: latest record and pending actions protected; otherwise at most 32 records and 30 days per workload on subsequent writes

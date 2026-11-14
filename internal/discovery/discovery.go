@@ -19,7 +19,12 @@ package discovery
 import (
 	"context"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+
 	appsv1 "k8s.io/api/apps/v1"
+	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -81,6 +86,12 @@ func DiscoverWorkloads(ctx context.Context, c client.Client, policy *optipodv1al
 			}
 			allWorkloads = append(allWorkloads, daemonSets...)
 		}
+		extended, err := discoverExtended(ctx, c, ns, policy)
+		if err != nil {
+			return nil, err
+		}
+		allWorkloads = append(allWorkloads, extended...)
+
 	}
 
 	return allWorkloads, nil
@@ -168,7 +179,7 @@ func discoverDeployments(ctx context.Context, c client.Client, namespace string,
 	var workloads []Workload //nolint:prealloc // Size unknown
 	for _, deployment := range deploymentList.Items {
 		workloads = append(workloads, Workload{
-			Kind:      "Deployment",
+			Kind:      kindDeployment,
 			Namespace: deployment.Namespace,
 			Name:      deployment.Name,
 			Labels:    deployment.Labels,
@@ -202,7 +213,7 @@ func discoverStatefulSets(ctx context.Context, c client.Client, namespace string
 	var workloads []Workload //nolint:prealloc // Size unknown
 	for _, statefulSet := range statefulSetList.Items {
 		workloads = append(workloads, Workload{
-			Kind:      "StatefulSet",
+			Kind:      kindStatefulSet,
 			Namespace: statefulSet.Namespace,
 			Name:      statefulSet.Name,
 			Labels:    statefulSet.Labels,
@@ -236,7 +247,7 @@ func discoverDaemonSets(ctx context.Context, c client.Client, namespace string, 
 	var workloads []Workload //nolint:prealloc // Size unknown
 	for _, daemonSet := range daemonSetList.Items {
 		workloads = append(workloads, Workload{
-			Kind:      "DaemonSet",
+			Kind:      kindDaemonSet,
 			Namespace: daemonSet.Namespace,
 			Name:      daemonSet.Name,
 			Labels:    daemonSet.Labels,
@@ -245,4 +256,66 @@ func discoverDaemonSets(ctx context.Context, c client.Client, namespace string, 
 	}
 
 	return workloads, nil
+}
+
+func discoverExtended(ctx context.Context, c client.Client, ns string, policy *optipodv1alpha1.OptimizationPolicy) ([]Workload, error) {
+	var allWorkloads []Workload
+	activeTypes := optipodv1alpha1.GetActiveWorkloadTypes(policy.Spec.Selector.WorkloadTypes)
+	for _, kind := range []string{kindJob, kindCronJob, kindReplicaSet, kindRollout} {
+		if !activeTypes.Contains(optipodv1alpha1.WorkloadType(kind)) {
+			continue
+		}
+		var list client.ObjectList
+		switch kind {
+		case kindJob:
+			list = &batchv1.JobList{}
+		case kindReplicaSet:
+			list = &appsv1.ReplicaSetList{}
+		case kindRollout:
+			list = &unstructured.UnstructuredList{Object: map[string]any{"apiVersion": "argoproj.io/v1alpha1", "kind": "RolloutList"}}
+		default:
+			list = &batchv1.CronJobList{}
+		}
+		options := []client.ListOption{client.InNamespace(ns)}
+		if policy.Spec.Selector.WorkloadSelector != nil {
+			selector, err := metav1.LabelSelectorAsSelector(policy.Spec.Selector.WorkloadSelector)
+			if err != nil {
+				return nil, err
+			}
+			options = append(options, client.MatchingLabelsSelector{Selector: selector})
+		}
+		if err := c.List(ctx, list, options...); err != nil {
+			if kind == kindRollout && (meta.IsNoMatchError(err) || apierrors.IsNotFound(err)) {
+				continue
+			}
+			return nil, err
+		}
+		objects := []client.Object{}
+		switch items := list.(type) {
+		case *appsv1.ReplicaSetList:
+			for i := range items.Items {
+				if metav1.GetControllerOf(&items.Items[i]) == nil {
+					objects = append(objects, &items.Items[i])
+				}
+			}
+		case *unstructured.UnstructuredList:
+			for i := range items.Items {
+				objects = append(objects, &items.Items[i])
+			}
+		case *batchv1.JobList:
+			for i := range items.Items {
+				if metav1.GetControllerOf(&items.Items[i]) == nil {
+					objects = append(objects, &items.Items[i])
+				}
+			}
+		case *batchv1.CronJobList:
+			for i := range items.Items {
+				objects = append(objects, &items.Items[i])
+			}
+		}
+		for _, obj := range objects {
+			allWorkloads = append(allWorkloads, Workload{Kind: kind, Namespace: ns, Name: obj.GetName(), Labels: obj.GetLabels(), Object: obj})
+		}
+	}
+	return allWorkloads, nil
 }

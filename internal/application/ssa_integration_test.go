@@ -166,7 +166,8 @@ func TestSSAIntegration(t *testing.T) {
 	policy := &optipodv1alpha1.OptimizationPolicy{
 		Spec: optipodv1alpha1.OptimizationPolicySpec{
 			UpdateStrategy: optipodv1alpha1.UpdateStrategy{
-				UpdateRequestsOnly: false,
+				AllowFieldOwnershipTakeover: true,
+				UpdateRequestsOnly:          false,
 			},
 		},
 	}
@@ -334,7 +335,8 @@ func TestSSAFieldOwnershipWithMultipleManagers(t *testing.T) {
 	policy := &optipodv1alpha1.OptimizationPolicy{
 		Spec: optipodv1alpha1.OptimizationPolicySpec{
 			UpdateStrategy: optipodv1alpha1.UpdateStrategy{
-				UpdateRequestsOnly: false,
+				AllowFieldOwnershipTakeover: true,
+				UpdateRequestsOnly:          false,
 			},
 		},
 	}

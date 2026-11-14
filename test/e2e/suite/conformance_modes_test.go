@@ -135,6 +135,9 @@ var _ = Describe("Disabled, Recommend and Auto transitions change actual workloa
 			p.Spec.Mode = optipodv1alpha1.ModeAuto
 			ssa := string(optipodv1alpha1.StrategySSA)
 			p.Spec.UpdateStrategy.Strategy = &ssa
+			p.Spec.UpdateStrategy.AllowInPlaceResize = false
+			p.Spec.UpdateStrategy.AllowRecreate = true
+			p.Spec.UpdateStrategy.AllowFieldOwnershipTakeover = true
 		})
 		waitForDeploymentRequests(ctx, ns.Name, workload.Name, smokeApp.name,
 			smokeApp.expectedCPU, smokeApp.expectedMemory)

@@ -20,6 +20,9 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
+
+	"k8s.io/client-go/util/retry"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -52,7 +55,11 @@ func NewAnnotationManager(k8sClient client.Client) *AnnotationManager {
 }
 
 // StoreRecommendations stores resource recommendations as annotations on a workload
-func (am *AnnotationManager) StoreRecommendations(ctx context.Context, workload client.Object, recommendations []ResourceRecommendation) error {
+func (am *AnnotationManager) StoreRecommendations(ctx context.Context, workload client.Object, recommendations []ResourceRecommendation, policies ...*optipodv1alpha1.OptimizationPolicy) error {
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error { return am.storeRecommendationsOnce(ctx, workload, recommendations, policies...) })
+}
+func (am *AnnotationManager) storeRecommendationsOnce(ctx context.Context, workload client.Object, recommendations []ResourceRecommendation, policies ...*optipodv1alpha1.OptimizationPolicy) error {
+
 	log := annotationLog.WithValues("workload", fmt.Sprintf("%s/%s", workload.GetNamespace(), workload.GetName()))
 
 	log.V(1).Info("Storing resource recommendations as annotations", "recommendations", len(recommendations))
@@ -62,6 +69,9 @@ func (am *AnnotationManager) StoreRecommendations(ctx context.Context, workload 
 	if err := am.client.Get(ctx, client.ObjectKeyFromObject(workload), current); err != nil {
 		return fmt.Errorf("failed to get current workload: %w", err)
 	}
+	if current.GetUID() != workload.GetUID() {
+		return fmt.Errorf("workload identity changed before storing recommendations")
+	}
 
 	// Initialize annotations if nil
 	if current.GetAnnotations() == nil {
@@ -69,6 +79,22 @@ func (am *AnnotationManager) StoreRecommendations(ctx context.Context, workload 
 	}
 
 	annotations := current.GetAnnotations()
+	if len(policies) > 0 {
+		// The controller stores a complete plan: remove stale keys belonging
+		// to containers that were removed or excluded in the new policy.
+		am.clearRecommendationAnnotations(annotations)
+		StampRecommendations(annotations, policies[0], time.Now())
+	}
+	annotations[RecommendationHash] = resourcePlanHash(recommendations)
+	for _, rec := range recommendations {
+		if rec.ValidUntil.IsZero() {
+			continue
+		}
+		expires, _ := time.Parse(time.RFC3339Nano, annotations[RecommendationExpiry])
+		if expires.IsZero() || rec.ValidUntil.Before(expires) {
+			annotations[RecommendationExpiry] = rec.ValidUntil.UTC().Format(time.RFC3339Nano)
+		}
+	}
 
 	// Clear existing recommendation annotations for the containers being stored
 	// only. Keys belonging to other containers are preserved so consecutive
@@ -77,7 +103,7 @@ func (am *AnnotationManager) StoreRecommendations(ctx context.Context, workload 
 	am.clearContainerRecommendationAnnotations(annotations, recommendations)
 
 	// Set webhook-specific annotations
-	annotations[optipodv1alpha1.AnnotationWebhookEnabled] = "true"
+	annotations[optipodv1alpha1.AnnotationWebhookEnabled] = trueValue
 	annotations[optipodv1alpha1.AnnotationStrategy] = string(optipodv1alpha1.StrategyWebhook)
 
 	// Store recommendations as annotations

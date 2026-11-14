@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -270,6 +271,7 @@ func TestMutatorPatchesEveryRecommendedContainer(t *testing.T) {
 
 	k8sClient := createFakeClient(policy)
 	mutator := NewMutator(k8sClient, createTestEventRecorder())
+	StampRecommendations(pod.Annotations, policy, time.Now())
 
 	response := mutator.MutatePod(&AdmissionRequest{Pod: pod, DryRun: false})
 

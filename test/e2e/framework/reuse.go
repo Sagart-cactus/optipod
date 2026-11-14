@@ -86,7 +86,7 @@ func bindKubeconfigToCluster(ctx context.Context, run commandRunner, kindPath, n
 		return fmt.Errorf("refusing to reuse cluster %q: private kubeconfig %q has no server endpoint", name, kubeconfig)
 	}
 
-	out, err := run(ctx, kindPath, "get", "kubeconfig", "--name", name)
+	out, err := run(ctx, kindPath, "get", "kubeconfig", nameFlag, name)
 	if err != nil {
 		return fmt.Errorf("read kind kubeconfig for %q: %w (%s)", name, err, strings.TrimSpace(string(out)))
 	}

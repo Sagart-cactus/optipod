@@ -3,6 +3,7 @@ package suite
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -102,7 +103,7 @@ var _ = Describe("Live TLS webhook admission through the installed API", Label("
 		By("creating the hand-labelled eligible probe pod through the real API")
 		eligibleName, err := framework.UniqueName("probe-eligible")
 		Expect(err).NotTo(HaveOccurred(), "generate unique eligible probe name")
-		eligiblePod := newAdmissionProbePod(ns.Name, eligibleName, true, probeRecommendationAnnotations(true))
+		eligiblePod := newAdmissionProbePod(ns.Name, eligibleName, true, probeRecommendationAnnotations(true, policy))
 		admitted, err := env.Clients.Kube.CoreV1().Pods(ns.Name).Create(ctx, eligiblePod, metav1.CreateOptions{})
 		Expect(err).NotTo(HaveOccurred(), "the real API must admit the eligible probe pod")
 
@@ -226,8 +227,13 @@ func newAdmissionProbePod(namespace, name string, enablingLabel bool, annotation
 // deployed webhook strategy stores on workloads and the pod mutator reads.
 // withWebhookEnabled also sets the optipod.io/webhook-enabled annotation the
 // deployed mutator requires before it will consider a pod eligible.
-func probeRecommendationAnnotations(withWebhookEnabled bool) map[string]string {
+func probeRecommendationAnnotations(withWebhookEnabled bool, policies ...*optipodv1alpha1.OptimizationPolicy) map[string]string {
 	annotations := map[string]string{}
+	if len(policies) > 0 {
+		annotations["optipod.io/applied-policy-uid"] = string(policies[0].UID)
+		annotations["optipod.io/applied-policy-generation"] = strconv.FormatInt(policies[0].Generation, 10)
+		annotations["optipod.io/recommendation-expires-at"] = time.Now().Add(15 * time.Minute).UTC().Format(time.RFC3339Nano)
+	}
 	if withWebhookEnabled {
 		annotations[optipodv1alpha1.AnnotationWebhookEnabled] = "true"
 	}

@@ -35,6 +35,7 @@ go.work.sum
 /bin/
 /main
 /optipod
+.dev/
 manager
 
 # Test artifacts and logs

@@ -316,6 +316,7 @@ func TestCanApplyLogging(t *testing.T) {
 					Mode: tt.policyMode,
 					UpdateStrategy: optipodv1alpha1.UpdateStrategy{
 						AllowInPlaceResize: tt.allowInPlace,
+						RolloutStrategy:    strPtrTest("immediate"),
 						AllowRecreate:      tt.allowRecreate,
 					},
 				},

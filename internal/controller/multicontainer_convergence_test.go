@@ -128,6 +128,7 @@ func createTwoContainerAutoFixture(ctx context.Context, namespace, deploymentNam
 		},
 	}
 	Expect(k8sClient.Create(ctx, deployment)).To(Succeed())
+	markEnvtestDeploymentReady(ctx, deployment)
 
 	// The production processor resolves the workload's pod by selector before
 	// collecting metrics, so a matching pod must exist in the API.
@@ -175,8 +176,10 @@ func createTwoContainerAutoFixture(ctx context.Context, namespace, deploymentNam
 				},
 			},
 			UpdateStrategy: optipodv1alpha1.UpdateStrategy{
-				AllowInPlaceResize: true,
-				UpdateRequestsOnly: true,
+				AllowRecreate:               true,
+				AllowFieldOwnershipTakeover: true,
+				AllowInPlaceResize:          true,
+				UpdateRequestsOnly:          true,
 			},
 		},
 	}

@@ -82,8 +82,9 @@ func TestApplyUpdateRequestsOnlySSAOutcome(t *testing.T) {
 			Spec: optipodv1alpha1.OptimizationPolicySpec{
 				Mode: optipodv1alpha1.ModeAuto,
 				UpdateStrategy: optipodv1alpha1.UpdateStrategy{
-					Strategy:           &ssaStrategy,
-					UpdateRequestsOnly: updateRequestsOnly,
+					AllowFieldOwnershipTakeover: true,
+					Strategy:                    &ssaStrategy,
+					UpdateRequestsOnly:          updateRequestsOnly,
 				},
 			},
 		}

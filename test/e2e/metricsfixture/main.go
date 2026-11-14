@@ -48,12 +48,15 @@ const (
 // Series describes the deterministic CPU (cores) and memory (bytes) samples for
 // one namespace/pod/container target.
 type Series struct {
-	Namespace   string    `json:"namespace"`
-	Pod         string    `json:"pod"`
-	Container   string    `json:"container"`
-	Mode        string    `json:"mode"` // empty means present
-	CPUCores    []float64 `json:"cpuCores,omitempty"`
-	MemoryBytes []float64 `json:"memoryBytes,omitempty"`
+	AgeSeconds     float64   `json:"ageSeconds,omitempty"`
+	SpacingSeconds float64   `json:"spacingSeconds,omitempty"`
+	FixedEnd       float64   `json:"fixedEnd,omitempty"`
+	Namespace      string    `json:"namespace"`
+	Pod            string    `json:"pod"`
+	Container      string    `json:"container"`
+	Mode           string    `json:"mode"` // empty means present
+	CPUCores       []float64 `json:"cpuCores,omitempty"`
+	MemoryBytes    []float64 `json:"memoryBytes,omitempty"`
 }
 
 type seriesKey struct {
@@ -69,6 +72,9 @@ func keyOf(namespace, pod, container string) seriesKey {
 // recordedQuery captures one query_range request issued against the fixture so
 // tests can prove what the deployed controller actually requested.
 type recordedQuery struct {
+	Start string    `json:"start"`
+	End   string    `json:"end"`
+	Step  string    `json:"step"`
 	Time  time.Time `json:"time"`
 	Query string    `json:"query"`
 }
@@ -187,7 +193,7 @@ func (s *server) handleQueryRange(w http.ResponseWriter, r *http.Request) {
 
 	s.mu.Lock()
 	if len(s.trace) < maxTraceEntries {
-		s.trace = append(s.trace, recordedQuery{Time: time.Now().UTC(), Query: query})
+		s.trace = append(s.trace, recordedQuery{Time: time.Now().UTC(), Query: query, Start: r.FormValue("start"), End: r.FormValue("end"), Step: r.FormValue("step")})
 	}
 	k := parseLabels(query)
 	series, ok := s.series[k]
@@ -232,12 +238,28 @@ func (s *server) handleQueryRange(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	start, end, step := parseRange(r)
+	start, end, _ := parseRange(r)
+	var step float64
+	// Compact synthetic observations fit within the lifetime of the real
+	// freshly created test pod. Tests can explicitly model old/sparse history.
+	if series.SpacingSeconds > 0 {
+		step = series.SpacingSeconds
+	} else {
+		step = 0.1
+	}
+	sampleEnd := end - series.AgeSeconds
+	if series.FixedEnd > 0 {
+		sampleEnd = series.FixedEnd
+	}
+	if strings.HasPrefix(query, "timestamp(") {
+		samples = []float64{sampleEnd}
+		sampleEnd = end
+	}
 	values := make([][2]interface{}, 0, len(samples))
 	for i, v := range samples {
-		ts := start + float64(i)*step
-		if ts > end {
-			break
+		ts := sampleEnd - float64(len(samples)-1-i)*step
+		if ts < start || ts > end {
+			continue
 		}
 		values = append(values, [2]interface{}{ts, strconv.FormatFloat(v, 'f', -1, 64)})
 	}
@@ -274,7 +296,7 @@ func parseRange(r *http.Request) (start, end, step float64) {
 	start, err1 := strconv.ParseFloat(r.FormValue("start"), 64)
 	end, err2 := strconv.ParseFloat(r.FormValue("end"), 64)
 	step, err3 := strconv.ParseFloat(r.FormValue("step"), 64)
-	if err1 != nil || err2 != nil || err3 != nil || step <= 0 || end <= start {
+	if err1 != nil || err2 != nil || err3 != nil || step <= 0 || end < start {
 		return now - 3600, now, 30
 	}
 	return start, end, step
@@ -404,6 +426,10 @@ func (s *server) handleScrapeMetrics(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
+	if os.Getenv("INJECTOR_TLS_CERT") != "" {
+		runInjector()
+		return
+	}
 	port := os.Getenv("FIXTURE_PORT")
 	if port == "" {
 		port = "9090"
