@@ -1,14 +1,49 @@
 image:
-  repository: optipod-console
-  tag: "0.1.0"
+  repository: ghcr.io/sagart-cactus/optipod-console
+  tag: "0.3.0"
   pullPolicy: IfNotPresent
+
+global:
+  imagePullSecrets: []
+
+# Evaluation only: one PostgreSQL replica and a retained PVC, without HA/PITR.
+# Use an operated external PostgreSQL service for production.
+postgresql:
+  enabled: false
+  auth:
+    existingSecret: ""
+    create: false
+    password: ""
+
+networkPolicy:
+  enabled: false
+  # Explicit ingress from your UI ingress and agent source networks.
+  ingress: []
+  # Explicit egress to the Kubernetes API, console endpoint and IdP as needed.
+  egress: []
 
 server:
   enabled: true
   replicas: 1
   # Existing Secret containing config.json and database-url. Never put tokens
-  # or database passwords in Helm values. OIDC secret files can live here too.
+  # or database passwords in committed Helm values. OIDC secret files can live here too.
   existingSecret: ""
+  secret:
+    create: false
+    config: {}
+    databaseURL: ""
+  env: []
+  agentTLS:
+    enabled: false
+    publicURL: ""
+    existingSecret: ""
+    secret:
+      create: false
+      data: {}
+    service:
+      type: ClusterIP
+      port: 8443
+      nodePort: null
   retentionDays: 90
   configRevision: ""
   service:
@@ -32,6 +67,11 @@ agent:
   # Choose either an existing Secret containing key token or secret.create.
   # This credential is bound to clusterID by the server configuration.
   existingSecret: ""
+  env: []
+  serviceAccountAnnotations: {}
+  identity:
+    enabled: false
+  caSecret: ""
   secret:
     # Opt in to a release-owned Secret named <release>-agent-auth.
     # Helm removes it on uninstall; it does not adopt an existing Secret.
@@ -41,6 +81,8 @@ agent:
     # and rendered Secrets in release history; restrict access accordingly.
     # No token is generated automatically. Never commit real tokens to Git.
     token: ""
+    # Private JSON identity produced by enroll; use --set-file, never Git.
+    identity: ""
   namespaces: []
   interval: 1m
   queueBytes: 268435456

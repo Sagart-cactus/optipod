@@ -15,7 +15,10 @@ var schema string
 //go:embed onboarding.sql
 var onboardingSchema string
 
-const SchemaVersion = 2
+//go:embed management.sql
+var managementSchema string
+
+const SchemaVersion = 3
 
 type Store struct{ Pool *pgxpool.Pool }
 
@@ -67,6 +70,14 @@ func (s *Store) Migrate(ctx context.Context) error {
 			return err
 		}
 		if _, err = tx.Exec(ctx, `UPDATE op_schema SET version=2`); err != nil {
+			return err
+		}
+	}
+	if version < 3 {
+		if _, err = tx.Exec(ctx, managementSchema); err != nil {
+			return err
+		}
+		if _, err = tx.Exec(ctx, `UPDATE op_schema SET version=3`); err != nil {
 			return err
 		}
 	}

@@ -2,6 +2,7 @@ package console
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strconv"
 )
@@ -50,15 +51,15 @@ func (s *Store) List(ctx context.Context, kind string, q Query) (*Page, error) {
 			filter += " AND NOT deleted"
 		}
 	}
-	args := []any{q.Clusters, q.Cluster, q.Namespace, q.UID, q.Search, cursor, q.Limit + 1, q.Namespaces}
+	args := []any{q.Clusters, q.Cluster, q.Namespace, q.UID, q.Search, cursor, q.Limit + 1, q.Namespaces, namespaceScopeValue(q.NamespaceScopes)}
 	if kind == resourceWorkloads && q.Mode != "" {
 		args = append(args, q.Mode)
-		filter += " AND mode=$9"
+		filter += " AND mode=$10"
 	}
 	rows, err := s.Pool.Query(ctx, `SELECT id,cluster_id,observed_at,`+deleted+`,data FROM `+table+`
 	 WHERE cluster_id=ANY($1) AND ($2='' OR cluster_id=$2) AND ($3='' OR namespace=$3)
 	 AND ($4='' OR uid=$4) AND ($5='' OR strpos(lower(name||' '||namespace),lower($5))>0)
-	 AND ($6::bigint=0 OR id<$6) AND (COALESCE(cardinality($8::text[]),0)=0 OR namespace=ANY($8)) `+filter+` ORDER BY id DESC LIMIT $7`, args...)
+	 AND ($6::bigint=0 OR id<$6) AND (COALESCE(cardinality($8::text[]),0)=0 OR namespace=ANY($8)) `+namespaceScopeSQL("$9")+filter+` ORDER BY id DESC LIMIT $7`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -76,4 +77,17 @@ func (s *Store) List(ctx context.Context, kind string, q Query) (*Page, error) {
 		p.NextCursor = strconv.FormatInt(p.Items[len(p.Items)-1].ID, 10)
 	}
 	return p, rows.Err()
+}
+
+// Per-cluster namespace unions prevent group A's namespace grant leaking into
+// group B's clusters. Filtering remains inside SQL, before pagination/counts.
+func namespaceScopeValue(scopes map[string][]string) any {
+	if scopes == nil {
+		return nil
+	}
+	data, _ := json.Marshal(scopes)
+	return data
+}
+func namespaceScopeSQL(parameter string) string {
+	return " AND (" + parameter + "::jsonb IS NULL OR (" + parameter + "::jsonb ? cluster_id AND (jsonb_array_length(" + parameter + "::jsonb->cluster_id)=0 OR (" + parameter + "::jsonb->cluster_id) ? namespace)))"
 }

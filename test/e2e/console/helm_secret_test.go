@@ -174,7 +174,7 @@ func helmSecretEnvironment(t *testing.T) (context.Context, []*framework.Clients,
 func helmCommand(t *testing.T, ctx context.Context, kubeconfig string, args ...string) []byte {
 	t.Helper()
 	args = append(args, "--kubeconfig", kubeconfig, "--namespace", consoleNamespace)
-	output, err := exec.CommandContext(ctx, "helm", args...).CombinedOutput()
+	output, err := exec.CommandContext(ctx, "helm", args...).Output()
 	if err != nil {
 		// Helm may print rendered credentials. Do not include its output in CI logs.
 		t.Fatalf("helm %s failed: %v (output omitted to protect credentials)", args[0], err)

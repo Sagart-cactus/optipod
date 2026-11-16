@@ -106,11 +106,12 @@ func (s *Server) enroll(w http.ResponseWriter, r *http.Request) {
 	var input struct {
 		ClusterID string `json:"clusterID"`
 		KubeUID   string `json:"kubeUID"`
+		CSR       string `json:"csr,omitempty"`
 	}
 	if !decodeInput(w, r, &input) {
 		return
 	}
-	credential, err := s.Store.RedeemEnrollment(r.Context(), bearer(r), input.ClusterID, input.KubeUID)
+	credential, err := s.Store.redeemEnrollment(r.Context(), bearer(r), input.ClusterID, input.KubeUID, s.Authority, input.CSR)
 	if err != nil {
 		s.onboardingError(w, err)
 		return
@@ -137,6 +138,11 @@ func (s *Server) adminRoute(w http.ResponseWriter, r *http.Request) {
 	case "/api/admin/clusters":
 		if r.Method == http.MethodPost {
 			s.registerCluster(w, r, reader.Subject)
+		} else if r.Method == http.MethodPut {
+			var input Registration
+			if decodeInput(w, r, &input) {
+				s.adminResult(w, map[string]bool{savedKey: true}, s.Store.UpdateRegistration(r.Context(), reader.Subject, input))
+			}
 		} else if validateMethod(w, r, http.MethodGet) {
 			result, err := s.Store.Registrations(r.Context())
 			s.adminResult(w, result, err)
@@ -148,6 +154,14 @@ func (s *Server) adminRoute(w http.ResponseWriter, r *http.Request) {
 			}
 			if decodeInput(w, r, &input) {
 				result, err := s.Store.IssueEnrollment(r.Context(), reader.Subject, input.ClusterID)
+				if err == nil {
+					result.ConsoleURL = s.Config.PublicURL
+					result.ServerURL = s.Config.PublicURL
+					if s.Config.AgentTLS != nil {
+						result.ServerURL = s.Config.AgentTLS.PublicURL
+						result.CAPEM = s.AgentTrustPEM
+					}
+				}
 				s.adminResult(w, result, err)
 			}
 		}
@@ -184,7 +198,7 @@ func (s *Server) adminRoute(w http.ResponseWriter, r *http.Request) {
 		result, err := s.Store.Audit(r.Context(), before)
 		s.adminResult(w, result, err)
 	default:
-		http.NotFound(w, r)
+		s.managementRoute(w, r, reader.Subject)
 	}
 }
 
@@ -201,6 +215,11 @@ func (s *Server) registerCluster(w http.ResponseWriter, r *http.Request, actor s
 	if !decodeInput(w, r, &input) {
 		return
 	}
+	if input.RequireMTLS && s.Authority == nil {
+		s.onboardingError(w, ErrInvalid)
+		return
+	}
+	input.RequireMTLS = s.Authority != nil
 	// Legacy registrations are authoritative until explicitly migrated; never
 	// allow onboarding to take over an existing collector or its history.
 	for _, a := range s.Config.Agents {

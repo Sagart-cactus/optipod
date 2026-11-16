@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/optipod/optipod/internal/consoletls"
+
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"k8s.io/apimachinery/pkg/util/validation"
@@ -16,20 +18,26 @@ var ErrDenied = errors.New("credential is invalid, expired, used or revoked")
 var ErrInvalid = errors.New("invalid onboarding configuration")
 
 type Registration struct {
-	ID            string     `json:"id"`
-	Name          string     `json:"name"`
-	Environment   string     `json:"environment"`
-	KubeUID       string     `json:"kubeUID"`
-	Namespaces    []string   `json:"namespaces"`
-	MetricsSource string     `json:"metricsSource"`
-	InstallMode   string     `json:"installMode"`
-	InstallMethod string     `json:"installMethod"`
-	Disconnected  bool       `json:"disconnected"`
-	CreatedAt     time.Time  `json:"createdAt"`
-	ReceivedAt    *time.Time `json:"receivedAt,omitempty"`
+	ID            string       `json:"id"`
+	Name          string       `json:"name"`
+	Environment   string       `json:"environment"`
+	KubeUID       string       `json:"kubeUID"`
+	Namespaces    []string     `json:"namespaces"`
+	MetricsSource string       `json:"metricsSource"`
+	InstallMode   string       `json:"installMode"`
+	InstallMethod string       `json:"installMethod"`
+	Disconnected  bool         `json:"disconnected"`
+	CreatedAt     time.Time    `json:"createdAt"`
+	ReceivedAt    *time.Time   `json:"receivedAt,omitempty"`
+	Installation  Installation `json:"installation"`
+	Revision      int64        `json:"revision"`
+	RequireMTLS   bool         `json:"requireMTLS"`
 }
 
 func (r Registration) Validate() error {
+	if err := r.Installation.Validate(); err != nil {
+		return err
+	}
 	if r.Disconnected || !r.CreatedAt.IsZero() || r.ReceivedAt != nil {
 		return ErrInvalid
 	}
@@ -51,10 +59,18 @@ func (r Registration) Validate() error {
 }
 
 type IssuedCredential struct {
-	ID        string    `json:"id"`
-	ClusterID string    `json:"clusterID"`
-	Token     string    `json:"token"`
-	ExpiresAt time.Time `json:"expiresAt"`
+	ID                 string        `json:"id"`
+	ClusterID          string        `json:"clusterID"`
+	Token              string        `json:"token"`
+	ExpiresAt          time.Time     `json:"expiresAt"`
+	RequireMTLS        bool          `json:"requireMTLS,omitempty"`
+	Certificate        string        `json:"certificate,omitempty"`
+	CertificateExpires *time.Time    `json:"certificateExpires,omitempty"`
+	CAPEM              string        `json:"caPEM,omitempty"`
+	ServerURL          string        `json:"serverURL,omitempty"`
+	ConsoleURL         string        `json:"consoleURL,omitempty"`
+	KubeUID            string        `json:"kubeUID,omitempty"`
+	Registration       *Registration `json:"registration,omitempty"`
 }
 
 type CredentialInfo struct {
@@ -125,8 +141,9 @@ func (s *Store) Register(ctx context.Context, actor string, r Registration) erro
 	if existing {
 		return ErrConflict
 	}
-	_, err = tx.Exec(ctx, `INSERT INTO op_registrations(id,name,environment,kube_uid,namespaces,metrics_source,install_mode,install_method)
-	 VALUES($1,$2,$3,$4,$5,$6,$7,$8)`, r.ID, r.Name, r.Environment, r.KubeUID, r.Namespaces, r.MetricsSource, r.InstallMode, r.InstallMethod)
+	installation, _ := json.Marshal(r.Installation)
+	_, err = tx.Exec(ctx, `INSERT INTO op_registrations(id,name,environment,kube_uid,namespaces,metrics_source,install_mode,install_method,installation,require_mtls)
+	 VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`, r.ID, r.Name, r.Environment, r.KubeUID, r.Namespaces, r.MetricsSource, r.InstallMode, r.InstallMethod, installation, r.RequireMTLS)
 	if err != nil {
 		return err
 	}
@@ -137,7 +154,7 @@ func (s *Store) Register(ctx context.Context, actor string, r Registration) erro
 }
 
 func (s *Store) Registrations(ctx context.Context) ([]Registration, error) {
-	rows, err := s.Pool.Query(ctx, `SELECT r.id,r.name,r.environment,r.kube_uid,r.namespaces,r.metrics_source,r.install_mode,r.install_method,r.disconnected,r.created_at,c.received_at
+	rows, err := s.Pool.Query(ctx, `SELECT r.id,r.name,r.environment,r.kube_uid,r.namespaces,r.metrics_source,r.install_mode,r.install_method,r.disconnected,r.created_at,c.received_at,r.installation,r.revision,r.require_mtls
 	 FROM op_registrations r LEFT JOIN op_clusters c ON c.id=r.id ORDER BY r.created_at,r.id LIMIT 1000`)
 	if err != nil {
 		return nil, err
@@ -146,7 +163,7 @@ func (s *Store) Registrations(ctx context.Context) ([]Registration, error) {
 	result := []Registration{}
 	for rows.Next() {
 		var r Registration
-		if err = rows.Scan(&r.ID, &r.Name, &r.Environment, &r.KubeUID, &r.Namespaces, &r.MetricsSource, &r.InstallMode, &r.InstallMethod, &r.Disconnected, &r.CreatedAt, &r.ReceivedAt); err != nil {
+		if err = rows.Scan(&r.ID, &r.Name, &r.Environment, &r.KubeUID, &r.Namespaces, &r.MetricsSource, &r.InstallMode, &r.InstallMethod, &r.Disconnected, &r.CreatedAt, &r.ReceivedAt, &r.Installation, &r.Revision, &r.RequireMTLS); err != nil {
 			return nil, err
 		}
 		result = append(result, r)
@@ -166,17 +183,20 @@ func (s *Store) IssueEnrollment(ctx context.Context, actor, clusterID string) (*
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	var disconnected bool
-	if err = tx.QueryRow(ctx, `SELECT disconnected FROM op_registrations WHERE id=$1 FOR UPDATE`, clusterID).Scan(&disconnected); err != nil {
+	reg := Registration{ID: clusterID}
+	if err = tx.QueryRow(ctx, `SELECT name,environment,kube_uid,namespaces,metrics_source,install_mode,install_method,installation,require_mtls,disconnected FROM op_registrations WHERE id=$1 FOR UPDATE`, clusterID).Scan(&reg.Name, &reg.Environment, &reg.KubeUID, &reg.Namespaces, &reg.MetricsSource, &reg.InstallMode, &reg.InstallMethod, &reg.Installation, &reg.RequireMTLS, &reg.Disconnected); err != nil {
 		return nil, err
 	}
-	if disconnected {
+	if reg.Disconnected {
 		return nil, ErrDenied
 	}
 	c, err := issueCredential(ctx, tx, clusterID, "enrollment", 10*time.Minute)
 	if err != nil {
 		return nil, err
 	}
+	c.Registration = &reg
+	c.KubeUID = reg.KubeUID
+	c.RequireMTLS = reg.RequireMTLS
 	if err = audit(ctx, tx, actor, "enrollment.issue", clusterID, map[string]string{credentialIDKey: c.ID}); err != nil {
 		return nil, err
 	}
@@ -184,20 +204,36 @@ func (s *Store) IssueEnrollment(ctx context.Context, actor, clusterID string) (*
 }
 
 func (s *Store) RedeemEnrollment(ctx context.Context, token, clusterID, kubeUID string) (*IssuedCredential, error) {
+	return s.redeemEnrollment(ctx, token, clusterID, kubeUID, nil, "")
+}
+
+func (s *Store) redeemEnrollment(ctx context.Context, token, clusterID, kubeUID string, authority *consoletls.Authority, csr string) (*IssuedCredential, error) {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	var id string
-	err = tx.QueryRow(ctx, `SELECT c.id FROM op_credentials c JOIN op_registrations r ON r.id=c.cluster_id
-	 WHERE c.token_hash=$1 AND c.kind='enrollment' AND c.cluster_id=$2 AND r.kube_uid=$3 AND NOT r.disconnected
-	 AND c.expires_at>now() AND c.used_at IS NULL AND c.revoked_at IS NULL FOR UPDATE OF c,r`, TokenHash(token), clusterID, kubeUID).Scan(&id)
+	var requireMTLS bool
+	// Use the same registration-before-credential lock order as disconnect and issuance.
+	err = tx.QueryRow(ctx, `SELECT require_mtls FROM op_registrations WHERE id=$1 AND kube_uid=$2 AND NOT disconnected FOR UPDATE`, clusterID, kubeUID).Scan(&requireMTLS)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrDenied
 	}
 	if err != nil {
 		return nil, err
+	}
+	err = tx.QueryRow(ctx, `SELECT id FROM op_credentials
+ WHERE token_hash=$1 AND kind='enrollment' AND cluster_id=$2
+ AND expires_at>now() AND used_at IS NULL AND revoked_at IS NULL FOR UPDATE`, TokenHash(token), clusterID).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, ErrDenied
+	}
+	if err != nil {
+		return nil, err
+	}
+	if requireMTLS && (authority == nil || csr == "") {
+		return nil, ErrDenied
 	}
 	if _, err = tx.Exec(ctx, `UPDATE op_credentials SET used_at=now() WHERE id=$1`, id); err != nil {
 		return nil, err
@@ -205,6 +241,18 @@ func (s *Store) RedeemEnrollment(ctx context.Context, token, clusterID, kubeUID 
 	c, err := issueCredential(ctx, tx, clusterID, "runtime", 90*24*time.Hour)
 	if err != nil {
 		return nil, err
+	}
+	if requireMTLS {
+		certificate, hash, expires, e := authority.Sign(csr, c.ID, clusterID)
+		if e != nil {
+			return nil, ErrInvalid
+		}
+		if _, err = tx.Exec(ctx, `UPDATE op_credentials SET public_key_hash=$2 WHERE id=$1`, c.ID, hash); err != nil {
+			return nil, err
+		}
+		c.Certificate = certificate
+		c.CertificateExpires = &expires
+		c.RequireMTLS = true
 	}
 	if err = audit(ctx, tx, "enrollment:"+id, "enrollment.redeem", clusterID, map[string]string{credentialIDKey: c.ID}); err != nil {
 		return nil, err

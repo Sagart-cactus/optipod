@@ -64,6 +64,9 @@ func (s *Store) Ingest(ctx context.Context, id, name string, b *Batch) error {
 		}
 	}
 	if b.Complete {
+		if _, err = tx.Exec(ctx, `INSERT INTO op_notifications(event_key,cluster_id,kind,message) VALUES($1,$2,'connected','First complete cluster inventory received') ON CONFLICT DO NOTHING`, id+":connected", id); err != nil {
+			return err
+		}
 		for _, table := range []string{"op_workloads", "op_policies"} {
 			if _, err = tx.Exec(ctx, "UPDATE "+table+" SET deleted=true WHERE cluster_id=$1 AND run_id<>$2", id, b.RunID); err != nil {
 				return err

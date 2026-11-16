@@ -13,6 +13,9 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/optipod/optipod/internal/consoletls"
+	"github.com/optipod/optipod/internal/consoleversion"
 )
 
 //go:embed ui/*
@@ -21,9 +24,11 @@ var assets embed.FS
 const MaxBatchBytes = 8 * 1024 * 1024
 
 type Server struct {
-	Store  *Store
-	Config Config
-	OIDC   *LoginProvider
+	Store         *Store
+	Config        Config
+	OIDC          *LoginProvider
+	Authority     *consoletls.Authority
+	AgentTrustPEM string
 }
 
 func (s *Server) Handler() http.Handler {
@@ -32,6 +37,16 @@ func (s *Server) Handler() http.Handler {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Referrer-Policy", "no-referrer")
 		w.Header().Set("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
+		if r.URL.Path == "/api/version" {
+			if validateMethod(w, r, http.MethodGet) {
+				writeJSON(w, map[string]any{"version": consoleversion.Version, "protocol": ProtocolVersion, "chartVersion": consoleversion.ChartVersion})
+			}
+			return
+		}
+		if r.URL.Path == "/api/renew" {
+			s.renewIdentity(w, r)
+			return
+		}
 		if r.URL.Path == "/healthz" {
 			w.WriteHeader(200)
 			return
@@ -50,6 +65,10 @@ func (s *Server) Handler() http.Handler {
 		}
 		if r.URL.Path == "/api/enroll" {
 			s.enroll(w, r)
+			return
+		}
+		if r.URL.Path == "/api/heartbeat" {
+			s.heartbeat(w, r)
 			return
 		}
 		u, _ := url.Parse(s.Config.PublicURL)
@@ -110,7 +129,7 @@ func (s *Server) route(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.URL.Path == "/api/me" {
-		writeJSON(w, map[string]any{"subject": reader.Subject, "role": reader.Role, "clusters": reader.Clusters, "namespaces": reader.Namespaces})
+		writeJSON(w, map[string]any{"subject": reader.Subject, "role": reader.Role, "clusters": reader.Clusters, "namespaces": reader.Namespaces, "namespaceScopes": reader.NamespaceScopes})
 		return
 	}
 	if r.URL.Path == "/api/clusters" {
@@ -119,9 +138,9 @@ func (s *Server) route(w http.ResponseWriter, r *http.Request) {
 			s.unavailable(w, err)
 			return
 		}
-		if len(reader.Namespaces) > 0 {
+		if len(reader.Namespaces) > 0 || len(reader.NamespaceScopes) > 0 {
 			for i := range clusters {
-				if len(clusters[i].Warnings) > 0 {
+				if len(clusters[i].Warnings) > 0 && (len(reader.Namespaces) > 0 || len(reader.NamespaceScopes[clusters[i].ID]) > 0) {
 					clusters[i].Warnings = []string{"Some observations are incomplete; collection warnings require cluster-wide access."}
 				}
 			}
@@ -174,7 +193,7 @@ func (s *Server) list(w http.ResponseWriter, r *http.Request, reader *Reader) {
 			return
 		}
 	}
-	page, err := s.Store.List(r.Context(), kind, Query{Clusters: reader.Clusters, Namespaces: reader.Namespaces, Cluster: cluster, Namespace: ns, UID: q.Get("uid"), Search: q.Get("search"), Mode: q.Get("mode"), Cursor: q.Get("cursor"), Limit: limit, IncludeDeleted: q.Get("deleted") == "true"})
+	page, err := s.Store.List(r.Context(), kind, Query{NamespaceScopes: reader.NamespaceScopes, Clusters: reader.Clusters, Namespaces: reader.Namespaces, Cluster: cluster, Namespace: ns, UID: q.Get("uid"), Search: q.Get("search"), Mode: q.Get("mode"), Cursor: q.Get("cursor"), Limit: limit, IncludeDeleted: q.Get("deleted") == "true"})
 	if err != nil {
 		s.unavailable(w, err)
 		return
@@ -186,7 +205,7 @@ func (s *Server) ingest(w http.ResponseWriter, r *http.Request) {
 	if !validateMethod(w, r, http.MethodPost) {
 		return
 	}
-	agent, err := s.agentAccess(r.Context(), bearer(r))
+	agent, err := s.authenticatedAgent(r)
 	if err != nil {
 		s.unavailable(w, err)
 		return

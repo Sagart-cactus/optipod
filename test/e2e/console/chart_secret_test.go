@@ -107,7 +107,14 @@ func renderConsoleChart(t *testing.T, values map[string]any) ([]byte, error) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
-	return exec.CommandContext(ctx, "helm", "template", "secret-test", consoleChartPath(), "-f", privateValuesFile(t, values)).CombinedOutput()
+	cmd := exec.CommandContext(ctx, "helm", "template", "secret-test", consoleChartPath(), "-f", privateValuesFile(t, values))
+	var diagnostics bytes.Buffer
+	cmd.Stderr = &diagnostics
+	output, err := cmd.Output()
+	if err != nil {
+		return diagnostics.Bytes(), err
+	}
+	return output, nil
 }
 
 func consoleChartPath() string {

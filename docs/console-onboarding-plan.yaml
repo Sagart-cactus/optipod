@@ -3,26 +3,28 @@ source: Onboarding journey agreed in this chat on 2026-11-16
 branch: sagar/console-onboarding
 delivery:
   approach: Implement and validate dependency-ordered increments; this plan does not mark an item complete until its acceptance checks pass
-  first_increment: Protected empty-console bootstrap, PostgreSQL administrator and cluster registry, scoped enrollment credentials and administrative audit records
+  release: Console 0.3.0, installer 0.3.0, optimizer bundle 1.6.0-console.0 and PostgreSQL schema 3
+  publication: The console-v0.3.0 tag publishes the reviewed main-branch bundle after PR checks and merge
+  evidence: console-onboarding-validation.yaml
   safety: Onboarding never enables Auto or changes workload resources; deployment uses the engineer's local credentials, never uploaded kubeconfigs
 priorities:
   P0:
-    - {id: artifacts, feature: Versioned console images charts and installer binaries with compatibility tests, status: pending}
-    - {id: bootstrap, feature: Empty console and protected initial administrator with external PostgreSQL and optional evaluation subchart, status: in-progress}
-    - {id: registry, feature: Persistent cluster naming environment permissions and credential administration, status: in-progress}
-    - {id: access-audit, feature: Administrator role read-only viewers and attributed administration audit, status: in-progress}
-    - {id: wizard, feature: Resumable Add Cluster wizard for existing/new installation namespaces metrics and install method, status: pending}
-    - {id: enrollment, feature: Short-lived single-use cluster-bound enrollment rate limiting and runtime rotation/revocation, status: in-progress}
-    - {id: installer, feature: CLI-assisted Helm installation and GitOps output without duplicate controllers or resource adoption, status: pending}
-    - {id: preflight, feature: Kubernetes permissions compatibility DNS TLS reachability storage metrics and webhook diagnostics, status: pending}
-    - {id: first-policy, feature: Inventory before policies and explicitly scoped Recommend policy guidance, status: pending}
+    - {id: artifacts, feature: Versioned console images charts and installer binaries with compatibility tests, status: validated}
+    - {id: bootstrap, feature: Empty console and protected initial administrator with external PostgreSQL and optional evaluation subchart, status: validated}
+    - {id: registry, feature: Persistent cluster naming environment permissions and credential administration, status: validated}
+    - {id: access-audit, feature: Administrator role read-only viewers and attributed administration audit, status: validated}
+    - {id: wizard, feature: Resumable Add Cluster wizard for existing/new installation namespaces metrics and install method, status: validated}
+    - {id: enrollment, feature: Short-lived single-use cluster-bound enrollment rate limiting and runtime rotation/revocation, status: validated}
+    - {id: installer, feature: CLI-assisted Helm installation and GitOps output without duplicate controllers or resource adoption, status: validated}
+    - {id: preflight, feature: Kubernetes permissions compatibility DNS TLS reachability storage metrics and webhook diagnostics, status: validated}
+    - {id: first-policy, feature: Inventory before policies and explicitly scoped Recommend policy guidance, status: validated}
   P1:
-    - {id: identity, feature: Trusted workload identity or mTLS with automatic renewal, status: pending}
-    - {id: lifecycle, feature: Upgrade compatibility reconnect re-enrollment and disconnect/uninstall with history retention, status: pending}
-    - {id: production, feature: Custom CA registry proxy ingress NetworkPolicy external secrets and SSO group roles, status: pending}
-    - {id: health, feature: Stale agent queue credential database and recovery diagnostics with evidence-based backup status, status: pending}
+    - {id: identity, feature: Trusted workload identity or mTLS with automatic renewal, status: validated}
+    - {id: lifecycle, feature: Upgrade compatibility reconnect re-enrollment and disconnect/uninstall with history retention, status: validated}
+    - {id: production, feature: Custom CA registry proxy ingress NetworkPolicy external secrets and SSO group roles, status: validated}
+    - {id: health, feature: Stale agent queue credential database and recovery diagnostics with evidence-based backup status, status: validated}
   P2:
-    - {id: fleet, feature: Environment templates bulk registration GitOps automation and onboarding notifications, status: pending}
+    - {id: fleet, feature: Environment templates bulk registration GitOps automation and onboarding notifications, status: validated}
 acceptance:
   - Empty console starts without placeholder agents; first administrator requires a preconfigured bootstrap credential
   - Two clusters connect without editing server JSON or restarting the API
@@ -31,4 +33,4 @@ acceptance:
   - Expired replayed wrong-cluster and unauthorized enrollment requests are rejected
   - Interrupted installation resumes without duplicate registration or queue data loss
   - Workloads and recommendations appear without resource mutations
-  - Every implementation increment receives relevant local Podman E2E coverage before being reported complete
+  - Every implementation increment receives relevant local Podman E2E coverage before being reported complete; final CI checks gate merge

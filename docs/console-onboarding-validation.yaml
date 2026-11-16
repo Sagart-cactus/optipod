@@ -1,66 +1,83 @@
 date: 2026-11-16
-scope: First P0 onboarding increment; this is not acceptance of the complete P0-P2 roadmap
+scope: P0 through P2 onboarding implementation in PR 84
 branch: sagar/console-onboarding
+plan: console-onboarding-plan.yaml
+guide: console-onboarding.yaml
 environment:
   runtime: Local Podman on macOS arm64
   clusters: Two explicitly selected owned Kind clusters running Kubernetes v1.35.0
-  database: Real PostgreSQL 18.7; integration tests use disposable schemas
-  installed_image: docker.io/optipod-e2e/console:onboarding-release-check
-  release_build: Dockerfile.console with Go 1.27 and distroless runtime
+  database: Real PostgreSQL 18.7; isolated schemas for integration tests
+  production_image: docker.io/optipod-e2e/console:onboarding-complete-2
+  release_build: Dockerfile.console with Go 1.27 and distroless runtime; version 0.3.0
+  installer: Helm 3.14 and Helm 4.0.1 exercised separately
+  metrics: Real metrics-server on both clusters; real Prometheus scraping cAdvisor on primary
+  browser: Automated Chromium through pinned Playwright 1.65.1
 results:
-  focused_onboarding_e2e:
-    status: passed
-    test: TestEmptyConsoleEnrollsTwoOwnedClusters
-    coverage:
-      - Fresh empty console, protected administrator bootstrap and two persisted registrations
-      - Enrollment CLI verifies actual kube-system UIDs through explicit kubeconfigs and contexts
-      - Wrong-context and replay attempts fail; runtime output files have mode 0600
-      - Both agents export real Recommend workloads and history without server configuration edits
-      - Workload CPU and memory requests remain unchanged
-    duration: 2.00s in the final suite
-  database_and_auth:
-    status: passed with the Go race detector
-    coverage:
-      - Transactional schema 1 to 2 migration preserves inventory; concurrent startup and future-version refusal
-      - One administrator wins concurrent bootstrap; exactly one concurrent enrollment redemption succeeds
-      - Expired enrollment, wrong cluster binding, unauthorized namespace ingestion and revoked runtime tokens are rejected
-      - Viewer administration is denied; disabling a stored user invalidates existing sessions and token access
-      - Shared rate limits apply across server instances; audit entries exclude raw tokens and hashes
-  enrollment_client:
-    status: passed with the Go race detector
-    coverage: Private input files, expiry, HTTPS origin checks, loopback-only HTTP exception, redirect refusal and sanitized error responses
-  installed_console_regressions:
+  full_production_image_suite:
     status: passed
     command: bash hack/console/run.sh test
-    fast_image_e2e_duration: 106.724s
-    production_image_e2e_duration: 97.573s
+    e2e_duration: 328.892s
     coverage:
-      - Two-cluster persistence, durable replay, namespace deletion and retained history
+      - Two-cluster PostgreSQL persistence, durable replay, namespace deletion and retained history
       - Installed API, PostgreSQL and both agent restarts with session and queue survival
-      - Managed and external Helm Secret rendering, unchanged upgrades, runtime token rotation and uninstall ownership
-      - Empty-console enrollment against both actual Kubernetes APIs
+      - Managed and external Helm Secret rendering, unchanged upgrades, token rotation and uninstall ownership
+      - Optional evaluation PostgreSQL subchart, managed console secrets and native TLS listener
+      - Fresh existing-controller and new-controller Helm installations on separate clusters
+      - In-cluster DNS, verified TLS, version, permissions, admission and durable storage probes
+      - Independent metrics-server and Prometheus preflight; missing namespace metrics rejected
+      - Resume reuses consumed enrollment and preserves queue identity; GitOps export contains no credentials
+      - Agent-only uninstall revokes access while retaining optimizer, queue and history
+      - Inventory appears before a policy; generated scoped Recommend policy admitted by Kubernetes
+      - Workload CPU and memory requests remain unchanged
+      - Protected empty-console bootstrap and two real-cluster enrollments without API config changes
+      - mTLS enrollment, token-only denial, automatic renewal, live external Secret rotation and immediate revocation
+      - Browser bootstrap, resumed wizard, downloads, first policy, templates, bulk, grants and viewer denial
+  final_security_regression:
+    status: passed
+    duration: 240.563s
+    coverage:
+      - Registration edits cannot downgrade mTLS and browser edits preserve the transport requirement
+      - Certificate renewal rejects a different public key
+      - Fresh installation refuses an existing controller even when the Helm release name matches
+      - Read-only agent credentials fail installation permission checks against the real Kubernetes API
+  postgres_and_auth:
+    status: passed with the Go race detector
+    coverage:
+      - Transactional schema 1 to 3 migration preserves inventory; concurrent startup and future-version refusal
+      - Concurrent bootstrap, one-time enrollment and disconnect serialize safely
+      - Expiry, replay, wrong cluster UID, scope violations and revoked identities are rejected
+      - Versioned registration edits, idempotent bulk registration and templates
+      - Persisted users, groups, immediate session invalidation and protection for the final administrator
+      - Signed OIDC group claims and exact cluster/namespace grant unions without cross-cluster leakage
+      - Attributed audit records exclude actual credentials; health notifications and acknowledgements persist
+  metrics_history:
+    status: passed
+    real_cluster: Healthy metrics-server and Prometheus CPU/memory collection; missing Prometheus namespace data rejected
+    deterministic_http_fixture: Insufficient history reports a warning; one healthy namespace cannot mask missing data in another
   backup_restore:
     status: passed
-    coverage: Logical dump restored into an isolated database; inventory, history, sessions, checkpoints, schema version 2 and presence of six onboarding tables verified
-  browser:
-    status: passed manually in the internal browser against a disposable database schema
-    coverage: First administrator setup, empty fleet, persisted cluster registration, enrollment file download, credential revocation and visible audit entries
-    cleanup: Temporary server stopped and disposable schema removed after validation
+    coverage: Logical dump restored into an isolated database; inventory, history, sessions, stream checkpoints, schema 3 and onboarding tables verified; successful restore evidence persisted
+  release_artifacts:
+    status: local bundle passed; publication follows merge through console-v0.3.0
+    coverage: Four Linux/macOS amd64/arm64 CLI archives, two Helm charts and SHA256SUMS; native packaged CLI version/help and all checksums verified
   static_checks:
-    go_lint: Repository-pinned golangci-lint reported zero issues
-    javascript: Both application scripts passed node --check
-    hooks: Formatting, YAML, shell and secret checks passed; Go lint ran separately through the repository binary
+    go_lint: Repository-pinned golangci-lint
+    javascript: node --check for browser scripts
+    hooks: Formatting, YAML, shell and secret checks
 limits:
-  - The enrollment test runs a real HTTP server in-process with PostgreSQL and real Kubernetes clients; it does not yet automate Helm installation from the new onboarding CLI
-  - Prometheus and metrics-server selections are persisted, but this increment does not implement or validate either metrics-source preflight
-  - The browser check is manual; it is not an automated browser regression suite
-  - The restore test checks onboarding table presence; production identity recovery, PITR and RPO/RTO drills remain operational requirements
-  - Kubernetes UID binding prevents accidental wrong-context enrollment; it is not cryptographic agent attestation
-  - Installer artifacts, optional PostgreSQL subchart, full wizard, user/grant administration and remaining P1-P2 features are tracked in console-onboarding-plan.yaml
+  - Real-cluster coverage uses Kubernetes 1.35; the supported 1.33-1.35 range is validated by compatibility checks, not a complete live version matrix
+  - NetworkPolicy rendering is included; enforcement requires a compatible production CNI and is not demonstrated by default Kind networking
+  - The optional PostgreSQL subchart is an evaluation deployment, not managed HA or automatic production backup/PITR
+  - Production operators must supply RPO/RTO, encrypted backups, WAL retention, restore drills and recovery of TLS/bootstrap/SSO configuration
+  - Logical restore tests establish schema/data recovery; they do not demonstrate production PITR or disaster recovery timing
+  - mTLS uses a configured client CA; cluster UID verification guards wrong-context enrollment but is not independent hardware/cloud attestation
+  - Private registries, corporate proxies and an external ingress/SSO provider remain deployment-specific integration checks
 local_logs:
-  focused_e2e: .dev/console/onboarding-foundation-e2e.log
-  full_fast_image: .dev/console/onboarding-full-e2e.log
-  full_production_image: .dev/console/onboarding-release-e2e.log
-  release_build: .dev/console/onboarding-release-build.log
-  lint: .dev/console/onboarding-lint.log
-  hooks: .dev/console/onboarding-precommit-final.log
+  production_suite: .dev/console/onboarding-complete-e2e.log
+  final_security: .dev/console/onboarding-final-security-e2e.log
+  database_races: .dev/console/onboarding-final-security-units.log
+  helm4_installer: .dev/console/installer-e2e.log
+  browser: .dev/console/onboarding-browser-e2e.log
+  release_build: .dev/console/onboarding-final-image-build.log
+  release_artifacts: .dev/console/onboarding-artifacts.log
+  lint: .dev/console/onboarding-final-lint.log

@@ -1,0 +1,14 @@
+image: docker.io/library/postgres:18.7
+imagePullPolicy: IfNotPresent
+global:
+  imagePullSecrets: []
+auth:
+  existingSecret: ""
+  create: false
+  password: ""
+persistence:
+  size: 8Gi
+  storageClass: ""
+resources:
+  requests: {cpu: 100m, memory: 128Mi}
+  limits: {memory: 512Mi}

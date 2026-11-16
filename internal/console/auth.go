@@ -44,7 +44,8 @@ func (s *Server) reader(r *http.Request) (*Reader, error) {
 		return nil, nil
 	}
 	var subject string
-	err = s.Store.Pool.QueryRow(r.Context(), `SELECT subject FROM op_sessions WHERE token_hash=$1 AND expires_at>now()`, TokenHash(cookie.Value)).Scan(&subject)
+	var groups []string
+	err = s.Store.Pool.QueryRow(r.Context(), `SELECT subject,oidc_groups FROM op_sessions WHERE token_hash=$1 AND expires_at>now()`, TokenHash(cookie.Value)).Scan(&subject, &groups)
 	if err == pgx.ErrNoRows {
 		return nil, nil
 	}
@@ -53,7 +54,11 @@ func (s *Server) reader(r *http.Request) (*Reader, error) {
 	}
 	// Current configuration remains authoritative: removing a user or grant
 	// revokes access even when a previously issued session still exists.
-	return s.readerForSubject(r.Context(), subject)
+	reader, err := s.readerForSubject(r.Context(), subject)
+	if err != nil || reader != nil || groups == nil {
+		return reader, err
+	}
+	return s.groupReader(r.Context(), subject, groups)
 }
 
 func (s *Server) issueSession(ctx context.Context, w http.ResponseWriter, subject string) error {

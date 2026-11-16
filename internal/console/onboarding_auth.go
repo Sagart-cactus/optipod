@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"slices"
 
+	"github.com/optipod/optipod/internal/consoletls"
+
 	"github.com/jackc/pgx/v5"
 )
 
@@ -87,8 +89,26 @@ func (s *Server) authRateAllowed(w http.ResponseWriter, r *http.Request) bool {
 
 type agentAccess struct {
 	AgentCredential
-	KubeUID    string
-	Namespaces []string
+	KubeUID       string
+	Namespaces    []string
+	CredentialID  string
+	PublicKeyHash string
+	RequireMTLS   bool
+}
+
+func (s *Server) authenticatedAgent(r *http.Request) (*agentAccess, error) {
+	a, err := s.agentAccess(r.Context(), bearer(r))
+	if err != nil || a == nil || !a.RequireMTLS {
+		return a, err
+	}
+	if r.TLS == nil || len(r.TLS.VerifiedChains) == 0 || len(r.TLS.PeerCertificates) == 0 {
+		return nil, nil
+	}
+	cert := r.TLS.PeerCertificates[0]
+	if cert.Subject.CommonName != a.CredentialID || len(cert.Subject.OrganizationalUnit) != 1 || cert.Subject.OrganizationalUnit[0] != a.ID || consoletls.PublicKeyHash(cert.PublicKey) != a.PublicKeyHash {
+		return nil, nil
+	}
+	return a, nil
 }
 
 func (s *Server) agentAccess(ctx context.Context, token string) (*agentAccess, error) {
@@ -101,8 +121,8 @@ func (s *Server) agentAccess(ctx context.Context, token string) (*agentAccess, e
 		}
 	}
 	a := &agentAccess{}
-	err := s.Store.Pool.QueryRow(ctx, `SELECT r.id,r.name,r.kube_uid,r.namespaces FROM op_credentials c JOIN op_registrations r ON r.id=c.cluster_id
-	 WHERE c.token_hash=$1 AND c.kind='runtime' AND c.expires_at>now() AND c.revoked_at IS NULL AND NOT r.disconnected`, TokenHash(token)).Scan(&a.ID, &a.Name, &a.KubeUID, &a.Namespaces)
+	err := s.Store.Pool.QueryRow(ctx, `SELECT r.id,r.name,r.kube_uid,r.namespaces,c.id,c.public_key_hash,r.require_mtls FROM op_credentials c JOIN op_registrations r ON r.id=c.cluster_id
+	 WHERE c.token_hash=$1 AND c.kind='runtime' AND c.expires_at>now() AND c.revoked_at IS NULL AND NOT r.disconnected`, TokenHash(token)).Scan(&a.ID, &a.Name, &a.KubeUID, &a.Namespaces, &a.CredentialID, &a.PublicKeyHash, &a.RequireMTLS)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}

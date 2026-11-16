@@ -232,7 +232,7 @@ func TestOnboardingMigrationPreservesVersionOneInventory(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Recreate the previous schema in this test's disposable schema only.
-	if _, err := s.Pool.Exec(ctx, `DROP TABLE op_credentials,op_registrations,op_users,op_bootstrap,op_admin_audit,op_rate_limits; UPDATE op_schema SET version=1`); err != nil {
+	if _, err := s.Pool.Exec(ctx, `DROP TABLE op_credentials,op_registrations,op_users,op_bootstrap,op_admin_audit,op_rate_limits,op_groups,op_templates,op_agent_health,op_notifications,op_recovery_checks; ALTER TABLE op_sessions DROP COLUMN oidc_groups; UPDATE op_schema SET version=1`); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.Migrate(ctx); err != nil {

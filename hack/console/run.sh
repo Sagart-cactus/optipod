@@ -70,13 +70,15 @@ if [[ "$action" == up || "$action" == reload ]]; then
 fi
 
 if [[ "$action" == test ]]; then
+  mkdir -p .dev/console/helm-test-plugins
+  export HELM_PLUGINS="$PWD/.dev/console/helm-test-plugins"
   export OPTIPOD_TEST_DATABASE_URL_FILE="$PWD/.dev/console/database-url"
   export OPTIPOD_CONSOLE_E2E_KUBECONFIGS="$primary:$peer"
   export OPTIPOD_CONSOLE_E2E_URL="${OPTIPOD_CONSOLE_E2E_URL:-http://127.0.0.1:8876}"
   export OPTIPOD_CONSOLE_E2E_VIEWER_TOKEN_FILE="$PWD/.dev/console/viewer-token"
   go run ./hack/console -action wait-database
   curl -fsS --retry 20 --retry-connrefused --retry-all-errors --retry-delay 1 "$OPTIPOD_CONSOLE_E2E_URL/readyz" >/dev/null
-  go test -count=1 -race ./internal/console/... ./internal/consoleagent/... ./internal/consoleenroll/...
+  go test -count=1 -race ./internal/console/... ./internal/consoleagent/... ./internal/consoleenroll/... ./internal/consoletls/... ./internal/consoleinstall/...
   go test -count=1 -v ./test/e2e/console/...
   bash hack/console/backup-test.sh
 elif [[ "$action" == forward || "$action" == database-forward ]]; then

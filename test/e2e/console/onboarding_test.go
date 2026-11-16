@@ -103,6 +103,23 @@ func TestEmptyConsoleEnrollsTwoOwnedClusters(t *testing.T) {
 	if len(registered) != 2 || registered[0].ReceivedAt == nil || registered[1].ReceivedAt == nil {
 		t.Fatal("registration progress did not record successful ingestion")
 	}
+	// A completed registration survives reconnection. Disconnect revokes the
+	// old identity immediately without deleting either cluster's observations.
+	onboardingCall(t, server.URL, "POST", "/api/admin/connection", admin, map[string]any{"id": ids[0], "connected": false}, 200, nil)
+	onboardingCall(t, server.URL, "POST", "/api/heartbeat", tokens[0], console.AgentHealth{}, 401, nil)
+	onboardingCall(t, server.URL, "POST", "/api/admin/connection", admin, map[string]any{"id": ids[0], "connected": true}, 200, nil)
+	onboardingCall(t, server.URL, "POST", "/api/heartbeat", tokens[0], console.AgentHealth{}, 401, nil)
+	onboardingCall(t, server.URL, "GET", "/api/workloads", admin, nil, 200, &page)
+	if len(page.Items) != 2 {
+		t.Fatal("disconnect removed persisted inventory")
+	}
+	var viewer map[string]string
+	onboardingCall(t, server.URL, "POST", "/api/admin/users", admin, console.UserGrant{Subject: "qa-reader", Role: "viewer", Clusters: []string{ids[0]}, IssueToken: true}, 200, &viewer)
+	onboardingCall(t, server.URL, "GET", "/api/workloads", viewer["token"], nil, 200, &page)
+	if len(page.Items) != 1 || page.Items[0].ClusterID != ids[0] {
+		t.Fatal("dynamic viewer grant escaped cluster scope")
+	}
+	onboardingCall(t, server.URL, "GET", "/api/admin/health", viewer["token"], nil, 403, nil)
 	for i, c := range clients {
 		deployments, err := c.Kube.AppsV1().Deployments("console-e2e-"+suffix).List(ctx, metav1.ListOptions{})
 		if err != nil || len(deployments.Items) != 1 {
@@ -117,6 +134,10 @@ func TestEmptyConsoleEnrollsTwoOwnedClusters(t *testing.T) {
 }
 
 func onboardingCall(t *testing.T, endpoint, method, path, token string, body any, status int, result any) {
+	onboardingCallClient(t, &http.Client{Timeout: 20 * time.Second}, endpoint, method, path, token, body, status, result)
+}
+
+func onboardingCallClient(t *testing.T, c *http.Client, endpoint, method, path, token string, body any, status int, result any) {
 	t.Helper()
 	data, err := json.Marshal(body)
 	if err != nil {
@@ -128,7 +149,6 @@ func onboardingCall(t *testing.T, endpoint, method, path, token string, body any
 	}
 	r.Header.Set("Content-Type", "application/json")
 	r.Header.Set("Authorization", "Bearer "+token)
-	c := &http.Client{Timeout: 20 * time.Second}
 	response, err := c.Do(r)
 	if err != nil {
 		t.Fatal("onboarding HTTP request failed")

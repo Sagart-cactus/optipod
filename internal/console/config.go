@@ -12,6 +12,9 @@ import (
 )
 
 const RoleAdmin = "admin"
+const RoleViewer = "viewer"
+const schemeHTTPS = "https"
+const savedKey = "saved"
 
 const credentialIDKey = "credentialID"
 
@@ -22,17 +25,20 @@ type AgentCredential struct {
 }
 
 type Reader struct {
-	Subject    string   `json:"subject"`
-	Role       string   `json:"role,omitempty"`
-	TokenHash  string   `json:"tokenHash,omitempty"`
-	Clusters   []string `json:"clusters"`
-	Namespaces []string `json:"namespaces,omitempty"`
+	NamespaceScopes map[string][]string `json:"-"`
+	Subject         string              `json:"subject"`
+	Role            string              `json:"role,omitempty"`
+	TokenHash       string              `json:"tokenHash,omitempty"`
+	Clusters        []string            `json:"clusters"`
+	Namespaces      []string            `json:"namespaces,omitempty"`
 }
 
 type OIDCConfig struct {
-	Issuer           string `json:"issuer"`
-	ClientID         string `json:"clientID"`
-	ClientSecretFile string `json:"clientSecretFile,omitempty"`
+	Issuer           string   `json:"issuer"`
+	ClientID         string   `json:"clientID"`
+	ClientSecretFile string   `json:"clientSecretFile,omitempty"`
+	GroupsClaim      string   `json:"groupsClaim,omitempty"`
+	Scopes           []string `json:"scopes,omitempty"`
 }
 
 type Config struct {
@@ -41,6 +47,7 @@ type Config struct {
 	Agents             []AgentCredential `json:"agents"`
 	Readers            []Reader          `json:"readers"`
 	OIDC               *OIDCConfig       `json:"oidc,omitempty"`
+	AgentTLS           *AgentTLSConfig   `json:"agentTLS,omitempty"`
 }
 
 func TokenHash(token string) string {
@@ -64,6 +71,9 @@ func LoadConfig(path string) (Config, error) {
 }
 
 func (c Config) Validate() error {
+	if err := c.validateAgentTLS(); err != nil {
+		return err
+	}
 	u, err := url.Parse(c.PublicURL)
 	if err != nil || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || (u.Path != "" && u.Path != "/") {
 		return fmt.Errorf("publicURL must be an absolute origin")
@@ -72,7 +82,7 @@ func (c Config) Validate() error {
 	if ip := net.ParseIP(u.Hostname()); ip != nil {
 		loopback = ip.IsLoopback()
 	}
-	if u.Scheme != "https" && (u.Scheme != "http" || !loopback) {
+	if u.Scheme != schemeHTTPS && (u.Scheme != "http" || !loopback) {
 		return fmt.Errorf("publicURL requires HTTPS except on loopback")
 	}
 	validHash := regexp.MustCompile(`^[a-f0-9]{64}$`)
@@ -100,7 +110,7 @@ func (c Config) validateReaders(validHash *regexp.Regexp, ids, hashes map[string
 		if r.Subject == "" || subjects[r.Subject] || (r.Role != RoleAdmin && len(r.Clusters) == 0) {
 			return fmt.Errorf("reader requires a unique subject and explicit cluster grants")
 		}
-		if r.Role != "" && r.Role != RoleAdmin && r.Role != "viewer" {
+		if r.Role != "" && r.Role != RoleAdmin && r.Role != RoleViewer {
 			return fmt.Errorf("invalid reader role")
 		}
 		if r.Role == RoleAdmin && len(r.Namespaces) > 0 {
@@ -117,6 +127,16 @@ func (c Config) validateReaders(validHash *regexp.Regexp, ids, hashes map[string
 			if !ids[id] {
 				return fmt.Errorf("reader references unknown cluster %q", id)
 			}
+		}
+	}
+	return nil
+}
+
+func (c Config) validateAgentTLS() error {
+	if c.AgentTLS != nil {
+		u, e := url.Parse(c.AgentTLS.PublicURL)
+		if e != nil || u.Scheme != schemeHTTPS || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || (u.Path != "" && u.Path != "/") || c.AgentTLS.Listen == "" {
+			return fmt.Errorf("agentTLS requires an HTTPS public origin and explicit listener")
 		}
 	}
 	return nil

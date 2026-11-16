@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/optipod/optipod/internal/console"
+	"github.com/optipod/optipod/internal/consoletls"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
@@ -61,9 +62,33 @@ func Run(ctx context.Context, o Options) (*Result, error) {
 			_ = os.Remove(o.TokenOutput)
 		}
 	}()
-	credential, err := exchange(ctx, f)
+	var identityFile *os.File
+	var privateKey []byte
+	csr := ""
+	if f.RequireMTLS {
+		identityFile, err = os.OpenFile(o.TokenOutput+".identity.json", os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+		if err != nil {
+			return nil, fmt.Errorf("cannot create a new private identity file")
+		}
+		defer func() {
+			_ = identityFile.Close()
+			if !complete {
+				_ = os.Remove(o.TokenOutput + ".identity.json")
+			}
+		}()
+		privateKey, csr, err = consoletls.NewKeyAndCSR()
+		if err != nil {
+			return nil, err
+		}
+	}
+	credential, err := exchangeWithCSR(ctx, f, csr)
 	if err != nil {
 		return nil, err
+	}
+	if identityFile != nil {
+		if err = saveIdentity(identityFile, f, credential, privateKey); err != nil {
+			return nil, err
+		}
 	}
 	if _, err = output.WriteString(credential.Token); err != nil {
 		return nil, fmt.Errorf("cannot save runtime credential; revoke it and issue a new enrollment")
@@ -77,6 +102,26 @@ func Run(ctx context.Context, o Options) (*Result, error) {
 	complete = true
 	return &Result{CredentialID: credential.ID, ExpiresAt: credential.ExpiresAt}, nil
 }
+
+func saveIdentity(output *os.File, f *File, credential *console.IssuedCredential, privateKey []byte) error {
+	if !credential.RequireMTLS || credential.CertificateExpires == nil || credential.Certificate == "" {
+		return fmt.Errorf("missing issued client certificate; revoke and re-enroll")
+	}
+	identity := consoletls.Identity{CredentialID: credential.ID, Token: credential.Token, Certificate: credential.Certificate, PrivateKey: string(privateKey), CAPEM: f.CAPEM, ExpiresAt: *credential.CertificateExpires}
+	if _, err := identity.Client(); err != nil {
+		return fmt.Errorf("invalid issued client certificate; revoke and re-enroll")
+	}
+	if err := json.NewEncoder(output).Encode(identity); err != nil {
+		return fmt.Errorf("cannot save private identity; revoke and re-enroll")
+	}
+	if err := output.Sync(); err != nil {
+		return err
+	}
+	return output.Close()
+}
+
+// ReadFile validates a protected, unexpired enrollment package for an installer.
+func ReadFile(path string, allowHTTP bool) (*File, error) { return readEnrollment(path, allowHTTP) }
 
 func readEnrollment(path string, allowHTTP bool) (*File, error) {
 	input, err := os.Open(path)
@@ -103,6 +148,9 @@ func readEnrollment(path string, allowHTTP bool) (*File, error) {
 	local := u.Hostname() == "localhost" || (ip != nil && ip.IsLoopback())
 	if u.Scheme != "https" && (!allowHTTP || u.Scheme != "http" || !local) {
 		return nil, fmt.Errorf("enrollment requires HTTPS; HTTP opt-in is limited to loopback test endpoints")
+	}
+	if f.RequireMTLS && u.Scheme != "https" {
+		return nil, fmt.Errorf("certificate enrollment requires HTTPS")
 	}
 	return &f, nil
 }
@@ -132,14 +180,21 @@ func verifyCluster(ctx context.Context, o Options, expectedUID string) error {
 }
 
 func exchange(ctx context.Context, f *File) (*console.IssuedCredential, error) {
-	body, _ := json.Marshal(map[string]string{"clusterID": f.ClusterID, "kubeUID": f.KubeUID})
+	return exchangeWithCSR(ctx, f, "")
+}
+
+func exchangeWithCSR(ctx context.Context, f *File, csr string) (*console.IssuedCredential, error) {
+	body, _ := json.Marshal(map[string]string{"clusterID": f.ClusterID, "kubeUID": f.KubeUID, "csr": csr})
 	r, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimSuffix(f.ServerURL, "/")+"/api/enroll", bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("invalid enrollment endpoint")
 	}
 	r.Header.Set("Authorization", "Bearer "+f.Token)
 	r.Header.Set("Content-Type", "application/json")
-	c := &http.Client{Timeout: 20 * time.Second, CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }}
+	c, err := consoletls.Client([]byte(f.CAPEM), nil, nil)
+	if err != nil {
+		return nil, err
+	}
 	response, err := c.Do(r)
 	if err != nil {
 		return nil, fmt.Errorf("enrollment exchange failed; check console connectivity and TLS")

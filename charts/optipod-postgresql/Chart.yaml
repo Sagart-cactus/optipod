@@ -1,0 +1,6 @@
+apiVersion: v2
+name: postgresql
+description: Single-instance evaluation PostgreSQL for the OptiPod console; production HA and backups are external requirements
+type: application
+version: 0.1.0
+appVersion: "18.7"
