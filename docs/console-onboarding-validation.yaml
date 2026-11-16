@@ -1,0 +1,87 @@
+date: 2026-11-16
+scope: P0 through P2 onboarding implementation in PR 84
+branch: sagar/console-onboarding
+plan: console-onboarding-plan.yaml
+guide: console-onboarding.yaml
+environment:
+  runtime: Local Podman on macOS arm64
+  clusters: Two explicitly selected owned Kind clusters running Kubernetes v1.35.0
+  database: Real PostgreSQL 18.7; isolated schemas for integration tests
+  production_image: docker.io/optipod-e2e/console:onboarding-final
+  release_build: Dockerfile.console with Go 1.27 and distroless runtime; version 0.3.0
+  installer: Helm 3.14 and Helm 4.0.1 exercised separately
+  metrics: Real metrics-server on both clusters; real Prometheus scraping cAdvisor on primary
+  browser: Automated Chromium through pinned Playwright 1.65.1
+results:
+  full_production_image_suite:
+    status: passed
+    command: bash hack/console/run.sh test
+    e2e_duration: 378.368s
+    coverage:
+      - Two-cluster PostgreSQL persistence, durable replay, namespace deletion and retained history
+      - Installed API, PostgreSQL and both agent restarts with session and queue survival
+      - Managed and external Helm Secret rendering, unchanged upgrades, token rotation and uninstall ownership
+      - Optional evaluation PostgreSQL subchart, managed console secrets and native TLS listener
+      - Fresh existing-controller and new-controller Helm installations on separate clusters
+      - In-cluster DNS, verified TLS, version, permissions, admission and durable storage probes
+      - Independent metrics-server and Prometheus preflight; missing namespace metrics rejected
+      - Resume reuses consumed enrollment and preserves queue identity; GitOps export contains no credentials
+      - Agent-only uninstall revokes access while retaining optimizer, queue and history
+      - Inventory appears before a policy; generated scoped Recommend policy admitted by Kubernetes
+      - Workload CPU and memory requests remain unchanged
+      - Protected empty-console bootstrap and two real-cluster enrollments without API config changes
+      - mTLS enrollment, token-only denial, automatic renewal, live external Secret rotation and immediate revocation
+      - Browser bootstrap, resumed wizard, downloads, first policy, templates, bulk, grants and viewer denial
+  final_security_regression:
+    status: passed
+    duration: 240.563s
+    coverage:
+      - Registration edits cannot downgrade mTLS and browser edits preserve the transport requirement
+      - Certificate renewal rejects a different public key
+      - Fresh installation refuses an existing controller even when the Helm release name matches
+      - Read-only agent credentials fail installation permission checks against the real Kubernetes API
+  renamed_controller_regression:
+    status: passed
+    coverage: A zero-replica Deployment with renamed workload and private image is identified through chart labels and rejected before enrollment
+  postgres_and_auth:
+    status: passed with the Go race detector
+    coverage:
+      - Transactional schema 1 to 3 migration preserves inventory; concurrent startup and future-version refusal
+      - Concurrent bootstrap, one-time enrollment and disconnect serialize safely
+      - Expiry, replay, wrong cluster UID, scope violations and revoked identities are rejected
+      - Versioned registration edits, idempotent bulk registration and templates
+      - Persisted users, groups, immediate session invalidation and protection for the final administrator
+      - Signed OIDC group claims and exact cluster/namespace grant unions without cross-cluster leakage
+      - Attributed audit records exclude actual credentials; health notifications and acknowledgements persist
+  metrics_history:
+    status: passed
+    real_cluster: Healthy metrics-server and Prometheus CPU/memory collection; missing Prometheus namespace data rejected
+    deterministic_http_fixture: Insufficient history reports a warning; one healthy namespace cannot mask missing data in another
+  backup_restore:
+    status: passed
+    coverage: Logical dump restored into an isolated database; inventory, history, sessions, stream checkpoints, schema 3 and onboarding tables verified; successful restore evidence persisted
+  release_artifacts:
+    status: local bundle passed; publication follows merge through console-v0.3.0
+    coverage: Four Linux/macOS amd64/arm64 CLI archives, two Helm charts and SHA256SUMS; native packaged CLI version/help and all checksums verified
+  static_checks:
+    go_lint: Repository-pinned golangci-lint
+    javascript: node --check for browser scripts
+    hooks: Formatting, YAML, shell and secret checks
+limits:
+  - Real-cluster coverage uses Kubernetes 1.35; the supported 1.33-1.35 range is validated by compatibility checks, not a complete live version matrix
+  - NetworkPolicy rendering and API admission are included; enforcement requires a compatible production CNI and is not demonstrated by default Kind networking
+  - The optional PostgreSQL subchart is an evaluation deployment, not managed HA or automatic production backup/PITR
+  - Production operators must supply RPO/RTO, encrypted backups, WAL retention, restore drills and recovery of TLS/bootstrap/SSO configuration
+  - Logical restore tests establish schema/data recovery; they do not demonstrate production PITR or disaster recovery timing
+  - mTLS uses a configured client CA; cluster UID verification guards wrong-context enrollment but is not independent hardware/cloud attestation
+  - Private registries, corporate proxies and an external ingress/SSO provider remain deployment-specific integration checks
+local_logs:
+  production_suite: .dev/console/onboarding-final-production-e2e.log
+  final_security: .dev/console/onboarding-final-security-e2e.log
+  database_races: .dev/console/onboarding-final-security-units.log
+  renamed_controller: .dev/console/renamed-controller-e2e.log
+  helm4_installer: .dev/console/installer-e2e.log
+  browser: .dev/console/onboarding-browser-e2e.log
+  release_build: .dev/console/onboarding-final-image-build.log
+  release_artifacts: .dev/console/onboarding-artifacts.log
+  lint: .dev/console/onboarding-final-lint.log

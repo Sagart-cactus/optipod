@@ -12,6 +12,8 @@ import (
 	"github.com/optipod/optipod/internal/history"
 	"github.com/optipod/optipod/internal/report"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -60,7 +62,7 @@ func (c *Collector) Capture(ctx context.Context) error {
 	present := map[string]bool{}
 	warnings := []string{}
 	for _, ns := range namespaces {
-		fleet, err := (&report.Collector{Client: c.Client, Namespace: ns}).Fleet(ctx)
+		fleet, err := (&report.Collector{Client: c.Client, Namespace: ns, IncludeUnmanaged: true}).Fleet(ctx)
 		if err != nil {
 			return err
 		}
@@ -72,7 +74,7 @@ func (c *Collector) Capture(ctx context.Context) error {
 			current.Workloads = append(current.Workloads, w)
 		}
 		policies := &api.OptimizationPolicyList{}
-		if err = c.Client.List(ctx, policies, client.InNamespace(ns)); err != nil {
+		if err = c.Client.List(ctx, policies, client.InNamespace(ns)); err != nil && !meta.IsNoMatchError(err) && !apierrors.IsNotFound(err) {
 			return err
 		}
 		for _, p := range policies.Items {

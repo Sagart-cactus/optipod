@@ -29,10 +29,19 @@ BEGIN
  IF (SELECT count(*) FROM op_history) = 0 OR (SELECT count(*) FROM op_sessions) = 0 THEN
   RAISE EXCEPTION 'restored history or sessions missing';
  END IF;
- IF (SELECT max(version) FROM op_schema) <> 1 THEN
+ IF (SELECT max(version) FROM op_schema) <> 3 THEN
   RAISE EXCEPTION 'restored migration version mismatch';
+ END IF;
+ IF to_regclass('op_bootstrap') IS NULL OR to_regclass('op_users') IS NULL
+    OR to_regclass('op_registrations') IS NULL OR to_regclass('op_credentials') IS NULL
+    OR to_regclass('op_admin_audit') IS NULL OR to_regclass('op_rate_limits') IS NULL
+    OR to_regclass('op_groups') IS NULL OR to_regclass('op_templates') IS NULL
+    OR to_regclass('op_agent_health') IS NULL OR to_regclass('op_notifications') IS NULL
+    OR to_regclass('op_recovery_checks') IS NULL THEN
+  RAISE EXCEPTION 'restored onboarding schema missing';
  END IF;
 END $$;
 SQL
-echo 'PASS: PostgreSQL backup restored inventory, history, sessions and stream checkpoints into an isolated database'
+psql -U postgres -d optipod -v ON_ERROR_STOP=1 -c "INSERT INTO op_recovery_checks(kind,schema_version,details) VALUES('logical-restore',3,'{\"inventory\":true,\"history\":true,\"sessions\":true,\"checkpoints\":true,\"onboardingSchema\":true}')" >/dev/null
+echo 'PASS: PostgreSQL backup restored inventory, history, sessions, stream checkpoints and onboarding schema into an isolated database'
 SH

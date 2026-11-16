@@ -11,9 +11,13 @@ spec:
     metadata:
       annotations:
         optipod.io/config-revision: {{ .Values.server.configRevision | quote }}
+        {{- if .Values.server.secret.create }}
+        checksum/config: {{ include (print $.Template.BasePath "/server-secret.yaml") . | sha256sum | quote }}
+        {{- end }}
       labels: {app.kubernetes.io/name: optipod-console, app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: server}
     spec:
       automountServiceAccountToken: false
+      imagePullSecrets: {{ toYaml .Values.global.imagePullSecrets | nindent 8 }}
       securityContext: {runAsNonRoot: true, runAsUser: 65532, runAsGroup: 65532, fsGroup: 65532, seccompProfile: {type: RuntimeDefault}}
       containers:
         - name: server
@@ -21,16 +25,27 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           args: [serve, --listen=:8080, --config=/etc/console/config.json, --database-url-file=/etc/console/database-url, "--retention-days={{ .Values.server.retentionDays }}"]
           ports: [{name: http, containerPort: 8080}]
+          env: {{ toYaml .Values.server.env | nindent 12 }}
           securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
           readinessProbe: {httpGet: {path: /readyz, port: http}, initialDelaySeconds: 3}
           livenessProbe: {httpGet: {path: /healthz, port: http}, initialDelaySeconds: 10}
           resources: {{ toYaml .Values.server.resources | nindent 12 }}
-          volumeMounts: [{name: config, mountPath: /etc/console, readOnly: true}]
+          volumeMounts:
+            - {name: config, mountPath: /etc/console, readOnly: true}
+            {{- if .Values.server.agentTLS.enabled }}
+            - {name: agent-tls, mountPath: /etc/agent-tls, readOnly: true}
+            {{- end }}
       volumes:
         - name: config
           secret:
-            secretName: {{ required "server.existingSecret is required" .Values.server.existingSecret }}
+            secretName: {{ include "optipod-console.serverSecretName" . | quote }}
             defaultMode: 0440
+        {{- if .Values.server.agentTLS.enabled }}
+        - name: agent-tls
+          secret:
+            secretName: {{ include "optipod-console.agentTLSSecretName" . | quote }}
+            defaultMode: 0440
+        {{- end }}
 ---
 apiVersion: v1
 kind: Service
@@ -68,5 +83,22 @@ spec:
             pathType: Prefix
             backend:
               service: {name: {{ .Release.Name }}-server, port: {name: http}}
+{{- end }}
+{{- if .Values.server.agentTLS.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-agent-api
+spec:
+  type: {{ .Values.server.agentTLS.service.type }}
+  selector: {app.kubernetes.io/name: optipod-console, app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: server}
+  ports:
+    - name: mtls
+      port: {{ .Values.server.agentTLS.service.port }}
+      targetPort: 8443
+      {{- if and (eq .Values.server.agentTLS.service.type "NodePort") .Values.server.agentTLS.service.nodePort }}
+      nodePort: {{ .Values.server.agentTLS.service.nodePort }}
+      {{- end }}
 {{- end }}
 {{- end }}

@@ -8,8 +8,11 @@ import (
 	"time"
 
 	api "github.com/optipod/optipod/api/v1alpha1"
+	"github.com/optipod/optipod/internal/console"
+	"github.com/optipod/optipod/internal/consoleversion"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/discovery"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -18,6 +21,7 @@ import (
 
 type Options struct {
 	Kubeconfig, ClusterID, QueueDir, URL, TokenFile string
+	IdentityFile, CAFile                            string
 	Namespaces                                      []string
 	Interval                                        time.Duration
 	QueueBytes                                      int64
@@ -61,10 +65,34 @@ func Run(ctx context.Context, o Options) error {
 	}
 	defer q.Close()
 	collector := &Collector{Client: c, Queue: q, ClusterUID: string(ns.UID), Namespaces: o.Namespaces}
-	uploader := &Uploader{URL: o.URL, TokenFile: o.TokenFile, AllowHTTP: o.AllowHTTP}
+	uploader, identity, err := newUploader(o)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if uploader.Client != nil {
+			uploader.Client.CloseIdleConnections()
+		}
+	}()
+	health := console.AgentHealth{Version: consoleversion.Version, QueueLimit: o.QueueBytes}
+	if d, e := discovery.NewDiscoveryClientForConfig(cfg); e == nil {
+		if v, e := d.ServerVersion(); e == nil {
+			health.KubernetesVersion = v.GitVersion
+		}
+	}
 	ticker := time.NewTicker(o.Interval)
 	defer ticker.Stop()
 	for {
+		identity, err = refreshIdentity(o, uploader, identity)
+		if err == nil {
+			identity, err = renewIdentity(ctx, uploader, q, identity)
+		}
+		if err != nil {
+			slog.Warn("client certificate renewal deferred")
+		}
+		if identity != nil {
+			health.CertificateExpires = &identity.ExpiresAt
+		}
 		// Drain old work first; continue collecting during a central outage.
 		if err = uploader.Drain(ctx, q); err != nil {
 			slog.Warn("console upload deferred", "errorType", fmt.Sprintf("%T", err))
@@ -76,6 +104,19 @@ func Run(ctx context.Context, o Options) error {
 		uploadErr := uploader.Drain(ctx, q)
 		if uploadErr != nil {
 			slog.Warn("console upload deferred", "errorType", fmt.Sprintf("%T", uploadErr))
+		}
+		now := time.Now().UTC()
+		if captureErr == nil {
+			health.LastCollection = &now
+		}
+		if uploadErr == nil {
+			health.LastUpload = &now
+		}
+		if size, e := q.Bytes(); e == nil {
+			health.QueueBytes = size
+		}
+		if e := uploader.Heartbeat(ctx, health); e != nil {
+			slog.Warn("console heartbeat deferred")
 		}
 		if o.Once {
 			if captureErr != nil {

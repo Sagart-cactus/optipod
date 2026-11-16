@@ -203,7 +203,7 @@ func TestPostgresConcurrentMigrationAndFutureVersion(t *testing.T) {
 	if err := s.Pool.QueryRow(ctx, `SELECT count(*) FROM op_schema`).Scan(&count); err != nil || count != 1 {
 		t.Fatalf("migration ran more than once: %d %v", count, err)
 	}
-	if _, err := s.Pool.Exec(ctx, `UPDATE op_schema SET version=2`); err != nil {
+	if _, err := s.Pool.Exec(ctx, `UPDATE op_schema SET version=$1`, SchemaVersion+1); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.Migrate(ctx); err == nil {

@@ -1,4 +1,5 @@
 scope: Shared read-only multi-cluster OptiPod console with PostgreSQL persistence
+onboarding: See console-onboarding.yaml for protected empty-console setup and credential enrollment; console-onboarding-plan.yaml tracks P0-P2 delivery and acceptance
 status: Implemented; local Podman validation, no external deployment
 architecture:
   flow: Kubernetes API and existing journals -> one agent per cluster -> durable PVC queue -> HTTPS ingest API -> PostgreSQL -> authenticated read-only browser
@@ -6,7 +7,7 @@ architecture:
   server: cmd/optipod-console serve; stateless replicas share PostgreSQL sessions and migrations
   agent: cmd/optipod-console agent; outbound-only, one writer per stable cluster ID
   deployment: Separate charts/optipod-console chart; existing optimizer chart is unchanged
-  database: External PostgreSQL; version 18.7 exercised locally
+  database: External PostgreSQL for production; an optional evaluation subchart is available. Version 18.7 exercised locally
 stored_data:
   inventory: Latest observed policy-selected workloads, actual pods, allocations and recommendations, keyed by cluster ID and workload UID
   policies: Current observed OptimizationPolicy spec and distinct observed revisions
@@ -112,7 +113,7 @@ retention_and_backups:
   receipts: Receipt digests currently have no pruning policy so delayed duplicate deliveries remain verifiable
   sessions: Browser sessions expire after 8 hours; OIDC login state after 5 minutes; expired rows are pruned
   backup: Production requires automated PostgreSQL backups and point-in-time recovery; logical pg_dump exports can supplement these but do not provide PITR
-  local_restore_test: bash hack/console/backup-test.sh restores a logical backup into a new disposable database and checks six demo workloads, history, sessions and stream checkpoints
+  local_restore_test: bash hack/console/backup-test.sh restores a logical backup into a new disposable database and checks six demo workloads, history, sessions, stream checkpoints and onboarding schema
   not_a_backup: The local PostgreSQL StatefulSet and agent PVCs are test fixtures, not a production HA or backup solution
 backup_requirements:
   ownership: Name the database and console recovery owners; record the backup schedule, retention, recovery credentials and escalation route before production use
@@ -124,6 +125,7 @@ backup_requirements:
     - Logical pg_dump exports are consistent snapshots useful for portability and isolated restore tests; they cannot substitute for a base backup and WAL replay
   complete_restore_set:
     - Back up the entire dedicated console database, including op_schema, op_clusters, op_batches, inventory, policies, revisions, history, samples and sessions
+    - Include op_bootstrap, op_users, op_registrations, op_credentials, op_admin_audit and op_rate_limits added by schema version 2, plus schema 3 groups, templates, agent health, notifications, recovery checks and session group claims; identity and credential state must match the restored data
     - Preserve role/ownership and required database configuration separately; pg_dump of one database does not include cluster-wide roles
     - Retain the matching console image digest, chart version, Helm configuration, cluster ID mapping and reader grants in version control
     - Keep database credentials, agent tokens, OIDC secrets and encryption keys recoverable through the approved secret-management process; never put them in Git or backup logs
@@ -134,7 +136,7 @@ backup_requirements:
     - Treat replicas and volume persistence as availability measures; retain independent recoverable backups
   retention: Database backup retention and the PITR window are separate from server.retentionDays; define both explicitly, including how deletion requirements apply to retained backups
   monitoring: Alert on stale or failed backups, an RPO breach, missing WAL/recovery coverage, insufficient disk space, queueFull warnings and stale cluster capture/receipt times
-  implementation_boundary: The Helm chart connects to external PostgreSQL; it does not provision production backup schedules, PITR, queue snapshots or disaster-recovery automation
+  implementation_boundary: The Helm chart connects to external PostgreSQL or an optional evaluation subchart; it does not provision production backup schedules, PITR, queue snapshots or disaster-recovery automation
 recovery_procedure:
   isolate:
     - Record the incident time, chosen restore point and expected data-loss window; preserve the damaged database and all agent queues for investigation
@@ -146,6 +148,9 @@ recovery_procedure:
     - Do not mix individual history tables with checkpoints from another restore point; they must represent one transactionally consistent database
     - Compare restored cluster identities, checkpoint sequences and receipt digests against each preserved agent queue before allowing writes
     - Clear op_sessions in the isolated restored database before reopening access; this revokes restored sessions and pending OIDC login state that may have been invalidated after the restore point
+    - Reconcile restored administrator/viewer accounts, grants and disabled states against the current authorized roster; a restore may undo later access removals
+    - Revoke every restored enrollment and runtime credential in op_credentials before reopening ingestion; issue fresh enrollments only after cluster and queue reconciliation, preserving each reconciled agent PVC
+    - Verify that op_bootstrap still records completed setup and remove bootstrapTokenHash from the recovered server configuration; do not reopen first-administrator setup after a database rewind
   reconcile_agents:
     identity: Each existing cluster ID must still match its kube-system UID and the queue's stream ID
     replay: Resume the existing identity only when every missing batch after op_clusters.last_seq is available in sequence; retries at already committed sequences must match op_batches digests
@@ -170,7 +175,7 @@ restore_drills:
     - Use dedicated test agents to exercise both matching-checkpoint replay and the explicit re-enrollment path for a missing acknowledged batch; never connect live agents to a drill database
     - Record the tested backup identifier, restore point, compatible application version, results and remaining gaps
   local_command: bash hack/console/backup-test.sh
-  local_coverage: The existing local drill checks a logical restore into a disposable database for schema version, six demo workloads, history, sessions and stream checkpoints
+  local_coverage: The local drill checks a logical restore into a disposable database for schema version, six demo workloads, history, sessions, stream checkpoints and presence of all onboarding tables
   local_limits: This logical restore drill does not establish production PITR, RPO/RTO, complete receipt verification or recovery from a database rewind behind acknowledged agent sequences
 backup_references:
   logical_backups: https://www.postgresql.org/docs/18/backup-dump.html

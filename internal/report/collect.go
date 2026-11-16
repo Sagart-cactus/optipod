@@ -16,39 +16,29 @@ import (
 	"github.com/optipod/optipod/internal/policy"
 	"github.com/optipod/optipod/internal/webhook"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/types"
 	resourcehelper "k8s.io/component-helpers/resource"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 type Collector struct {
-	Client    client.Client
-	Namespace string
+	Client           client.Client
+	Namespace        string
+	IncludeUnmanaged bool
 }
 
 func (c *Collector) Fleet(ctx context.Context) (*Fleet, error) {
 	result := &Fleet{Generated: time.Now().UTC(), Workloads: []Workload{}}
 	policies := &api.OptimizationPolicyList{}
-	if err := c.Client.List(ctx, policies); err != nil {
+	if err := c.Client.List(ctx, policies); err != nil && (!c.IncludeUnmanaged || (!meta.IsNoMatchError(err) && !apierrors.IsNotFound(err))) {
 		return nil, err
 	}
 	result.Policies = len(policies.Items)
-	seen := map[types.UID]bool{}
-	workloads := []discovery.Workload{}
-	for i := range policies.Items {
-		found, err := discovery.DiscoverWorkloads(ctx, c.Client, &policies.Items[i])
-		if err != nil {
-			return nil, err
-		}
-		for _, w := range found {
-			if c.Namespace != "" && w.Namespace != c.Namespace {
-				continue
-			}
-			if !seen[w.Object.GetUID()] {
-				workloads = append(workloads, w)
-				seen[w.Object.GetUID()] = true
-			}
-		}
+	workloads, seen, managed, err := c.findWorkloads(ctx, policies)
+	if err != nil {
+		return nil, err
 	}
 	podsByOwner := map[types.UID][]corev1.Pod{}
 	pods := &corev1.PodList{}
@@ -70,15 +60,20 @@ func (c *Collector) Fleet(ctx context.Context) (*Fleet, error) {
 		result.Warnings = append(result.Warnings, "Events unavailable: "+err.Error())
 	}
 	for _, w := range workloads {
-		p, err := policy.NewPolicySelector(c.Client).SelectBestPolicy(ctx, &w)
-		if err != nil {
-			return nil, err
-		}
-		if p == nil {
-			continue
+		p := &api.OptimizationPolicy{Spec: api.OptimizationPolicySpec{Mode: api.PolicyMode("Unmanaged")}}
+		if managed[w.Object.GetUID()] {
+			var err error
+			p, err = policy.NewPolicySelector(c.Client).SelectBestPolicy(ctx, &w)
+			if err != nil {
+				return nil, err
+			}
 		}
 		a := w.Object.GetAnnotations()
 		row := Workload{Kind: w.Kind, Namespace: w.Namespace, Name: w.Name, UID: string(w.Object.GetUID()), Policy: p.Namespace + "/" + p.Name, Mode: p.Spec.Mode, Provider: p.Spec.MetricsConfig.Provider, Paused: a[history.Paused] == "true", RecommendationExpires: a[webhook.RecommendationExpiry], LatestRecord: a[history.Latest], Pods: []Pod{}, Containers: []Container{}}
+		if !managed[w.Object.GetUID()] {
+			row.Policy = ""
+			row.Reason = "No matching optimization policy; resources are unchanged. Create an explicitly scoped Recommend policy after metrics preflight."
+		}
 		if p.Spec.DaemonSetSizing != nil {
 			row.Provider = "node allocatable (admission)"
 			if raw := a[nodesizing.SummaryAnnotation]; raw != "" {
@@ -184,4 +179,45 @@ func populateContainers(row *Workload, spec *corev1.PodSpec, a map[string]string
 		}
 		row.Containers = append(row.Containers, co)
 	}
+}
+
+func (c *Collector) findWorkloads(ctx context.Context, policies *api.OptimizationPolicyList) ([]discovery.Workload, map[types.UID]bool, map[types.UID]bool, error) {
+	seen := map[types.UID]bool{}
+	workloads := []discovery.Workload{}
+	for i := range policies.Items {
+		found, err := discovery.DiscoverWorkloads(ctx, c.Client, &policies.Items[i])
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		for _, w := range found {
+			if c.Namespace != "" && w.Namespace != c.Namespace {
+				continue
+			}
+			if !seen[w.Object.GetUID()] {
+				workloads = append(workloads, w)
+				seen[w.Object.GetUID()] = true
+			}
+		}
+	}
+	managed := map[types.UID]bool{}
+	for uid := range seen {
+		managed[uid] = true
+	}
+	if c.IncludeUnmanaged {
+		inventoryPolicy := &api.OptimizationPolicy{Spec: api.OptimizationPolicySpec{Selector: api.WorkloadSelector{WorkloadTypes: &api.WorkloadTypeFilter{Include: []api.WorkloadType{api.WorkloadTypeDeployment, api.WorkloadTypeStatefulSet, api.WorkloadTypeDaemonSet, api.WorkloadTypeJob, api.WorkloadTypeCronJob, api.WorkloadTypeReplicaSet, api.WorkloadTypeRollout}}}}}
+		if c.Namespace != "" {
+			inventoryPolicy.Spec.Selector.Namespaces = &api.NamespaceFilter{Allow: []string{c.Namespace}}
+		}
+		found, err := discovery.DiscoverWorkloads(ctx, c.Client, inventoryPolicy)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		for _, w := range found {
+			if !seen[w.Object.GetUID()] {
+				workloads = append(workloads, w)
+				seen[w.Object.GetUID()] = true
+			}
+		}
+	}
+	return workloads, seen, managed, nil
 }

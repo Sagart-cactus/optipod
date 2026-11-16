@@ -21,9 +21,8 @@ type Uploader struct {
 }
 
 func (u *Uploader) Drain(ctx context.Context, q *Queue) error {
-	endpoint, err := url.Parse(u.URL)
-	if err != nil || endpoint.Host == "" || endpoint.User != nil || endpoint.RawQuery != "" || endpoint.Fragment != "" || (endpoint.Scheme != "https" && (endpoint.Scheme != "http" || !u.AllowHTTP)) {
-		return fmt.Errorf("upload URL requires HTTPS (explicit HTTP opt-in for local tests)")
+	if err := u.validateURL(); err != nil {
+		return err
 	}
 	secret, err := os.ReadFile(u.TokenFile)
 	if err != nil {
@@ -67,6 +66,14 @@ func (u *Uploader) Drain(ctx context.Context, q *Queue) error {
 		if e = q.Acknowledge(path); e != nil {
 			return e
 		}
+	}
+	return nil
+}
+
+func (u *Uploader) validateURL() error {
+	endpoint, err := url.Parse(u.URL)
+	if err != nil || endpoint.Host == "" || endpoint.User != nil || endpoint.RawQuery != "" || endpoint.Fragment != "" || (endpoint.Path != "" && endpoint.Path != "/") || (endpoint.Scheme != "https" && (endpoint.Scheme != "http" || !u.AllowHTTP)) {
+		return fmt.Errorf("upload URL requires an HTTPS origin (explicit HTTP opt-in for local tests)")
 	}
 	return nil
 }

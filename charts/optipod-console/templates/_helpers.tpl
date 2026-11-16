@@ -14,6 +14,24 @@
 {{- end -}}
 {{- end -}}
 
+{{- define "optipod-console.serverSecretName" -}}
+{{- if .Values.server.secret.create -}}
+  {{- if .Values.server.existingSecret -}}{{- fail "choose either server.existingSecret or server.secret.create" -}}{{- end -}}
+  {{- printf "%s-server-config" .Release.Name -}}
+{{- else -}}
+  {{- required "server.existingSecret is required unless server.secret.create=true" .Values.server.existingSecret -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "optipod-console.agentTLSSecretName" -}}
+{{- if .Values.server.agentTLS.secret.create -}}
+  {{- if .Values.server.agentTLS.existingSecret -}}{{- fail "choose one agent TLS Secret source" -}}{{- end -}}
+  {{- printf "%s-agent-tls" .Release.Name -}}
+{{- else -}}
+  {{- required "server.agentTLS.existingSecret is required" .Values.server.agentTLS.existingSecret -}}
+{{- end -}}
+{{- end -}}
+
 {{/* Normalize trailing newlines from --set-file, just as the agent does. */}}
 {{- define "optipod-console.agentToken" -}}
 {{- $secret := .Values.agent.secret | default dict -}}

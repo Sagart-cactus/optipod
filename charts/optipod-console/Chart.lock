@@ -1,0 +1,6 @@
+dependencies:
+- name: postgresql
+  repository: file://../optipod-postgresql
+  version: 0.1.0
+digest: sha256:8dc961f7939ea030421cbf9187a40936843b8d6cc3b9dc811c5c7aceda04fd57
+generated: "2026-11-16T12:43:22.714761+07:00"

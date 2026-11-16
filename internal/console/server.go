@@ -13,6 +13,9 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/optipod/optipod/internal/consoletls"
+	"github.com/optipod/optipod/internal/consoleversion"
 )
 
 //go:embed ui/*
@@ -21,9 +24,11 @@ var assets embed.FS
 const MaxBatchBytes = 8 * 1024 * 1024
 
 type Server struct {
-	Store  *Store
-	Config Config
-	OIDC   *LoginProvider
+	Store         *Store
+	Config        Config
+	OIDC          *LoginProvider
+	Authority     *consoletls.Authority
+	AgentTrustPEM string
 }
 
 func (s *Server) Handler() http.Handler {
@@ -32,6 +37,16 @@ func (s *Server) Handler() http.Handler {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Referrer-Policy", "no-referrer")
 		w.Header().Set("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
+		if r.URL.Path == "/api/version" {
+			if validateMethod(w, r, http.MethodGet) {
+				writeJSON(w, map[string]any{"version": consoleversion.Version, "protocol": ProtocolVersion, "chartVersion": consoleversion.ChartVersion})
+			}
+			return
+		}
+		if r.URL.Path == "/api/renew" {
+			s.renewIdentity(w, r)
+			return
+		}
 		if r.URL.Path == "/healthz" {
 			w.WriteHeader(200)
 			return
@@ -48,6 +63,14 @@ func (s *Server) Handler() http.Handler {
 			s.ingest(w, r)
 			return
 		}
+		if r.URL.Path == "/api/enroll" {
+			s.enroll(w, r)
+			return
+		}
+		if r.URL.Path == "/api/heartbeat" {
+			s.heartbeat(w, r)
+			return
+		}
 		u, _ := url.Parse(s.Config.PublicURL)
 		if r.Host != u.Host || (r.Header.Get("Origin") != "" && r.Header.Get("Origin") != strings.TrimSuffix(s.Config.PublicURL, "/")) {
 			http.Error(w, "origin not allowed", http.StatusForbidden)
@@ -61,7 +84,14 @@ func (s *Server) Handler() http.Handler {
 }
 
 func (s *Server) route(w http.ResponseWriter, r *http.Request) {
+	if strings.HasPrefix(r.URL.Path, "/api/admin/") {
+		s.adminRoute(w, r)
+		return
+	}
 	switch r.URL.Path {
+	case "/auth/bootstrap":
+		s.bootstrap(w, r)
+		return
 	case "/auth/login":
 		if validateMethod(w, r, http.MethodPost) {
 			s.login(w, r)
@@ -78,9 +108,9 @@ func (s *Server) route(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	case "/auth/config":
-		writeJSON(w, map[string]bool{"oidc": s.OIDC != nil})
+		s.authConfig(w, r)
 		return
-	case "/", "/app.js", "/style.css":
+	case "/", "/app.js", "/onboarding.js", "/style.css":
 		if validateMethod(w, r, http.MethodGet) {
 			s.asset(w, r)
 		}
@@ -99,7 +129,7 @@ func (s *Server) route(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.URL.Path == "/api/me" {
-		writeJSON(w, map[string]any{"subject": reader.Subject, "clusters": reader.Clusters, "namespaces": reader.Namespaces})
+		writeJSON(w, map[string]any{"subject": reader.Subject, "role": reader.Role, "clusters": reader.Clusters, "namespaces": reader.Namespaces, "namespaceScopes": reader.NamespaceScopes})
 		return
 	}
 	if r.URL.Path == "/api/clusters" {
@@ -108,9 +138,9 @@ func (s *Server) route(w http.ResponseWriter, r *http.Request) {
 			s.unavailable(w, err)
 			return
 		}
-		if len(reader.Namespaces) > 0 {
+		if len(reader.Namespaces) > 0 || len(reader.NamespaceScopes) > 0 {
 			for i := range clusters {
-				if len(clusters[i].Warnings) > 0 {
+				if len(clusters[i].Warnings) > 0 && (len(reader.Namespaces) > 0 || len(reader.NamespaceScopes[clusters[i].ID]) > 0) {
 					clusters[i].Warnings = []string{"Some observations are incomplete; collection warnings require cluster-wide access."}
 				}
 			}
@@ -163,7 +193,7 @@ func (s *Server) list(w http.ResponseWriter, r *http.Request, reader *Reader) {
 			return
 		}
 	}
-	page, err := s.Store.List(r.Context(), kind, Query{Clusters: reader.Clusters, Namespaces: reader.Namespaces, Cluster: cluster, Namespace: ns, UID: q.Get("uid"), Search: q.Get("search"), Mode: q.Get("mode"), Cursor: q.Get("cursor"), Limit: limit, IncludeDeleted: q.Get("deleted") == "true"})
+	page, err := s.Store.List(r.Context(), kind, Query{NamespaceScopes: reader.NamespaceScopes, Clusters: reader.Clusters, Namespaces: reader.Namespaces, Cluster: cluster, Namespace: ns, UID: q.Get("uid"), Search: q.Get("search"), Mode: q.Get("mode"), Cursor: q.Get("cursor"), Limit: limit, IncludeDeleted: q.Get("deleted") == "true"})
 	if err != nil {
 		s.unavailable(w, err)
 		return
@@ -175,12 +205,10 @@ func (s *Server) ingest(w http.ResponseWriter, r *http.Request) {
 	if !validateMethod(w, r, http.MethodPost) {
 		return
 	}
-	var agent *AgentCredential
-	for _, a := range s.Config.Agents {
-		if tokenEqual(bearer(r), a.TokenHash) {
-			agent = &a
-			break
-		}
+	agent, err := s.authenticatedAgent(r)
+	if err != nil {
+		s.unavailable(w, err)
+		return
 	}
 	if agent == nil {
 		http.Error(w, "agent authentication required", http.StatusUnauthorized)
@@ -202,9 +230,13 @@ func (s *Server) ingest(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	if !agent.permits(&b) {
+		http.Error(w, "agent cluster or namespace binding does not permit this batch", http.StatusForbidden)
+		return
+	}
 	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
 	defer cancel()
-	err := s.Store.Ingest(ctx, agent.ID, agent.Name, &b)
+	err = s.Store.Ingest(ctx, agent.ID, agent.Name, &b)
 	if errors.Is(err, ErrConflict) {
 		http.Error(w, ErrConflict.Error(), http.StatusConflict)
 		return
@@ -238,6 +270,6 @@ func (s *Server) asset(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	w.Header().Set("Content-Type", map[string]string{"index.html": "text/html; charset=utf-8", "app.js": "text/javascript; charset=utf-8", "style.css": "text/css; charset=utf-8"}[name])
+	w.Header().Set("Content-Type", map[string]string{"index.html": "text/html; charset=utf-8", "app.js": "text/javascript; charset=utf-8", "onboarding.js": "text/javascript; charset=utf-8", "style.css": "text/css; charset=utf-8"}[name])
 	_, _ = w.Write(data)
 }

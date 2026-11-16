@@ -4,6 +4,7 @@ apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: {{ .Release.Name }}-agent
+  annotations: {{ toYaml .Values.agent.serviceAccountAnnotations | nindent 4 }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -62,10 +63,14 @@ spec:
       {{- if $secret.create }}
       annotations:
         checksum/agent-secret: {{ include "optipod-console.agentToken" . | sha256sum | quote }}
+        {{- if .Values.agent.identity.enabled }}
+        checksum/agent-identity: {{ $secret.identity | sha256sum | quote }}
+        {{- end }}
       {{- end }}
       labels: {app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: agent}
     spec:
       serviceAccountName: {{ .Release.Name }}-agent
+      imagePullSecrets: {{ toYaml .Values.global.imagePullSecrets | nindent 8 }}
       securityContext: {runAsNonRoot: true, runAsUser: 65532, runAsGroup: 65532, fsGroup: 65532, seccompProfile: {type: RuntimeDefault}}
       containers:
         - name: agent
@@ -77,6 +82,12 @@ spec:
             - "--server-url={{ required "agent.serverURL is required" .Values.agent.serverURL }}"
             - --token-file=/etc/agent/token
             - --queue-dir=/var/lib/optipod-console
+            {{- if .Values.agent.identity.enabled }}
+            - --identity-file=/etc/agent/identity.json
+            {{- end }}
+            {{- if .Values.agent.caSecret }}
+            - --ca-file=/etc/console-ca/ca.crt
+            {{- end }}
             - "--interval={{ .Values.agent.interval }}"
             - "--queue-bytes={{ int64 .Values.agent.queueBytes }}"
             {{- if .Values.agent.namespaces }}
@@ -86,15 +97,24 @@ spec:
             - --allow-insecure-http
             {{- end }}
           securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+          env: {{ toYaml .Values.agent.env | nindent 12 }}
           resources: {{ toYaml .Values.agent.resources | nindent 12 }}
           volumeMounts:
             - {name: queue, mountPath: /var/lib/optipod-console}
             - {name: token, mountPath: /etc/agent, readOnly: true}
+            {{- if .Values.agent.caSecret }}
+            - {name: ca, mountPath: /etc/console-ca, readOnly: true}
+            {{- end }}
       volumes:
         - name: token
           secret:
             secretName: {{ include "optipod-console.agentSecretName" . | quote }}
             defaultMode: 0440
+        {{- if .Values.agent.caSecret }}
+        - name: ca
+          secret:
+            secretName: {{ .Values.agent.caSecret | quote }}
+        {{- end }}
   volumeClaimTemplates:
     - metadata: {name: queue}
       spec:

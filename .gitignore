@@ -64,3 +64,6 @@ TEST_*.md
 test-*.yaml
 temp-*.yaml
 .DS_Store
+
+# Browser E2E dependencies
+hack/console/ui/node_modules/

@@ -87,6 +87,7 @@ type Cluster struct {
 }
 
 type Query struct {
+	NamespaceScopes                               map[string][]string
 	Namespaces                                    []string
 	Clusters                                      []string
 	Cluster, Namespace, UID, Search, Mode, Cursor string

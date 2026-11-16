@@ -1,0 +1,138 @@
+scope: Engineer-led multi-cluster onboarding across P0, P1 and P2
+validation: console-onboarding-validation.yaml
+principles:
+  - Install one shared console and PostgreSQL first; they can run centrally in a management cluster
+  - Each source cluster runs a read-only telemetry agent; the optimizer remains a separate component
+  - The engineer selects a local kubeconfig and context; kubeconfigs never reach the console
+  - Onboarding never enables Auto and never changes workload resources
+versions:
+  console_chart_and_cli: 0.3.0
+  console_image: ghcr.io/sagart-cactus/optipod-console:0.3.0
+  controller_bundle_chart: 1.6.0-console.0
+  controller_bundle_image: ghcr.io/sagart-cactus/optipod:console-0.3.0
+  installer_kubernetes: 1.33 through 1.35; real-cluster E2E uses 1.35
+  compatibility: Protocol 1, console and agent 0.3.x; unknown/incompatible agent versions produce health warnings
+  downloads: https://github.com/Sagart-cactus/optipod/releases/tag/console-v0.3.0
+  artifacts: Linux and macOS amd64/arm64 CLI archives, SHA256SUMS, OCI charts and multi-architecture images
+console_first:
+  production:
+    - Provision a dedicated external PostgreSQL database with TLS, backups, PITR and a tested recovery procedure
+    - Create server configuration with publicURL and a preconfigured bootstrapTokenHash; no placeholder readers or agents are required
+    - Generate distinct bootstrap and administrator tokens with a secret manager; use hash-token via stdin to obtain the bootstrap hash
+    - Configure UI HTTPS ingress and a separate agent HTTPS endpoint; source clusters need outbound access to the latter
+    - Enable server.agentTLS for all newly onboarded clusters to require a client certificate in addition to a scoped token
+    - Supply configuration, database DSN and PKI through existing Secrets or opt-in Helm-owned Secrets
+    - Install with agent.enabled=false; the central cluster does not need an optimizer
+  command: >-
+    helm upgrade --install optipod-console oci://ghcr.io/sagart-cactus/charts/optipod-console
+    --version 0.3.0 --kubeconfig CENTRAL_PRIVATE_FILE --kube-context CENTRAL_CONTEXT
+    --namespace optipod-console --create-namespace -f /private/console-values.yaml --wait
+  config_example: |
+    {"publicURL":"https://console.example.com","bootstrapTokenHash":"REPLACE_WITH_BOOTSTRAP_SHA256","agents":[],"readers":[]}
+  evaluation_postgresql:
+    enable: postgresql.enabled=true
+    authentication: Either postgresql.auth.existingSecret containing password, or postgresql.auth.create=true with an engineer-supplied password of at least 32 characters
+    automatic_dsn: With postgresql.auth.create and server.secret.create, the parent chart can derive the internal database URL; use --set-file postgresql.auth.password=/private/password
+    existing_db_secret: When using an existing PostgreSQL password Secret, supply the matching server database-url explicitly # pragma: allowlist secret - configuration instructions, no credential value
+    boundary: One PostgreSQL replica with a retained PVC; no HA, automated backups or PITR. Use external operated PostgreSQL for production.
+    password_rotation: Changing the evaluation password Secret does not alter an existing database role; coordinate ALTER ROLE with the server DSN. Retain the original credential when reusing a retained PVC. # pragma: allowlist secret - configuration instructions, no credential value
+    chart: charts/optipod-postgresql is bundled as an optional local dependency; postgresql:18.7
+  owned_secret_example: >- # pragma: allowlist secret - configuration instructions, no credential value
+    helm upgrade --install optipod-console oci://ghcr.io/sagart-cactus/charts/optipod-console
+    --version 0.3.0 --kubeconfig CENTRAL_PRIVATE_FILE --kube-context CENTRAL_CONTEXT
+    --namespace optipod-console --create-namespace -f /private/console-values.yaml
+    --set server.secret.create=true --set-file server.secret.databaseURL=/private/database-url --wait
+  secret_warning: Helm retains supplied values and rendered Secrets in release history. Restrict Kubernetes Secret and Helm release access; never commit actual secret values or print rendered Secrets. # pragma: allowlist secret - configuration instructions, no credential value
+  bootstrap:
+    - Open the console and choose Set up the first administrator
+    - Supply the bootstrap credential, administrator subject and distinct new administrator token
+    - Store that token securely; only one bootstrap succeeds across concurrent replicas
+    - Sign in and configure additional administrators or SSO groups before retiring bootstrap configuration
+agent_identity:
+  transport: Native mTLS on the separate agent listener; forwarded certificate headers are never trusted
+  credentials: Ten-minute single-use enrollment, 90-day cluster-bound runtime token, 24-hour ECDSA P-256 client certificate
+  renewal: Agent renews when fewer than eight hours remain, extends runtime expiry, and persists its renewed identity on the queue PVC
+  keys: Client private key is generated locally; only a CSR reaches the console. PostgreSQL stores token hashes and a public-key binding, never client private keys.
+  pki_command: optipod-console pki --output-dir /private/new-agent-pki --hosts agents.example.com
+  pki_files: Mount server.crt, server.key, client-ca.crt, client-ca.key and server-ca.crt with server.agentTLS.existingSecret, or opt into server.agentTLS.secret.create
+  generated_pki: The helper creates a two-year client CA and one-year server certificate; production operators own server/CA renewal and secure backup of the signing key
+  exposure: Expose the agent Service with an L4 load balancer or TLS passthrough. An HTTP ingress that terminates client TLS cannot authenticate native client certificates.
+  clock: Keep workstation, console and cluster node clocks synchronized; never bypass certificate validation to compensate for clock drift
+  legacy: Token-only configured agents remain supported. Newly registered clusters require mTLS when the console authority is enabled; enabling it does not silently migrate legacy credentials.
+onboarding_journey:
+  - Sign in as administrator, open Cluster onboarding, and select Add cluster or an environment template
+  - Enter stable cluster ID, display name, environment and the actual kube-system namespace UID
+  - Select namespace scope and the real metrics source; an existing optimizer's provider must match
+  - Select existing/new optimizer, Helm/GitOps, namespaces, release names and queue StorageClass
+  - Save registration; settings and wizard stage persist in PostgreSQL without editing server JSON or restarting the API
+  - Download a fresh enrollment package when ready; chmod 600 and protect it outside Git
+  - Generate and review the non-secret plan; add private network/Secret references if needed
+  - Run preflight, then onboard with an explicit context and a private state directory
+  - Check first inventory, heartbeat, version, certificate/credential expiry and queue health in the console
+  - Download a bounded Recommend policy with an explicit namespace and workload label; review and apply it with local Kubernetes credentials
+  - Wait for sufficient history and examine recommendations before making any separate decision to enable automation
+cluster_uid_command: >-
+  kubectl --kubeconfig SOURCE_PRIVATE_FILE --context EXACT_CONTEXT get namespace kube-system -o jsonpath='{.metadata.uid}'
+installer_commands: |
+  chmod 600 /private/enrollment.json
+  optipod-console plan --enrollment-file /private/enrollment.json --plan-file ./cluster-plan.json
+  optipod-console preflight --plan-file ./cluster-plan.json --kubeconfig SOURCE_PRIVATE_FILE --context EXACT_CONTEXT
+  optipod-console onboard --plan-file ./cluster-plan.json --enrollment-file /private/enrollment.json --state-dir /private/cluster-state --kubeconfig SOURCE_PRIVATE_FILE --context EXACT_CONTEXT
+installer_behavior:
+  prerequisites: Matching CLI, Helm 3 or 4, explicit Kubernetes credentials and a private writable state directory
+  preflight: Checks UID, Kubernetes compatibility, required permissions, competing optimizers and StorageClass before creating a disposable in-cluster Job/PVC for DNS, verified TLS, Pod admission, metrics and fsync checks
+  metrics_server: Requires CPU and memory samples in selected namespaces; reports that current samples must accumulate into the policy's configured history
+  prometheus: Separately queries container CPU, memory and history in each selected namespace; missing metrics fail, insufficient history warns to remain in Recommend
+  history_boundary: The preflight checks sample availability, not final recommendation eligibility; the optimizer enforces the actual policy history, coverage and sample gates
+  existing: Installs only an agent; never adopts or modifies the existing optimizer release
+  new: Installs the compatible optimizer bundle without a mutating webhook by default; no policy is created or applied automatically
+  webhook: Optional enableWebhook in the plan requires existing cert-manager; every probe also exercises server-side Pod admission
+  resume: Repeat onboard with the same saved plan/state. The installer rechecks the cluster and skips enrollment after a saved exchange; Helm and the queue PVC are reused.
+  mismatches: A different UID, namespace scope, mTLS requirement or endpoint cannot consume the saved enrollment token
+  interrupted_exchange: If an exchange response or state file was lost, revoke its runtime credential, issue a new enrollment and use --reenroll; an enrollment package is never replayable
+  combined_releases: Installer refuses to adopt or uninstall combined console/agent releases; agent lifecycle requires a dedicated release
+  private_state: State directory mode 0700; runtime files mode 0600. Keep state and GitOps output directories separate, including through symlinks.
+  upgrade: Use the matching supported CLI/chart release and the same queue PVC. Review compatibility before a version-family change; this release only accepts its matched plan/chart versions.
+production_plan_fields:
+  image: A pinned repository:tag, including a private registry; latest and digest syntax are rejected by this installer version
+  imagePullSecrets: Existing registry Secret names in the installation namespace; also create them in a different optimizer namespace when needed # pragma: allowlist secret - configuration instructions, no credential value
+  consoleCASecret: Existing Secret with ca.crt for a legacy token-only agent using a private server CA; mTLS identities already carry server trust # pragma: allowlist secret - configuration instructions, no credential value
+  proxySecret: Existing Secret containing HTTP_PROXY, HTTPS_PROXY and NO_PROXY as appropriate; include Kubernetes/service networks in NO_PROXY # pragma: allowlist secret - configuration instructions, no credential value
+  prometheusAuth: none, bearer or basic
+  prometheusSecret: Existing Secret with token, or username/password; authentication does not implicitly require a CA # pragma: allowlist secret - configuration instructions, no credential value
+  prometheusCASecret: Separate optional Secret with ca.crt; CA-only TLS does not require a client keypair # pragma: allowlist secret - configuration instructions, no credential value
+  notes: These references contain names only. Values must be supplied by the engineer through Kubernetes, external-secrets, Sealed Secrets or another approved secret manager.
+gitops:
+  render_command: optipod-console render --plan-file ./cluster-plan.json --output-dir ./cluster-manifests
+  enroll_and_render: Add --output-dir ./cluster-manifests to onboard with installMethod=gitops; preflight and enrollment run, but no controller/agent manifests are applied
+  contents: Namespaces, pinned chart-rendered manifests, values, public trust/plan data and instructions; no Secret objects or runtime credentials
+  delivery: Supply the referenced <release>-agent-auth Secret containing token and identity.json through your secret manager, then reconcile namespaces and manifests
+  scope: Export does not adopt existing releases; preserve the PVC when moving or upgrading delivery mechanisms
+  bulk_command: optipod-console reconcile --console-url https://console.example.com --admin-token-file /private/admin-token --registrations-file ./clusters.json
+  reconciliation: Atomic idempotent batches of up to 50 registrations; conflicting existing registrations are rejected, never silently overwritten
+access_and_operations:
+  roles: Administrators manage onboarding and access. Viewers only read assigned clusters/namespaces. The last enabled database administrator cannot be removed.
+  sso: Configure verified OIDC issuer, clientID, groupsClaim and any required scopes; map group names to roles and scopes in the UI
+  group_scopes: Multiple group grants are unioned as exact cluster/namespace pairs; a namespace grant on one cluster cannot widen access on another
+  session_revocation: Database grants and group mappings are checked on every request. Disabled users override group grants. IdP group-membership changes take effect on the next sign-in; sessions expire after eight hours.
+  static_grants: Existing static configuration remains authoritative and cannot be taken over by a database grant
+  audit: Attributed administration records persist in PostgreSQL without automatic deletion; credential listings and audit never return raw credentials or token hashes
+  limits: Up to 1000 registrations/credentials/grants/templates per listing, 100 recent notifications; audit supports before-cursor pagination
+  rate_limits: Shared PostgreSQL rate limits apply across replicas; untrusted forwarding headers cannot bypass limits
+  notifications: Persistent in-console first-upload, disconnect/reconnect and health notifications with acknowledgement; no unsolicited external messages
+  health: Stale inventory/heartbeats, queue above 80 percent, incompatible versions, expiring credentials/certificates and database readiness
+  recovery_evidence: Only a successful logical restore drill records verified recovery evidence; absence is shown explicitly. PITR and RPO/RTO must be validated operationally.
+  network_policy: Opt-in policy permits DNS and bundled PostgreSQL; supply explicit ingress/egress rules for browser ingress, agents, Kubernetes, external database and IdP. Requires an enforcing CNI.
+lifecycle:
+  disconnect: UI disconnect immediately revokes all telemetry credentials; optimizer and history remain
+  reconnect: UI reconnect permits a new enrollment; previously revoked credentials remain revoked
+  reenroll_command: optipod-console onboard --reenroll --enrollment-file /private/fresh-enrollment.json --state-dir /private/cluster-state --kubeconfig SOURCE_PRIVATE_FILE --context EXACT_CONTEXT
+  rotation: After the new credential uploads successfully, revoke the old runtime credential. Projected external identity Secrets are reloaded by the running agent; Helm-owned changes restart the pod by checksum.
+  uninstall_command: optipod-console uninstall --plan-file ./cluster-plan.json --admin-token-file /private/admin-token --kubeconfig SOURCE_PRIVATE_FILE --context EXACT_CONTEXT
+  uninstall: Revokes telemetry, removes only its dedicated Helm agent release, and retains the PVC and central history. GitOps users remove the agent manifests in their source and disconnect through the UI.
+  first_policy: Generator always uses Recommend, excludes system namespaces, requires explicit workload label and positive ordered bounds, and sets one-hour history, 80 percent coverage and 12 samples
+schema:
+  version: 3
+  migrations: Transactionally serialized migrations preserve inventory and add registry, credentials, audit, groups, wizard preferences, health, templates, notifications and recovery evidence
+  rollback: Older binaries refuse newer schemas. Take a verified recovery point before upgrade and restore a compatible application/database pair for rollback.
+  backup: Follow persistent-console.yaml; include all identity, credential, queue checkpoint and audit tables, PKI signing material and external secret configuration

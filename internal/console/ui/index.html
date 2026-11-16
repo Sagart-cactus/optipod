@@ -9,7 +9,8 @@
     <div class="mark">o<span>p</span></div><h1>Your workloads.<br>A clearer picture.</h1>
     <p>Explore recommendations, policy revisions and resource history across your clusters.</p>
     <a id="sso" class="button primary" href="/auth/oidc" hidden>Sign in with SSO</a>
-    <form id="loginform"><label for="token">Read-only access token</label><input id="token" type="password" autocomplete="off" required><button class="primary">Sign in</button></form>
+    <form id="loginform"><label for="token">Access token</label><input id="token" type="password" autocomplete="off" required><button class="primary">Sign in</button></form>
+    <button id="openbootstrap" hidden>Set up the first administrator</button>
     <p id="loginerror" class="error" role="alert"></p><small>Your access is limited to the clusters and namespaces assigned to you.</small>
   </section>
   <div id="console" class="shell" hidden>
@@ -18,14 +19,15 @@
       <p class="eyebrow">WORKLOAD CONSOLE</p>
       <nav aria-label="Main navigation"><button data-view="workloads" class="active">Fleet overview</button><button data-view="policies">Policies</button><button data-view="history">Decision history</button></nav>
       <div class="clusterheading"><span>CLUSTERS</span><button id="allclusters" class="link">View all</button></div><div id="clusterlist"></div>
-      <div class="account"><span class="readonly">Read-only access</span><small id="identity"></small><button id="logout" class="link">Sign out</button></div>
+      <button id="manageclusters" hidden>Cluster onboarding</button>
+      <div class="account"><span class="readonly" id="accessrole">Read-only access</span><small id="identity"></small><button id="logout" class="link">Sign out</button></div>
     </aside>
     <main>
       <header><div><p class="eyebrow" id="scope">ALL CLUSTERS</p><h1 id="title">Fleet overview</h1><p id="subtitle">Understand what is running, what changed, and why.</p></div><button id="refresh">↻ Refresh</button></header>
       <div id="status" role="status" aria-live="polite"></div>
       <section id="summary" class="stats" aria-label="Fleet summary"></section>
       <section class="surface">
-        <div class="filters"><input id="search" type="search" placeholder="Search workloads or namespaces" aria-label="Search"><input id="namespace" placeholder="Namespace" aria-label="Namespace filter"><select id="mode" aria-label="Optimization mode"><option value="">All modes</option><option>Recommend</option><option>Auto</option><option>Disabled</option></select><label class="check"><input id="deleted" type="checkbox"> Include removed</label><button id="export">Export page</button></div>
+        <div class="filters"><input id="search" type="search" placeholder="Search workloads or namespaces" aria-label="Search"><input id="namespace" placeholder="Namespace" aria-label="Namespace filter"><select id="mode" aria-label="Optimization mode"><option value="">All modes</option><option>Recommend</option><option>Auto</option><option>Disabled</option><option>Unmanaged</option></select><label class="check"><input id="deleted" type="checkbox"> Include removed</label><button id="export">Export page</button></div>
         <div class="tablewrap"><table><thead id="thead"></thead><tbody id="rows"></tbody></table></div>
         <div class="tablefooter"><span id="pageinfo"></span><button id="more" hidden>Load more</button></div>
       </section>
@@ -33,6 +35,85 @@
     </main>
   </div>
   <dialog id="detail"><div class="detailhead"><div><p class="eyebrow" id="detailcluster"></p><h2 id="detailtitle"></h2></div><button id="close" aria-label="Close details">✕</button></div><div id="detailbody"></div></dialog>
-  <script src="/app.js" defer></script>
+  <dialog id="bootstrapdialog"><div class="detailhead"><h2>Set up administrator access</h2><button id="closebootstrap" aria-label="Close setup">✕</button></div>
+    <p>The installation owner must provide the bootstrap credential. Setup is available only once.</p>
+    <form id="bootstrapform" class="onboardingform">
+      <label>Bootstrap credential<input name="bootstrap" type="password" autocomplete="off" required></label>
+      <label>Administrator name<input name="subject" maxlength="200" required></label>
+      <label>New administrator token<input name="token" type="password" minlength="32" autocomplete="off" required></label>
+      <p>Use a distinct random token of at least 32 characters and save it in your password manager before submitting.</p>
+      <button class="primary">Create administrator</button>
+    </form><p id="bootstraperror" class="error" role="alert"></p>
+  </dialog>
+  <dialog id="onboardingdialog"><div class="detailhead"><div><p class="eyebrow">ADMINISTRATION</p><h2>Connect your clusters</h2></div><button id="closeonboarding" aria-label="Close cluster onboarding">✕</button></div>
+    <p class="notebox">Connect telemetry first, then review recommendations. The console never uploads your kubeconfig or enables automatic optimization.</p>
+    <div class="onboardingactions"><button id="addcluster" class="primary">Add cluster</button><button id="refreshadmin">Refresh status</button></div>
+    <p id="onboardingstatus" role="status" aria-live="polite"></p>
+    <section id="wizard" hidden aria-label="Cluster onboarding wizard">
+      <div class="wizardheading"><h3 id="wizardtitle">Add cluster</h3><button id="closewizard" type="button">Close wizard</button></div>
+      <ol id="wizardsteps" class="wizardsteps"><li>Identify</li><li>Scope &amp; metrics</li><li>Installation</li><li>Connect</li><li>Verify</li></ol>
+      <form id="registrationform" class="onboardingform">
+        <fieldset data-step="0"><legend>Identify your cluster</legend>
+          <label>Environment template<select id="templatechoice"><option value="">Start from defaults</option></select></label>
+          <label>Cluster ID<input name="id" pattern="[a-zA-Z0-9][a-zA-Z0-9._-]*" maxlength="63" required></label>
+          <label>Display name<input name="name" maxlength="120" required></label>
+          <label>Environment<input name="environment" maxlength="120" placeholder="QA, production…"></label>
+          <label>Kubernetes cluster UID<input name="kubeUID" required></label>
+          <small>Run this locally against the intended context:</small><pre>kubectl --kubeconfig /path/to/kubeconfig --context YOUR_CONTEXT get namespace kube-system -o jsonpath='{.metadata.uid}'</pre>
+        </fieldset>
+        <fieldset data-step="1" hidden><legend>Choose scope and metrics</legend>
+          <label>Namespaces<input name="namespaces" placeholder="payments, checkout — leave blank for all"></label>
+          <small>Namespace access becomes fixed once you issue a credential. Use a new registration to change its access scope.</small>
+          <label>Metrics source<select name="metricsSource"><option value="metrics-server">metrics-server</option><option value="prometheus">Prometheus</option></select></label>
+          <label>Prometheus URL<input name="prometheusURL" placeholder="http://prometheus.monitoring.svc:9090"></label>
+          <small>Use the same provider as an existing optimizer. Prometheus is checked for CPU, memory and history; metrics-server supplies current samples.</small>
+        </fieldset>
+        <fieldset data-step="2" hidden><legend>Choose how to install</legend>
+          <label>Controller installation<select name="installMode"><option value="existing">Use an existing optimizer</option><option value="new">Install a new optimizer</option></select></label>
+          <label>Installation method<select name="installMethod"><option value="helm">Helm installer</option><option value="gitops">GitOps manifests</option></select></label>
+          <label>Agent namespace<input name="namespace" value="optipod-system" required></label>
+          <label>Agent release<input name="release" value="optipod-console" maxlength="53" required></label>
+          <label>New optimizer namespace<input name="controllerNamespace" value="optipod-system" required></label>
+          <label>New optimizer release<input name="controllerRelease" value="optipod" maxlength="53" required></label>
+          <label>Queue StorageClass<input name="storageClass" placeholder="Use cluster default"></label>
+          <small>Existing optimizers remain under their current ownership. Agent-only releases can be upgraded or removed independently.</small>
+        </fieldset>
+        <div class="onboardingactions"><button id="wizardback" type="button">Back</button><button id="wizardnext" type="button">Continue</button><button id="saveregistration" class="primary" hidden>Save registration</button></div>
+      </form>
+      <section id="connectstep" hidden>
+        <h3>Install with your local Kubernetes credentials</h3>
+        <p>Install the matching CLI from the release below. Download a one-use enrollment package when ready; it expires after 10 minutes. Only filenames appear in these commands.</p>
+        <a id="clirelease" class="button" href="https://github.com/Sagart-cactus/optipod/releases/tag/console-v0.3.0" target="_blank" rel="noopener">Download CLI 0.3.0</a>
+        <div class="onboardingactions"><button id="wizardissue" class="primary">Download enrollment file</button><button id="editregistration">Edit settings</button><button id="verifycluster">Check connection</button></div>
+        <pre id="installcommands"></pre>
+        <details><summary>Private networks and production settings</summary><p>Before onboarding, edit the generated plan to reference existing imagePullSecrets, proxySecret, prometheusSecret, prometheusAuth and prometheusCASecret. Copy referenced Secrets into the agent and optimizer namespaces as needed. Use versioned private images. Keep secret values in your secret manager. HTTPS trust comes from the enrollment package.</p></details>
+        <details><summary>Upgrade, reconnect or uninstall</summary><pre id="lifecyclecommands"></pre><p>Rerun with the saved state directory for compatible upgrades. To replace an expired or revoked identity, reconnect this registration, download a fresh enrollment file and add --reenroll. Revoke the previous runtime credential after the replacement is healthy. Agent removal retains its queue PVC, workload optimizer and central history.</p></details>
+      </section>
+      <section id="verifystep" hidden><h3>Verify telemetry and create a first policy</h3><div id="wizardhealth"></div>
+        <p class="notebox">Unmanaged workloads appear before a policy exists. Download a scoped Recommend policy, review it and apply it with your Kubernetes credentials. Requests and limits stay unchanged. Wait for sufficient sample history before expecting recommendations.</p>
+        <form id="policyform" class="onboardingform">
+          <label>Policy name<input name="name" value="first-recommendations" required></label>
+          <label>Workload namespace<input name="namespace" required></label>
+          <label>Workload label key<input name="labelKey" value="app" required></label><label>Workload label value<input name="labelValue" required></label>
+          <label>Minimum CPU<input name="cpuMin" value="50m" required></label><label>Maximum CPU<input name="cpuMax" value="2" required></label>
+          <label>Minimum memory<input name="memoryMin" value="64Mi" required></label><label>Maximum memory<input name="memoryMax" value="2Gi" required></label>
+          <button class="primary">Download Recommend policy</button>
+        </form><button id="backtoconnect">Back to installation</button>
+      </section>
+    </section>
+    <h3>Registered clusters</h3><div id="registrations"></div>
+    <details><summary>Fleet health and recovery evidence</summary><div id="fleethealth"></div></details>
+    <details><summary>Onboarding notifications</summary><div id="notifications"></div></details>
+    <details><summary>Users and SSO group access</summary><p>Viewers can only read their assigned clusters and namespaces. Administrators manage onboarding and access. Group names must come from your configured, verified OIDC groups claim.</p>
+      <form id="grantform" class="onboardingform"><label>Grant type<select name="kind"><option value="users">User</option><option value="groups">SSO group</option></select></label><label>Subject or group name<input name="subject" required></label><label>Role<select name="role"><option value="viewer">Viewer</option><option value="admin">Administrator</option></select></label><label>Cluster IDs<input name="clusters" placeholder="qa, production"></label><label>Namespaces<input name="namespaces" placeholder="Blank permits all namespaces within granted clusters"></label><label class="check"><input type="checkbox" name="disabled"> Disable access</label><label class="check"><input type="checkbox" name="issueToken"> Issue a new user token</label><button>Save access</button></form><div id="grants"></div>
+    </details>
+    <details><summary>Environment templates and bulk onboarding</summary>
+      <form id="templateform" class="onboardingform"><label>Template name<input name="name" required></label><label>Copy defaults from registered cluster<select name="cluster" id="templatecluster"></select></label><button>Save template</button></form>
+      <form id="bulkform" class="onboardingform"><label>Registrations JSON<textarea name="registrations" rows="8" placeholder='[{"id":"qa", "name":"QA", "kubeUID":"…", "namespaces":["app"], "metricsSource":"metrics-server", "installMode":"existing", "installMethod":"helm"}]' required></textarea></label><small>Up to 50 registrations per atomic batch. Repeating identical inputs is safe; conflicts are rejected. Do not paste credentials here.</small><button>Register batch</button></form>
+    </details>
+    <details><summary>Credentials and revocation</summary><p>Revocation stops telemetry using that credential. The optimizer and stored history remain.</p><div id="credentials"></div></details>
+    <details><summary>Recent administration history</summary><div id="adminaudit"></div></details>
+  </dialog>
+  <script src="/onboarding.js" defer></script><script src="/app.js" defer></script>
 </body>
 </html>
