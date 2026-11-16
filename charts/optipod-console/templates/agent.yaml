@@ -1,4 +1,5 @@
 {{- if .Values.agent.enabled }}
+{{- $secret := .Values.agent.secret | default dict }}
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -58,6 +59,10 @@ spec:
     matchLabels: {app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: agent}
   template:
     metadata:
+      {{- if $secret.create }}
+      annotations:
+        checksum/agent-secret: {{ include "optipod-console.agentToken" . | sha256sum | quote }}
+      {{- end }}
       labels: {app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: agent}
     spec:
       serviceAccountName: {{ .Release.Name }}-agent
@@ -88,7 +93,7 @@ spec:
       volumes:
         - name: token
           secret:
-            secretName: {{ required "agent.existingSecret is required" .Values.agent.existingSecret }}
+            secretName: {{ include "optipod-console.agentSecretName" . | quote }}
             defaultMode: 0440
   volumeClaimTemplates:
     - metadata: {name: queue}

@@ -10,6 +10,19 @@ local_environment:
   database: PostgreSQL 18.7 on a persistent volume in the primary cluster
   sources: Three real dummy Deployments per cluster, including identical names across clusters
 results:
+  helm_managed_agent_secret:
+    date: 2026-11-16
+    chart_version: 0.2.0
+    status: passed on the retained local Podman clusters
+    helm_versions: [4.0.1, 3.14.0]
+    chart_validation: Ten render cases plus non-string token rejection passed with both Helm versions
+    lifecycle: Unchanged upgrades preserve the Secret and pod; token rotation authenticates with the same PVC and stream; uninstall removes managed credentials and preserves external credentials
+    compatibility: Existing external-Secret release upgraded with --reuse-values; the peer switched to a managed Secret without replacing its queue
+    full_suite: PostgreSQL and queue race tests, both existing multi-cluster/restart E2Es, new credential lifecycle E2Es and backup restore passed
+    full_suite_e2e_duration: 99.469s
+    helm_3_lifecycle_e2e_duration: 45.403s
+    checks: Repository-wide Go lint, Helm lint, YAML, shell, formatting and secret scans passed
+    test_harness_fix: Wait for SQL connectivity after the PostgreSQL restart test before the next test runs migrations
   persistence_and_auth:
     status: passed
     tests: 6
@@ -110,6 +123,8 @@ remote_ci:
     status: passed
     run: https://github.com/Sagart-cactus/optipod/actions/runs/43607901160
 local_logs:
+  managed_secret: .dev/console/managed-secret-e2e.log
+  managed_secret_helm_3: .dev/console/managed-secret-helm3-e2e.log
   installed_release: .dev/console/release-image-e2e.log
   tilt_console: .dev/console/tilt-console-e2e.log
   controller: .dev/console/controller-history-e2e.log

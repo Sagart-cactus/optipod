@@ -29,9 +29,18 @@ agent:
   enabled: false
   clusterID: ""
   serverURL: ""
-  # Existing Secret containing token; this credential is bound to clusterID
-  # by the server configuration and cannot read the console API.
+  # Choose either an existing Secret containing key token or secret.create.
+  # This credential is bound to clusterID by the server configuration.
   existingSecret: ""
+  secret:
+    # Opt in to a release-owned Secret named <release>-agent-auth.
+    # Helm removes it on uninstall; it does not adopt an existing Secret.
+    create: false
+    # Supply your registered token (at least 32 characters), preferably with
+    # --set-file agent.secret.token=/private/path/token. Helm retains values
+    # and rendered Secrets in release history; restrict access accordingly.
+    # No token is generated automatically. Never commit real tokens to Git.
+    token: ""
   namespaces: []
   interval: 1m
   queueBytes: 268435456
