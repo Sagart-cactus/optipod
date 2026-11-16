@@ -9,7 +9,8 @@
     <div class="mark">o<span>p</span></div><h1>Your workloads.<br>A clearer picture.</h1>
     <p>Explore recommendations, policy revisions and resource history across your clusters.</p>
     <a id="sso" class="button primary" href="/auth/oidc" hidden>Sign in with SSO</a>
-    <form id="loginform"><label for="token">Read-only access token</label><input id="token" type="password" autocomplete="off" required><button class="primary">Sign in</button></form>
+    <form id="loginform"><label for="token">Access token</label><input id="token" type="password" autocomplete="off" required><button class="primary">Sign in</button></form>
+    <button id="openbootstrap" hidden>Set up the first administrator</button>
     <p id="loginerror" class="error" role="alert"></p><small>Your access is limited to the clusters and namespaces assigned to you.</small>
   </section>
   <div id="console" class="shell" hidden>
@@ -18,7 +19,8 @@
       <p class="eyebrow">WORKLOAD CONSOLE</p>
       <nav aria-label="Main navigation"><button data-view="workloads" class="active">Fleet overview</button><button data-view="policies">Policies</button><button data-view="history">Decision history</button></nav>
       <div class="clusterheading"><span>CLUSTERS</span><button id="allclusters" class="link">View all</button></div><div id="clusterlist"></div>
-      <div class="account"><span class="readonly">Read-only access</span><small id="identity"></small><button id="logout" class="link">Sign out</button></div>
+      <button id="manageclusters" hidden>Cluster onboarding</button>
+      <div class="account"><span class="readonly" id="accessrole">Read-only access</span><small id="identity"></small><button id="logout" class="link">Sign out</button></div>
     </aside>
     <main>
       <header><div><p class="eyebrow" id="scope">ALL CLUSTERS</p><h1 id="title">Fleet overview</h1><p id="subtitle">Understand what is running, what changed, and why.</p></div><button id="refresh">↻ Refresh</button></header>
@@ -33,6 +35,35 @@
     </main>
   </div>
   <dialog id="detail"><div class="detailhead"><div><p class="eyebrow" id="detailcluster"></p><h2 id="detailtitle"></h2></div><button id="close" aria-label="Close details">✕</button></div><div id="detailbody"></div></dialog>
-  <script src="/app.js" defer></script>
+  <dialog id="bootstrapdialog"><div class="detailhead"><h2>Set up administrator access</h2><button id="closebootstrap" aria-label="Close setup">✕</button></div>
+    <p>The installation owner must provide the bootstrap credential. Setup is available only once.</p>
+    <form id="bootstrapform" class="onboardingform">
+      <label>Bootstrap credential<input name="bootstrap" type="password" autocomplete="off" required></label>
+      <label>Administrator name<input name="subject" maxlength="200" required></label>
+      <label>New administrator token<input name="token" type="password" minlength="32" autocomplete="off" required></label>
+      <p>Use a distinct random token of at least 32 characters and save it in your password manager before submitting.</p>
+      <button class="primary">Create administrator</button>
+    </form><p id="bootstraperror" class="error" role="alert"></p>
+  </dialog>
+  <dialog id="onboardingdialog"><div class="detailhead"><div><p class="eyebrow">ADMINISTRATION</p><h2>Connect your clusters</h2></div><button id="closeonboarding" aria-label="Close cluster onboarding">✕</button></div>
+    <p>Register the target cluster and issue a short-lived enrollment file. Connecting telemetry never enables automatic optimization.</p>
+    <details><summary>Add a cluster</summary><form id="registrationform" class="onboardingform">
+      <label>Cluster ID<input name="id" pattern="[a-zA-Z0-9][a-zA-Z0-9._-]*" maxlength="63" required></label>
+      <label>Display name<input name="name" maxlength="120" required></label>
+      <label>Environment<input name="environment" maxlength="120" placeholder="QA, production…"></label>
+      <label>Kubernetes cluster UID<input name="kubeUID" required></label>
+      <small>Read the kube-system namespace UID from the intended cluster. This binds enrollment to that cluster.</small>
+      <label>Namespaces<input name="namespaces" placeholder="payments, checkout — leave blank for all"></label>
+      <label>Metrics source<select name="metricsSource"><option value="prometheus">Prometheus</option><option value="metrics-server">metrics-server</option></select></label>
+      <label>Controller installation<select name="installMode"><option value="existing">Already installed</option><option value="new">New installation</option></select></label>
+      <label>Installation method<select name="installMethod"><option value="helm">Helm</option><option value="gitops">GitOps</option></select></label>
+      <button class="primary">Register cluster</button>
+    </form></details>
+    <p id="onboardingstatus" role="status" aria-live="polite"></p>
+    <h3>Registered clusters</h3><div id="registrations"></div>
+    <h3>Credentials</h3><p>Revoking a credential stops telemetry using that credential. It does not stop the optimizer or remove stored history.</p><div id="credentials"></div>
+    <details><summary>Recent administration history</summary><div id="adminaudit"></div></details>
+  </dialog>
+  <script src="/onboarding.js" defer></script><script src="/app.js" defer></script>
 </body>
 </html>

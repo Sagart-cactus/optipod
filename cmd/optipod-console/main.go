@@ -29,11 +29,11 @@ func main() {
 
 func run(ctx context.Context, args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: optipod-console serve|agent|hash-token")
+		return fmt.Errorf("usage: optipod-console serve|agent|enroll|hash-token")
 	}
 	switch args[0] {
 	case "--help", "-h", "help":
-		fmt.Println("usage: optipod-console serve|agent|hash-token; use <command> --help for options")
+		fmt.Println("usage: optipod-console serve|agent|enroll|hash-token; use <command> --help for options")
 		return nil
 	case "hash-token":
 		data, err := io.ReadAll(io.LimitReader(os.Stdin, 4096))
@@ -48,6 +48,8 @@ func run(ctx context.Context, args []string) error {
 		return nil
 	case "serve":
 		return serve(ctx, args[1:])
+	case "enroll":
+		return enroll(ctx, args[1:])
 	case "agent":
 		return agent(ctx, args[1:])
 	default:

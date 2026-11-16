@@ -11,6 +11,10 @@ import (
 	"regexp"
 )
 
+const RoleAdmin = "admin"
+
+const credentialIDKey = "credentialID"
+
 type AgentCredential struct {
 	ID        string `json:"id"`
 	Name      string `json:"name"`
@@ -19,6 +23,7 @@ type AgentCredential struct {
 
 type Reader struct {
 	Subject    string   `json:"subject"`
+	Role       string   `json:"role,omitempty"`
 	TokenHash  string   `json:"tokenHash,omitempty"`
 	Clusters   []string `json:"clusters"`
 	Namespaces []string `json:"namespaces,omitempty"`
@@ -31,10 +36,11 @@ type OIDCConfig struct {
 }
 
 type Config struct {
-	PublicURL string            `json:"publicURL"`
-	Agents    []AgentCredential `json:"agents"`
-	Readers   []Reader          `json:"readers"`
-	OIDC      *OIDCConfig       `json:"oidc,omitempty"`
+	BootstrapTokenHash string            `json:"bootstrapTokenHash,omitempty"`
+	PublicURL          string            `json:"publicURL"`
+	Agents             []AgentCredential `json:"agents"`
+	Readers            []Reader          `json:"readers"`
+	OIDC               *OIDCConfig       `json:"oidc,omitempty"`
 }
 
 func TokenHash(token string) string {
@@ -70,9 +76,14 @@ func (c Config) Validate() error {
 		return fmt.Errorf("publicURL requires HTTPS except on loopback")
 	}
 	validHash := regexp.MustCompile(`^[a-f0-9]{64}$`)
+	if c.BootstrapTokenHash != "" && !validHash.MatchString(c.BootstrapTokenHash) {
+		return fmt.Errorf("invalid bootstrap credential hash")
+	}
 	ids := map[string]bool{}
 	hashes := map[string]bool{}
-	subjects := map[string]bool{}
+	if c.BootstrapTokenHash != "" {
+		hashes[c.BootstrapTokenHash] = true
+	}
 	for _, a := range c.Agents {
 		if !identifier.MatchString(a.ID) || a.Name == "" || ids[a.ID] || !validHash.MatchString(a.TokenHash) || hashes[a.TokenHash] {
 			return fmt.Errorf("invalid or duplicate agent credential")
@@ -80,9 +91,20 @@ func (c Config) Validate() error {
 		ids[a.ID] = true
 		hashes[a.TokenHash] = true
 	}
+	return c.validateReaders(validHash, ids, hashes)
+}
+
+func (c Config) validateReaders(validHash *regexp.Regexp, ids, hashes map[string]bool) error {
+	subjects := map[string]bool{}
 	for _, r := range c.Readers {
-		if r.Subject == "" || subjects[r.Subject] || len(r.Clusters) == 0 {
+		if r.Subject == "" || subjects[r.Subject] || (r.Role != RoleAdmin && len(r.Clusters) == 0) {
 			return fmt.Errorf("reader requires a unique subject and explicit cluster grants")
+		}
+		if r.Role != "" && r.Role != RoleAdmin && r.Role != "viewer" {
+			return fmt.Errorf("invalid reader role")
+		}
+		if r.Role == RoleAdmin && len(r.Namespaces) > 0 {
+			return fmt.Errorf("administrators cannot have namespace restrictions")
 		}
 		subjects[r.Subject] = true
 		if r.TokenHash != "" {
@@ -96,9 +118,6 @@ func (c Config) Validate() error {
 				return fmt.Errorf("reader references unknown cluster %q", id)
 			}
 		}
-	}
-	if len(c.Agents) == 0 || len(c.Readers) == 0 {
-		return fmt.Errorf("configure at least one agent and reader")
 	}
 	return nil
 }

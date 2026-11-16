@@ -14,15 +14,16 @@ function stale(c) {return !c.receivedAt || !c.capturedAt || Date.now() - new Dat
 function label(id) {return state.clusters.find(c => c.id === id)?.name || id;}
 async function request(path, options = {}) {
   const response = await fetch(path, {cache: 'no-store', credentials: 'same-origin', ...options});
-  if (response.status === 401) {showLogin(); throw new Error('Sign in to continue.');}
+  if (response.status === 401 && path !== '/auth/bootstrap') {showLogin(); throw new Error('Sign in to continue.');}
   if (!response.ok) throw new Error((await response.text()).trim() || `Request failed (${response.status})`);
   return response.status === 204 ? null : response.json();
 }
-function showLogin() {$('console').hidden = true; $('login').hidden = false; if ($('detail').open) $('detail').close();}
+function showLogin() {$('console').hidden = true; $('login').hidden = false; if ($('detail').open) $('detail').close(); window.closeOnboarding();}
 async function boot() {
   try {
-    const auth = await request('/auth/config'); $('sso').hidden = !auth.oidc;
+    const auth = await request('/auth/config'); $('sso').hidden = !auth.oidc; $('openbootstrap').hidden = !auth.bootstrap;
     const me = await request('/api/me'); $('identity').textContent = me.subject;
+    $('manageclusters').hidden = me.role !== 'admin'; $('accessrole').textContent = me.role === 'admin' ? 'Administrator · workloads read-only' : 'Read-only access';
     $('login').hidden = true; $('console').hidden = false;
     await load();
   } catch (error) {if (!$('console').hidden) status(error.message, true); else {showLogin(); $('loginerror').textContent = error.message;}}

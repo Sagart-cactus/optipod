@@ -1,0 +1,34 @@
+scope: Engineer-led console and cluster onboarding across priorities P0 through P2
+source: Onboarding journey agreed in this chat on 2026-11-16
+branch: sagar/console-onboarding
+delivery:
+  approach: Implement and validate dependency-ordered increments; this plan does not mark an item complete until its acceptance checks pass
+  first_increment: Protected empty-console bootstrap, PostgreSQL administrator and cluster registry, scoped enrollment credentials and administrative audit records
+  safety: Onboarding never enables Auto or changes workload resources; deployment uses the engineer's local credentials, never uploaded kubeconfigs
+priorities:
+  P0:
+    - {id: artifacts, feature: Versioned console images charts and installer binaries with compatibility tests, status: pending}
+    - {id: bootstrap, feature: Empty console and protected initial administrator with external PostgreSQL and optional evaluation subchart, status: in-progress}
+    - {id: registry, feature: Persistent cluster naming environment permissions and credential administration, status: in-progress}
+    - {id: access-audit, feature: Administrator role read-only viewers and attributed administration audit, status: in-progress}
+    - {id: wizard, feature: Resumable Add Cluster wizard for existing/new installation namespaces metrics and install method, status: pending}
+    - {id: enrollment, feature: Short-lived single-use cluster-bound enrollment rate limiting and runtime rotation/revocation, status: in-progress}
+    - {id: installer, feature: CLI-assisted Helm installation and GitOps output without duplicate controllers or resource adoption, status: pending}
+    - {id: preflight, feature: Kubernetes permissions compatibility DNS TLS reachability storage metrics and webhook diagnostics, status: pending}
+    - {id: first-policy, feature: Inventory before policies and explicitly scoped Recommend policy guidance, status: pending}
+  P1:
+    - {id: identity, feature: Trusted workload identity or mTLS with automatic renewal, status: pending}
+    - {id: lifecycle, feature: Upgrade compatibility reconnect re-enrollment and disconnect/uninstall with history retention, status: pending}
+    - {id: production, feature: Custom CA registry proxy ingress NetworkPolicy external secrets and SSO group roles, status: pending}
+    - {id: health, feature: Stale agent queue credential database and recovery diagnostics with evidence-based backup status, status: pending}
+  P2:
+    - {id: fleet, feature: Environment templates bulk registration GitOps automation and onboarding notifications, status: pending}
+acceptance:
+  - Empty console starts without placeholder agents; first administrator requires a preconfigured bootstrap credential
+  - Two clusters connect without editing server JSON or restarting the API
+  - New and existing-controller installations avoid competing controllers and preserve queue identity
+  - Prometheus and metrics-server onboarding are exercised separately including missing metrics and insufficient history
+  - Expired replayed wrong-cluster and unauthorized enrollment requests are rejected
+  - Interrupted installation resumes without duplicate registration or queue data loss
+  - Workloads and recommendations appear without resource mutations
+  - Every implementation increment receives relevant local Podman E2E coverage before being reported complete

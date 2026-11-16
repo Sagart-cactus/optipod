@@ -12,6 +12,11 @@ import (
 //go:embed schema.sql
 var schema string
 
+//go:embed onboarding.sql
+var onboardingSchema string
+
+const SchemaVersion = 2
+
 type Store struct{ Pool *pgxpool.Pool }
 
 func Open(ctx context.Context, dsn string) (*Store, error) {
@@ -46,7 +51,7 @@ func (s *Store) Migrate(ctx context.Context) error {
 	if err = tx.QueryRow(ctx, `SELECT COALESCE(MAX(version),0) FROM op_schema`).Scan(&version); err != nil {
 		return err
 	}
-	if version > 1 {
+	if version > SchemaVersion {
 		return fmt.Errorf("database schema %d is newer than this server", version)
 	}
 	if version == 0 {
@@ -54,6 +59,14 @@ func (s *Store) Migrate(ctx context.Context) error {
 			return err
 		}
 		if _, err = tx.Exec(ctx, `INSERT INTO op_schema VALUES (1)`); err != nil {
+			return err
+		}
+	}
+	if version < 2 {
+		if _, err = tx.Exec(ctx, onboardingSchema); err != nil {
+			return err
+		}
+		if _, err = tx.Exec(ctx, `UPDATE op_schema SET version=2`); err != nil {
 			return err
 		}
 	}
@@ -67,6 +80,9 @@ func (s *Store) Prune(ctx context.Context, days int) error {
 		return fmt.Errorf("retention must be at least one day")
 	}
 	cutoff := time.Now().Add(-time.Duration(days) * 24 * time.Hour)
+	if _, err := s.Pool.Exec(ctx, `DELETE FROM op_rate_limits WHERE window_start < now()-interval '1 day'`); err != nil {
+		return err
+	}
 	for _, table := range []string{"op_history", "op_samples"} {
 		if _, err := s.Pool.Exec(ctx, "DELETE FROM "+table+" WHERE observed_at < $1", cutoff); err != nil {
 			return err

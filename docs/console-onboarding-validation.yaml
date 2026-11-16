@@ -1,0 +1,66 @@
+date: 2026-11-16
+scope: First P0 onboarding increment; this is not acceptance of the complete P0-P2 roadmap
+branch: sagar/console-onboarding
+environment:
+  runtime: Local Podman on macOS arm64
+  clusters: Two explicitly selected owned Kind clusters running Kubernetes v1.35.0
+  database: Real PostgreSQL 18.7; integration tests use disposable schemas
+  installed_image: docker.io/optipod-e2e/console:onboarding-release-check
+  release_build: Dockerfile.console with Go 1.27 and distroless runtime
+results:
+  focused_onboarding_e2e:
+    status: passed
+    test: TestEmptyConsoleEnrollsTwoOwnedClusters
+    coverage:
+      - Fresh empty console, protected administrator bootstrap and two persisted registrations
+      - Enrollment CLI verifies actual kube-system UIDs through explicit kubeconfigs and contexts
+      - Wrong-context and replay attempts fail; runtime output files have mode 0600
+      - Both agents export real Recommend workloads and history without server configuration edits
+      - Workload CPU and memory requests remain unchanged
+    duration: 2.00s in the final suite
+  database_and_auth:
+    status: passed with the Go race detector
+    coverage:
+      - Transactional schema 1 to 2 migration preserves inventory; concurrent startup and future-version refusal
+      - One administrator wins concurrent bootstrap; exactly one concurrent enrollment redemption succeeds
+      - Expired enrollment, wrong cluster binding, unauthorized namespace ingestion and revoked runtime tokens are rejected
+      - Viewer administration is denied; disabling a stored user invalidates existing sessions and token access
+      - Shared rate limits apply across server instances; audit entries exclude raw tokens and hashes
+  enrollment_client:
+    status: passed with the Go race detector
+    coverage: Private input files, expiry, HTTPS origin checks, loopback-only HTTP exception, redirect refusal and sanitized error responses
+  installed_console_regressions:
+    status: passed
+    command: bash hack/console/run.sh test
+    fast_image_e2e_duration: 106.724s
+    production_image_e2e_duration: 97.573s
+    coverage:
+      - Two-cluster persistence, durable replay, namespace deletion and retained history
+      - Installed API, PostgreSQL and both agent restarts with session and queue survival
+      - Managed and external Helm Secret rendering, unchanged upgrades, runtime token rotation and uninstall ownership
+      - Empty-console enrollment against both actual Kubernetes APIs
+  backup_restore:
+    status: passed
+    coverage: Logical dump restored into an isolated database; inventory, history, sessions, checkpoints, schema version 2 and presence of six onboarding tables verified
+  browser:
+    status: passed manually in the internal browser against a disposable database schema
+    coverage: First administrator setup, empty fleet, persisted cluster registration, enrollment file download, credential revocation and visible audit entries
+    cleanup: Temporary server stopped and disposable schema removed after validation
+  static_checks:
+    go_lint: Repository-pinned golangci-lint reported zero issues
+    javascript: Both application scripts passed node --check
+    hooks: Formatting, YAML, shell and secret checks passed; Go lint ran separately through the repository binary
+limits:
+  - The enrollment test runs a real HTTP server in-process with PostgreSQL and real Kubernetes clients; it does not yet automate Helm installation from the new onboarding CLI
+  - Prometheus and metrics-server selections are persisted, but this increment does not implement or validate either metrics-source preflight
+  - The browser check is manual; it is not an automated browser regression suite
+  - The restore test checks onboarding table presence; production identity recovery, PITR and RPO/RTO drills remain operational requirements
+  - Kubernetes UID binding prevents accidental wrong-context enrollment; it is not cryptographic agent attestation
+  - Installer artifacts, optional PostgreSQL subchart, full wizard, user/grant administration and remaining P1-P2 features are tracked in console-onboarding-plan.yaml
+local_logs:
+  focused_e2e: .dev/console/onboarding-foundation-e2e.log
+  full_fast_image: .dev/console/onboarding-full-e2e.log
+  full_production_image: .dev/console/onboarding-release-e2e.log
+  release_build: .dev/console/onboarding-release-build.log
+  lint: .dev/console/onboarding-lint.log
+  hooks: .dev/console/onboarding-precommit-final.log

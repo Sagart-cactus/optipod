@@ -37,12 +37,7 @@ func bearer(r *http.Request) string {
 
 func (s *Server) reader(r *http.Request) (*Reader, error) {
 	if token := bearer(r); token != "" {
-		for _, reader := range s.Config.Readers {
-			if tokenEqual(token, reader.TokenHash) {
-				return &reader, nil
-			}
-		}
-		return nil, nil
+		return s.readerForToken(r.Context(), token)
 	}
 	cookie, err := r.Cookie(sessionCookie)
 	if err != nil {
@@ -58,12 +53,7 @@ func (s *Server) reader(r *http.Request) (*Reader, error) {
 	}
 	// Current configuration remains authoritative: removing a user or grant
 	// revokes access even when a previously issued session still exists.
-	for _, reader := range s.Config.Readers {
-		if reader.Subject == subject {
-			return &reader, nil
-		}
-	}
-	return nil, nil
+	return s.readerForSubject(r.Context(), subject)
 }
 
 func (s *Server) issueSession(ctx context.Context, w http.ResponseWriter, subject string) error {
@@ -81,6 +71,9 @@ func (s *Server) cookie(w http.ResponseWriter, name, value string, age int) {
 }
 
 func (s *Server) login(w http.ResponseWriter, r *http.Request) {
+	if !s.authRateAllowed(w, r) {
+		return
+	}
 	var input struct {
 		Token string `json:"token"`
 	}
@@ -88,15 +81,18 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid login", http.StatusBadRequest)
 		return
 	}
-	for _, reader := range s.Config.Readers {
-		if tokenEqual(input.Token, reader.TokenHash) {
-			if err := s.issueSession(r.Context(), w, reader.Subject); err != nil {
-				s.unavailable(w, err)
-				return
-			}
-			w.WriteHeader(http.StatusNoContent)
+	reader, err := s.readerForToken(r.Context(), input.Token)
+	if err != nil {
+		s.unavailable(w, err)
+		return
+	}
+	if reader != nil {
+		if err := s.issueSession(r.Context(), w, reader.Subject); err != nil {
+			s.unavailable(w, err)
 			return
 		}
+		w.WriteHeader(http.StatusNoContent)
+		return
 	}
 	http.Error(w, "invalid credentials", http.StatusUnauthorized)
 }

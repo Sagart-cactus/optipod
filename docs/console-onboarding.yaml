@@ -1,0 +1,82 @@
+scope: First P0 onboarding increment; the complete P0-P2 roadmap remains in console-onboarding-plan.yaml
+status: First increment validated locally; remaining features tracked in console-onboarding-plan.yaml
+validation: console-onboarding-validation.yaml
+implemented:
+  - Console starts with zero registered agents and readers
+  - Protected one-time administrator bootstrap with a preconfigured token hash
+  - PostgreSQL cluster registrations, administrator identity, credential hashes and administrative audit records
+  - Administrator UI for registration settings, first-upload status, enrollment download, credential revocation and recent audit history
+  - Single-use ten-minute enrollment credentials bound to the registered Kubernetes UID
+  - Enrollment CLI verifies an explicit kubeconfig/context and writes the runtime credential only to a new private file
+  - Runtime credentials expire after 90 days and enforce cluster UID and namespace scope on ingestion
+  - Rotation uses a new enrollment and overlapping runtime credentials; explicit revocation takes effect without restarting the server
+  - Shared PostgreSQL rate limits for bootstrap, token login and enrollment; twenty requests per minute per route and remote address
+installation:
+  prerequisite: Install the console with external PostgreSQL and a built console image; the bundled database and published installer artifacts are later increments
+  bootstrap:
+    - Generate two distinct random tokens of at least 32 characters; protect the bootstrap token and the administrator token in your secret manager
+    - Hash the bootstrap token with optipod-console hash-token using stdin; put only that hash in the server config.json Secret
+    - Open the console and select Set up the first administrator; supply the bootstrap credential, administrator name and new administrator token
+    - The database allows one successful bootstrap even across concurrent requests or replicas; the bootstrap token cannot create another administrator afterward
+    - Remove the bootstrapTokenHash configuration after setup if desired; the administrator and browser sessions persist in PostgreSQL
+  empty_config_example: |
+    {
+      "publicURL": "https://optipod.example.com",
+      "bootstrapTokenHash": "REPLACE_WITH_BOOTSTRAP_SHA256",
+      "agents": [],
+      "readers": []
+    }
+  registration:
+    - Sign in as administrator and open Cluster onboarding
+    - Enter a stable unique cluster ID, display name, environment, namespace scope, metrics source and installation preferences
+    - Read the kube-system UID from the intended cluster using an explicitly selected kubeconfig and context; supply it during registration
+    - Register the cluster and download its enrollment file; registration persists when the window is closed
+    - The saved metrics and installation choices do not yet run a metrics preflight or install a controller; those are later roadmap increments
+  cluster_uid_command: >-
+    kubectl --kubeconfig SOURCE_PRIVATE_FILE --context EXACT_CONTEXT get namespace kube-system -o jsonpath='{.metadata.uid}'
+  enrollment:
+    - Move the downloaded enrollment JSON to a private directory and chmod 600 the file; it contains a secret and must never enter Git
+    - Use the enroll command below; the kubeconfig remains on the workstation and only the expected cluster ID and UID are sent to the console
+    - The command refuses the wrong context, an existing output file, redirects, insecure public HTTP, expired files and group/world-readable files
+    - Use the resulting runtime token file with the Helm-managed Secret option; never paste the raw token into a command or rendered manifest log
+    - Delete the consumed enrollment file after successful installation; retain the runtime credential through your approved secret-management process
+  enrollment_command: >-
+    optipod-console enroll --enrollment-file /private/path/enrollment.json
+    --kubeconfig SOURCE_PRIVATE_FILE --context EXACT_CONTEXT --token-output /private/path/runtime-token
+  agent_command: >-
+    helm upgrade --install console charts/optipod-console --kubeconfig SOURCE_PRIVATE_FILE --kube-context EXACT_CONTEXT
+    -n optipod-console --create-namespace --set server.enabled=false --set agent.enabled=true
+    --set image.repository=YOUR_REGISTRY/optipod-console --set image.tag=YOUR_VERSION
+    --set agent.clusterID=REGISTERED_CLUSTER_ID --set agent.serverURL=https://optipod.example.com
+    --set agent.secret.create=true --set agent.existingSecret= --set-file agent.secret.token=/private/path/runtime-token
+    --wait
+  namespace_scope: Set agent.namespaces to the same explicit namespace list selected during registration; omitted means all. The API rejects any out-of-scope workload, policy or history batch.
+  existing_installation: Keep the existing controller; this increment installs/connects the collection agent separately
+  new_installation: Install the optimizer using its existing documented procedure and an explicitly scoped Recommend policy; enrollment itself neither installs the controller nor creates a policy
+  rotation: Download a fresh enrollment file for the same registration, save the new runtime token to a new path, upgrade the agent Secret, confirm fresh ingestion and revoke the old runtime credential
+  interrupted_exchange: A consumed enrollment cannot be replayed. If its response or local output was lost, revoke the issued runtime credential in the UI and issue a fresh enrollment for the same registration.
+  queue: Preserve the agent PVC during credential rotation or retry; losing it requires the existing explicit identity-recovery procedure
+security:
+  bootstrap: No first-visitor administrator takeover; a token matching the preconfigured bootstrap hash is required
+  roles: The bootstrap administrator can manage onboarding and view the fleet; existing viewers remain read-only and cannot access administration endpoints
+  grants: Database authorization is checked on each request; the UI for editing users, roles and grants is not included in this first increment
+  legacy: Static agent registrations and reader grants remain supported and authoritative; onboarding refuses to take over an existing static cluster ID or its history
+  identity: The UID check prevents accidental enrollment into the wrong context; it is not cryptographic workload attestation. Trusted workload identity or mTLS is tracked in P1.
+  credential_storage: Only token hashes are stored in PostgreSQL; credential-list and audit APIs never return token hashes or raw tokens. Issuance returns the new token once over the authenticated connection.
+  helm: Helm-managed runtime Secrets are retained in Helm release history; restrict release-data access and never commit real values
+  csrf: Administration requires the configured public host/origin; writes require JSON and browser sessions use HttpOnly SameSite cookies
+  rate_limit: Limits are shared across replicas and ignore untrusted forwarding headers. Clients behind one reverse proxy share its remote-address allowance.
+  revocation: Revoking telemetry credentials does not stop the independent optimizer or delete inventory/history
+  audit_retention: Administrative audit is retained without automatic deletion in this increment; include its growth in database capacity planning
+  listing_limits: Registration and credential lists return at most 1000 entries; the audit API returns 100 entries per page using the before cursor
+database_upgrade:
+  version: 2
+  migration: Transactionally add bootstrap, users, registrations, credentials, admin audit and shared rate-limit tables while preserving existing inventory and history
+  rollback: Older server binaries reject schema version 2. Take a verified recovery point before upgrade; do not downgrade the application against a newer schema.
+  recovery: Back up the entire console database including the new identity and audit tables; restore browser-session revocation and agent checkpoint reconciliation requirements still apply
+pending:
+  - Published console/installer artifacts and optional PostgreSQL evaluation subchart
+  - Full resumable wizard, automatic controller/agent installation, GitOps output and metrics/storage/TLS preflight
+  - User/grant administration, inventory before policy selection and first-policy generation
+  - Trusted workload identity or mTLS renewal, automatic runtime renewal and disconnect/upgrade workflows
+  - Production integrations, health/recovery diagnostics, fleet templates, bulk onboarding and notifications
