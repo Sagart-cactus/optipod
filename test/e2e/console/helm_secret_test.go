@@ -122,7 +122,7 @@ func TestAgentSecretUninstall(t *testing.T) {
 			agent["serverURL"] = installedValues["agent"].(map[string]any)["serverURL"]
 			agent["allowInsecureHTTP"] = true
 			if !managed {
-				secretName = release + "-external" // pragma: allowlist secret - Kubernetes Secret name
+				secretName = release + "-external"   // pragma: allowlist secret - Kubernetes Secret name
 				agent["existingSecret"] = secretName // pragma: allowlist secret - Kubernetes Secret name
 				agent["secret"] = map[string]any{"create": false, "token": ""}
 				_, err := peer.Kube.CoreV1().Secrets(consoleNamespace).Create(ctx, &corev1.Secret{
