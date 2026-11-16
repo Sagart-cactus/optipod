@@ -25,7 +25,7 @@ jobs:
       OPTIPOD_INSTALLER_E2E_CONTROLLER_IMAGE: docker.io/optipod-e2e/installer-controller:dev
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: true
