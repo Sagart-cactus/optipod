@@ -47,14 +47,21 @@ if [[ "$action" == up || "$action" == reload ]]; then
     if [[ "$cluster" == local-prod ]]; then
       cfg="$peer"; server=false; endpoint="http://$primary_ip:31866"
     fi
-    kubectl --kubeconfig "$cfg" -n "$ns" create secret generic console-agent --from-file=token=".dev/console/$cluster-token" --dry-run=client -o yaml | kubectl --kubeconfig "$cfg" apply -f -
+    # Exercise both credential modes: an external Secret on QA and a
+    # release-owned Secret on the peer. Token contents never enter arguments.
+    agent_secret_args=(--set agent.existingSecret=console-agent --set agent.secret.create=false --set agent.secret.token=)
+    if [[ "$cluster" == local-prod ]]; then
+      agent_secret_args=(--set agent.existingSecret= --set agent.secret.create=true --set-file "agent.secret.token=.dev/console/$cluster-token")
+    else
+      kubectl --kubeconfig "$cfg" -n "$ns" create secret generic console-agent --from-file=token=".dev/console/$cluster-token" --dry-run=client -o yaml | kubectl --kubeconfig "$cfg" apply -f -
+    fi
     helm upgrade --install console charts/optipod-console --kubeconfig "$cfg" -n "$ns" \
       --set image.repository=docker.io/optipod-e2e/console --set "image.tag=$tag" \
       --set "server.enabled=$server" --set server.existingSecret=console-server \
       --set "server.configRevision=$(shasum -a 256 .dev/console/server-config.json | cut -c1-16)" \
       --set server.service.type=NodePort --set server.service.nodePort=31866 \
       --set agent.enabled=true --set "agent.clusterID=$cluster" --set "agent.serverURL=$endpoint" \
-      --set agent.existingSecret=console-agent --set agent.allowInsecureHTTP=true --set agent.interval=10s \
+      "${agent_secret_args[@]}" --set agent.allowInsecureHTTP=true --set agent.interval=10s \
       --wait --timeout 180s
     kubectl --kubeconfig "$cfg" -n "$ns" rollout status statefulset/console-agent --timeout=180s
   done

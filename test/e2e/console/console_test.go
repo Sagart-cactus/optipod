@@ -199,6 +199,9 @@ func openStore(t *testing.T, ctx context.Context) *console.Store {
 		t.Fatal(err)
 	}
 	t.Cleanup(store.Pool.Close)
+	// A previous restart test may have replaced PostgreSQL; let the owned
+	// port-forward reconnect before running migrations over that connection.
+	wait(t, ctx, "PostgreSQL port-forward after restart", func() bool { return store.Pool.Ping(ctx) == nil })
 	if err = store.Migrate(ctx); err != nil {
 		t.Fatal(err)
 	}

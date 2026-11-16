@@ -39,9 +39,9 @@ installation:
   credentials:
     - Generate distinct cryptographically random tokens of at least 32 characters for each cluster and any token-based reader
     - Hash tokens with optipod-console hash-token reading stdin; put only the SHA-256 hashes in server config.json
-    - Put each raw agent token in that cluster's separate Secret under key token
+    - Supply each raw agent token through agent.existingSecret (key token), or opt in to agent.secret.create so Helm owns that Secret
     - The server Secret must contain config.json and database-url; optional OIDC client secret file is mounted from the same Secret
-    - Keep secrets out of Git; external Secret changes require a server rollout, for example by changing server.configRevision
+    - Keep secrets out of Git; server Secret changes require a server rollout, for example by changing server.configRevision
   config_example: |
     {
       "publicURL": "https://optipod.example.com",
@@ -69,6 +69,23 @@ installation:
     helm upgrade --install console charts/optipod-console --kubeconfig SOURCE_PRIVATE_FILE -n optipod-console --create-namespace
     --set image.repository=YOUR_REGISTRY/optipod-console --set image.tag=YOUR_VERSION --set server.enabled=false
     --set agent.enabled=true --set agent.clusterID=qa --set agent.serverURL=https://optipod.example.com --set agent.existingSecret=console-agent
+  managed_agent_secret:
+    opt_in: Set agent.secret.create=true, leave agent.existingSecret empty and supply agent.secret.token; existingSecret remains the default supported mode
+    example: >-
+      helm upgrade --install console charts/optipod-console --kubeconfig SOURCE_PRIVATE_FILE -n optipod-console --create-namespace
+      --set image.repository=YOUR_REGISTRY/optipod-console --set image.tag=YOUR_VERSION --set server.enabled=false
+      --set agent.enabled=true --set agent.clusterID=qa --set agent.serverURL=https://optipod.example.com
+      --set agent.secret.create=true --set-file agent.secret.token=/private/path/qa-agent-token
+    registration: Generate a random token of at least 32 characters, register its SHA-256 hash for that cluster in the server config and supply the same raw token to Helm; this option does not enroll a cluster or generate a credential
+    validation: Missing, short or internally whitespace-containing tokens and conflicting existingSecret settings fail rendering without printing the token; surrounding whitespace from token files is trimmed
+    lifecycle: Helm creates and owns the Opaque Secret named <release>-agent-auth with key token; ordinary upgrades preserve the supplied token and helm uninstall removes the Secret
+    rotation: Update the registered server token hash and roll out the server, then upgrade the agent release with the matching new token file; the token checksum triggers an agent rollout while retaining its queue PVC
+    rotation_outage: Each cluster currently accepts one token hash; uploads can be deferred during rotation and queued data is retried after authentication recovers
+    external_mode: With agent.secret.create=false, the chart only references agent.existingSecret and never creates or deletes that external Secret
+    migration: Existing Secrets are not automatically adopted; use the generated managed name when switching to managed mode, or pre-create a different external Secret before switching back and explicitly clear agent.secret.token
+    sensitive_values: Helm retains supplied token values and rendered Secrets in release history, including old revisions after rotation; restrict release-data access and encrypt storage according to your platform policy
+    handling: Use a protected token file or your secret-management integration; avoid token literals in shell commands, committed values files and rendered Helm debug/dry-run logs; --set-file avoids command-line exposure but does not remove the token from Helm release data
+    retention: The credential Secret is removed on uninstall; the agent queue PVC is retained separately and must not be deleted when reconnecting the same identity
   networking: TLS ingress must preserve the public Host header, allow POST /api/ingest and bodies up to 8MiB; sources need outbound access only
   source_permissions: Agent RBAC grants get/list/watch for workload/reporting resources and ConfigMaps; no writes and no Secret reads
   collection_scope: agent.namespaces limits exported data but does not narrow the chart's cluster-wide read RBAC
@@ -185,5 +202,5 @@ local_development:
   evidence: docs/persistent-console-validation.yaml
 ci:
   workflow: .github/workflows/console-e2e.yml
-  coverage: Real PostgreSQL, two Kind clusters, installed API/agent/database restarts, auth and scope isolation, queue replay, backup restore, release image and Helm packaging
+  coverage: Real PostgreSQL, two Kind clusters, installed API/agent/database restarts, auth and scope isolation, queue replay, managed/external Secret lifecycle and token rotation, backup restore, release image and Helm packaging
   provider: Docker on the isolated CI runner; local validation uses Podman
