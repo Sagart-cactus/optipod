@@ -7,7 +7,7 @@ environment:
   runtime: Local Podman on macOS arm64
   clusters: Two explicitly selected owned Kind clusters running Kubernetes v1.35.0
   database: Real PostgreSQL 18.7; isolated schemas for integration tests
-  production_image: docker.io/optipod-e2e/console:onboarding-complete-2
+  production_image: docker.io/optipod-e2e/console:onboarding-final
   release_build: Dockerfile.console with Go 1.27 and distroless runtime; version 0.3.0
   installer: Helm 3.14 and Helm 4.0.1 exercised separately
   metrics: Real metrics-server on both clusters; real Prometheus scraping cAdvisor on primary
@@ -16,7 +16,7 @@ results:
   full_production_image_suite:
     status: passed
     command: bash hack/console/run.sh test
-    e2e_duration: 328.892s
+    e2e_duration: 378.368s
     coverage:
       - Two-cluster PostgreSQL persistence, durable replay, namespace deletion and retained history
       - Installed API, PostgreSQL and both agent restarts with session and queue survival
@@ -40,6 +40,9 @@ results:
       - Certificate renewal rejects a different public key
       - Fresh installation refuses an existing controller even when the Helm release name matches
       - Read-only agent credentials fail installation permission checks against the real Kubernetes API
+  renamed_controller_regression:
+    status: passed
+    coverage: A zero-replica Deployment with renamed workload and private image is identified through chart labels and rejected before enrollment
   postgres_and_auth:
     status: passed with the Go race detector
     coverage:
@@ -66,16 +69,17 @@ results:
     hooks: Formatting, YAML, shell and secret checks
 limits:
   - Real-cluster coverage uses Kubernetes 1.35; the supported 1.33-1.35 range is validated by compatibility checks, not a complete live version matrix
-  - NetworkPolicy rendering is included; enforcement requires a compatible production CNI and is not demonstrated by default Kind networking
+  - NetworkPolicy rendering and API admission are included; enforcement requires a compatible production CNI and is not demonstrated by default Kind networking
   - The optional PostgreSQL subchart is an evaluation deployment, not managed HA or automatic production backup/PITR
   - Production operators must supply RPO/RTO, encrypted backups, WAL retention, restore drills and recovery of TLS/bootstrap/SSO configuration
   - Logical restore tests establish schema/data recovery; they do not demonstrate production PITR or disaster recovery timing
   - mTLS uses a configured client CA; cluster UID verification guards wrong-context enrollment but is not independent hardware/cloud attestation
   - Private registries, corporate proxies and an external ingress/SSO provider remain deployment-specific integration checks
 local_logs:
-  production_suite: .dev/console/onboarding-complete-e2e.log
+  production_suite: .dev/console/onboarding-final-production-e2e.log
   final_security: .dev/console/onboarding-final-security-e2e.log
   database_races: .dev/console/onboarding-final-security-units.log
+  renamed_controller: .dev/console/renamed-controller-e2e.log
   helm4_installer: .dev/console/installer-e2e.log
   browser: .dev/console/onboarding-browser-e2e.log
   release_build: .dev/console/onboarding-final-image-build.log

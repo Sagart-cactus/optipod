@@ -1,6 +1,7 @@
 package consoleinstall
 
 const (
+	optimizerName     = "optipod"
 	probeName         = "probe"
 	getVerb           = "get"
 	listVerb          = "list"

@@ -55,7 +55,7 @@ func FromEnrollment(f *consoleenroll.File, allowHTTP bool) (*Plan, error) {
 		r.Installation.ControllerNamespace = "optipod-system"
 	}
 	if r.Installation.ControllerRelease == "" {
-		r.Installation.ControllerRelease = "optipod"
+		r.Installation.ControllerRelease = optimizerName
 	}
 	r.RequireMTLS = f.RequireMTLS
 	p := &Plan{APIVersion: PlanVersion, Registration: r, ServerURL: f.ServerURL, ConsoleURL: f.ConsoleURL, CAPEM: f.CAPEM, ConsoleVersion: consoleversion.ChartVersion, ControllerVersion: ControllerVersion, Image: "ghcr.io/sagart-cactus/optipod-console:" + consoleversion.ChartVersion}

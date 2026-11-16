@@ -167,7 +167,7 @@ func controllerChecks(ctx context.Context, t *Target, p *Plan, r *Report, resume
 func isController(d appsv1.Deployment) bool {
 	for _, container := range d.Spec.Template.Spec.Containers {
 		if container.Name == "manager" || container.Name == "controller-manager" {
-			if strings.Contains(container.Image, "optipod") || strings.Contains(d.Name, "optipod") {
+			if d.Labels["app.kubernetes.io/part-of"] == optimizerName || d.Labels["app.kubernetes.io/name"] == optimizerName || strings.HasPrefix(d.Labels["helm.sh/chart"], "optipod-") || strings.Contains(container.Image, optimizerName) || strings.Contains(d.Name, optimizerName) {
 				return true
 			}
 		}

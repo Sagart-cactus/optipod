@@ -17,6 +17,7 @@ import (
 	"github.com/optipod/optipod/internal/consoleinstall"
 	"github.com/optipod/optipod/internal/consoletls"
 	"github.com/optipod/optipod/test/e2e/framework"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
@@ -263,4 +264,44 @@ func verifyInstallerDenials(t *testing.T, ctx context.Context, target *consolein
 	if checks.Ready() || !rejected {
 		t.Fatal("read-only agent was allowed to install cluster resources")
 	}
+}
+
+// Chart labels must identify an optimizer even with custom deployment and image
+// names. A zero-replica fixture exercises discovery without running an optimizer.
+func TestInstallerDetectsRenamedController(t *testing.T) {
+	ctx, clients, paths := helmSecretEnvironment(t)
+	name := "renamed-optimizer-" + uuid.NewString()[:8]
+	zero := int32(0)
+	labels := map[string]string{"app.kubernetes.io/part-of": "optipod", "app.kubernetes.io/name": "private-optimizer", "app.kubernetes.io/instance": name}
+	_, err := clients[1].Kube.AppsV1().Deployments(consoleNamespace).Create(ctx, &appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: name, Labels: labels}, Spec: appsv1.DeploymentSpec{Replicas: &zero, Selector: &metav1.LabelSelector{MatchLabels: labels}, Template: corev1.PodTemplateSpec{ObjectMeta: metav1.ObjectMeta{Labels: labels}, Spec: corev1.PodSpec{Containers: []corev1.Container{{Name: "manager", Image: "private.example/resource-manager:1.0"}}}}}}, metav1.CreateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = clients[1].Kube.AppsV1().Deployments(consoleNamespace).Delete(context.Background(), name, metav1.DeleteOptions{})
+	})
+	raw, err := clientcmd.LoadFromFile(paths[1])
+	if err != nil {
+		t.Fatal(err)
+	}
+	target, err := consoleinstall.OpenTarget(paths[1], raw.CurrentContext)
+	if err != nil {
+		t.Fatal(err)
+	}
+	system, err := target.Kube.CoreV1().Namespaces().Get(ctx, "kube-system", metav1.GetOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan := &consoleinstall.Plan{APIVersion: consoleinstall.PlanVersion, ConsoleVersion: "0.3.0", ControllerVersion: consoleinstall.ControllerVersion, ServerURL: "https://console.example", Image: "example/console:0.3.0", Registration: console.Registration{ID: name, Name: name, KubeUID: string(system.UID), MetricsSource: "metrics-server", InstallMode: "new", InstallMethod: "helm", Installation: console.Installation{Namespace: consoleNamespace, Release: name, ControllerNamespace: consoleNamespace, ControllerRelease: name}}}
+	report, err := consoleinstall.Preflight(ctx, target, plan, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, check := range report.Checks {
+		if check.Name == "controller" && check.Status == "fail" {
+			t.Log("renamed privately mirrored optimizer rejected before enrollment or installation")
+			return
+		}
+	}
+	t.Fatal("renamed optimizer was not detected", report)
 }
