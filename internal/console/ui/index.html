@@ -83,7 +83,7 @@
       <section id="connectstep" hidden>
         <h3>Install with your local Kubernetes credentials</h3>
         <p>Install the matching CLI from the release below. Download a one-use enrollment package when ready; it expires after 10 minutes. Only filenames appear in these commands.</p>
-        <a id="clirelease" class="button" href="https://github.com/Sagart-cactus/optipod/releases/tag/console-v0.3.0" target="_blank" rel="noopener">Download CLI 0.3.0</a>
+        <a id="clirelease" class="button" href="https://github.com/Sagart-cactus/optipod/releases/tag/console-v0.3.1" target="_blank" rel="noopener">Download CLI 0.3.1</a>
         <div class="onboardingactions"><button id="wizardissue" class="primary">Download enrollment file</button><button id="editregistration">Edit settings</button><button id="verifycluster">Check connection</button></div>
         <pre id="installcommands"></pre>
         <details><summary>Private networks and production settings</summary><p>Before onboarding, edit the generated plan to reference existing imagePullSecrets, proxySecret, prometheusSecret, prometheusAuth and prometheusCASecret. Copy referenced Secrets into the agent and optimizer namespaces as needed. Use versioned private images. Keep secret values in your secret manager. HTTPS trust comes from the enrollment package.</p></details>

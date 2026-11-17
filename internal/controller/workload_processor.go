@@ -367,7 +367,7 @@ func (wp *WorkloadProcessor) addRecommendationAnnotations(ctx context.Context, w
 					if value == nil {
 						continue
 					}
-					key := fmt.Sprintf("%s.%s.%s-%s", optipodv1alpha1.AnnotationRecommendationPrefix, container, name, strings.TrimSuffix(section, "s"))
+					key := optipodv1alpha1.RecommendationAnnotationKey(container, name+"-"+strings.TrimSuffix(section, "s"))
 					annotations[key] = value.(string)
 				}
 			}

@@ -17,7 +17,7 @@ import (
 )
 
 const PlanVersion = "optipod.io/onboarding-v1"
-const ControllerVersion = "1.6.0-console.0"
+const ControllerVersion = "1.6.0-console.1"
 
 type Plan struct {
 	APIVersion         string               `json:"apiVersion"`
