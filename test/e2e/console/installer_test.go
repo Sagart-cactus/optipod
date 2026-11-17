@@ -292,7 +292,7 @@ func TestInstallerDetectsRenamedController(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	plan := &consoleinstall.Plan{APIVersion: consoleinstall.PlanVersion, ConsoleVersion: "0.3.0", ControllerVersion: consoleinstall.ControllerVersion, ServerURL: "https://console.example", Image: "example/console:0.3.0", Registration: console.Registration{ID: name, Name: name, KubeUID: string(system.UID), MetricsSource: "metrics-server", InstallMode: "new", InstallMethod: "helm", Installation: console.Installation{Namespace: consoleNamespace, Release: name, ControllerNamespace: consoleNamespace, ControllerRelease: name}}}
+	plan := &consoleinstall.Plan{APIVersion: consoleinstall.PlanVersion, ConsoleVersion: "0.3.1", ControllerVersion: consoleinstall.ControllerVersion, ServerURL: "https://console.example", Image: "example/console:0.3.1", Registration: console.Registration{ID: name, Name: name, KubeUID: string(system.UID), MetricsSource: "metrics-server", InstallMode: "new", InstallMethod: "helm", Installation: console.Installation{Namespace: consoleNamespace, Release: name, ControllerNamespace: consoleNamespace, ControllerRelease: name}}}
 	report, err := consoleinstall.Preflight(ctx, target, plan, false)
 	if err != nil {
 		t.Fatal(err)

@@ -6,13 +6,13 @@ principles:
   - The engineer selects a local kubeconfig and context; kubeconfigs never reach the console
   - Onboarding never enables Auto and never changes workload resources
 versions:
-  console_chart_and_cli: 0.3.0
-  console_image: ghcr.io/sagart-cactus/optipod-console:0.3.0
-  controller_bundle_chart: 1.6.0-console.0
-  controller_bundle_image: ghcr.io/sagart-cactus/optipod:console-0.3.0
+  console_chart_and_cli: 0.3.1
+  console_image: ghcr.io/sagart-cactus/optipod-console:0.3.1
+  controller_bundle_chart: 1.6.0-console.1
+  controller_bundle_image: ghcr.io/sagart-cactus/optipod:console-0.3.1
   installer_kubernetes: 1.33 through 1.35; real-cluster E2E uses 1.35
   compatibility: Protocol 1, console and agent 0.3.x; unknown/incompatible agent versions produce health warnings
-  downloads: https://github.com/Sagart-cactus/optipod/releases/tag/console-v0.3.0
+  downloads: https://github.com/Sagart-cactus/optipod/releases/tag/console-v0.3.1
   artifacts: Linux and macOS amd64/arm64 CLI archives, SHA256SUMS, OCI charts and multi-architecture images
 console_first:
   production:
@@ -25,7 +25,7 @@ console_first:
     - Install with agent.enabled=false; the central cluster does not need an optimizer
   command: >-
     helm upgrade --install optipod-console oci://ghcr.io/sagart-cactus/charts/optipod-console
-    --version 0.3.0 --kubeconfig CENTRAL_PRIVATE_FILE --kube-context CENTRAL_CONTEXT
+    --version 0.3.1 --kubeconfig CENTRAL_PRIVATE_FILE --kube-context CENTRAL_CONTEXT
     --namespace optipod-console --create-namespace -f /private/console-values.yaml --wait
   config_example: |
     {"publicURL":"https://console.example.com","bootstrapTokenHash":"REPLACE_WITH_BOOTSTRAP_SHA256","agents":[],"readers":[]}
@@ -39,7 +39,7 @@ console_first:
     chart: charts/optipod-postgresql is bundled as an optional local dependency; postgresql:18.7
   owned_secret_example: >- # pragma: allowlist secret - configuration instructions, no credential value
     helm upgrade --install optipod-console oci://ghcr.io/sagart-cactus/charts/optipod-console
-    --version 0.3.0 --kubeconfig CENTRAL_PRIVATE_FILE --kube-context CENTRAL_CONTEXT
+    --version 0.3.1 --kubeconfig CENTRAL_PRIVATE_FILE --kube-context CENTRAL_CONTEXT
     --namespace optipod-console --create-namespace -f /private/console-values.yaml
     --set server.secret.create=true --set-file server.secret.databaseURL=/private/database-url --wait
   secret_warning: Helm retains supplied values and rendered Secrets in release history. Restrict Kubernetes Secret and Helm release access; never commit actual secret values or print rendered Secrets. # pragma: allowlist secret - configuration instructions, no credential value

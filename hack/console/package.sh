@@ -2,20 +2,20 @@
 # Build a matched, versioned console/installer/optimizer bundle. No credentials.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
-version=0.3.0
-controller_version=1.6.0-console.0
+version=0.3.1
+controller_version=1.6.0-console.1
 output="${1:-.dev/console/release}"
 mkdir -p "$output"
 output=$(cd "$output" && pwd)
 python3 - <<'PY'
 import pathlib, re
 chart = pathlib.Path('charts/optipod-console/Chart.yaml').read_text()
-assert re.search(r'^version: 0\.3\.0$', chart, re.M)
-assert re.search(r'^appVersion: "?0\.3\.0"?$', chart, re.M)
+assert re.search(r'^version: 0\.3\.1$', chart, re.M)
+assert re.search(r'^appVersion: "?0\.3\.1"?$', chart, re.M)
 version = pathlib.Path('internal/consoleversion/version.go').read_text()
-assert 'ChartVersion = "0.3.0"' in version
+assert 'ChartVersion = "0.3.1"' in version
 plan = pathlib.Path('internal/consoleinstall/plan.go').read_text()
-assert 'ControllerVersion = "1.6.0-console.0"' in plan
+assert 'ControllerVersion = "1.6.0-console.1"' in plan
 PY
 for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64; do
   os=${target%/*}; arch=${target#*/}

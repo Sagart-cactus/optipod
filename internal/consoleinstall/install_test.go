@@ -16,7 +16,7 @@ import (
 )
 
 func samplePlan() *Plan {
-	return &Plan{APIVersion: PlanVersion, Registration: console.Registration{ID: "qa", Name: "QA", KubeUID: "00000000-0000-4000-8000-000000000000", Namespaces: []string{"app"}, MetricsSource: "prometheus", InstallMode: "existing", InstallMethod: "helm", Installation: console.Installation{Namespace: "optipod-system", Release: "console", ControllerNamespace: "optipod-system", ControllerRelease: "optipod", PrometheusURL: "http://prometheus:9090"}}, ServerURL: "https://console.example", ConsoleVersion: "0.3.0", ControllerVersion: ControllerVersion, Image: "registry.example/console:0.3.0"}
+	return &Plan{APIVersion: PlanVersion, Registration: console.Registration{ID: "qa", Name: "QA", KubeUID: "00000000-0000-4000-8000-000000000000", Namespaces: []string{"app"}, MetricsSource: "prometheus", InstallMode: "existing", InstallMethod: "helm", Installation: console.Installation{Namespace: "optipod-system", Release: "console", ControllerNamespace: "optipod-system", ControllerRelease: "optipod", PrometheusURL: "http://prometheus:9090"}}, ServerURL: "https://console.example", ConsoleVersion: "0.3.1", ControllerVersion: ControllerVersion, Image: "registry.example/console:0.3.1"}
 }
 func TestEnrollmentCannotChangeSavedIdentityOrScope(t *testing.T) {
 	p := samplePlan()
@@ -83,7 +83,7 @@ func TestPrometheusPreflightScopesAndHistory(t *testing.T) {
 	}))
 	defer metrics.Close()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_ = json.NewEncoder(w).Encode(map[string]any{"version": "0.3.0", "protocol": 1})
+		_ = json.NewEncoder(w).Encode(map[string]any{"version": "0.3.1", "protocol": 1})
 	}))
 	defer server.Close()
 	o := ProbeOptions{ServerURL: server.URL, MetricsSource: "prometheus", PrometheusURL: metrics.URL, Namespaces: []string{"app"}, AllowHTTP: true, VolumePath: t.TempDir()}

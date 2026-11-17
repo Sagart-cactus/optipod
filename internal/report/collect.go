@@ -167,7 +167,7 @@ func populateContainers(row *Workload, spec *corev1.PodSpec, a map[string]string
 	for _, slot := range discovery.ContainerSlots(spec) {
 		co := Container{Name: slot.Container.Name, Current: slot.Container.Resources, Recommended: map[string]string{}}
 		for _, field := range []string{"cpu-request", "memory-request", "cpu-limit", "memory-limit", "explanation"} {
-			value := a["optipod.io/recommendation."+co.Name+"."+field]
+			value := a[api.RecommendationAnnotationKey(co.Name, field)]
 			if mode == api.ModeAuto {
 				if v := a["optipod.io/"+field+"."+co.Name]; v != "" {
 					value = v

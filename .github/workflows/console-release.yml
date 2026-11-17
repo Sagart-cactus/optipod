@@ -1,7 +1,7 @@
 name: Console release artifacts
 on:
   pull_request:
-    paths: ['internal/console*/**', 'internal/consoletls/**', 'cmd/optipod-console/**', 'charts/optipod*/**', 'hack/console/**', 'Dockerfile.console', '.github/workflows/console-release.yml', 'go.mod', 'go.sum']
+    paths: ['api/**', 'internal/**', 'cmd/**', 'charts/optipod*/**', 'hack/console/**', 'Dockerfile', 'Dockerfile.console', '.github/workflows/console-release.yml', 'go.mod', 'go.sum']
   push:
     tags: ['console-v*']
 permissions:
@@ -26,15 +26,15 @@ jobs:
         env:
           RELEASE_REF: ${{ github.ref }}
         run: |
-          if [[ "$RELEASE_REF" == refs/tags/* && "$RELEASE_REF" != refs/tags/console-v0.3.0 ]]; then exit 1; fi
+          if [[ "$RELEASE_REF" == refs/tags/* && "$RELEASE_REF" != refs/tags/console-v0.3.1 ]]; then exit 1; fi
           go test ./internal/consoleinstall ./internal/consoletls ./internal/consoleenroll
       - name: Build matching CLI binaries and charts
         run: bash hack/console/package.sh .dev/console/release
       - name: Verify native packaged installer
         run: |
           mkdir /tmp/console-release-test
-          tar -xzf .dev/console/release/optipod-console_0.3.0_linux_amd64.tar.gz -C /tmp/console-release-test
-          test "$(/tmp/console-release-test/optipod-console version)" = 0.3.0
+          tar -xzf .dev/console/release/optipod-console_0.3.1_linux_amd64.tar.gz -C /tmp/console-release-test
+          test "$(/tmp/console-release-test/optipod-console version)" = 0.3.1
           /tmp/console-release-test/optipod-console onboard --help
           (cd .dev/console/release && sha256sum -c SHA256SUMS)
       - uses: actions/upload-artifact@v7
@@ -50,6 +50,7 @@ jobs:
     permissions:
       contents: write
       packages: write
+      id-token: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -60,7 +61,6 @@ jobs:
         with:
           name: console-release-bundle
           path: release
-      - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v4
       - uses: docker/login-action@v3
         with:
@@ -68,26 +68,54 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - uses: docker/build-push-action@v6
+        id: console
         with:
           context: .
           file: Dockerfile.console
           push: true
           platforms: linux/amd64,linux/arm64
-          tags: ghcr.io/sagart-cactus/optipod-console:0.3.0
+          tags: ghcr.io/sagart-cactus/optipod-console:0.3.1
           labels: org.opencontainers.image.source=https://github.com/Sagart-cactus/optipod
-          build-args: VERSION=0.3.0
+          build-args: VERSION=0.3.1
+          provenance: mode=max
+          sbom: true
           cache-from: type=gha,scope=console
           cache-to: type=gha,mode=max,scope=console
       - uses: docker/build-push-action@v6
+        id: controller
         with:
           context: .
           file: Dockerfile
           push: true
           platforms: linux/amd64,linux/arm64
-          tags: ghcr.io/sagart-cactus/optipod:console-0.3.0
+          tags: ghcr.io/sagart-cactus/optipod:console-0.3.1
           labels: org.opencontainers.image.source=https://github.com/Sagart-cactus/optipod
+          provenance: mode=max
+          sbom: true
           cache-from: type=gha,scope=console-controller
           cache-to: type=gha,mode=max,scope=console-controller
+      - name: Install verified signing tools
+        uses: sigstore/cosign-installer@v4.1.3
+      - name: Sign and verify immutable images and release checksums
+        env:
+          CONSOLE_DIGEST: ${{ steps.console.outputs.digest }}
+          CONTROLLER_DIGEST: ${{ steps.controller.outputs.digest }}
+        run: |
+          set -euo pipefail
+          identity="https://github.com/$GITHUB_WORKFLOW_REF"
+          issuer=https://token.actions.githubusercontent.com
+          console="ghcr.io/sagart-cactus/optipod-console@$CONSOLE_DIGEST"
+          controller="ghcr.io/sagart-cactus/optipod@$CONTROLLER_DIGEST"
+          for image in "$console" "$controller"; do
+            cosign sign --yes "$image"
+            cosign verify --certificate-identity "$identity" --certificate-oidc-issuer "$issuer" "$image"
+          done
+          jq -n --arg commit "$GITHUB_SHA" --arg console "$console" --arg controller "$controller" \
+            '{version:"0.3.1",commit:$commit,console:$console,controller:$controller}' > release/IMAGES.json
+          (cd release && sha256sum IMAGES.json >> SHA256SUMS)
+          cosign sign-blob --yes --bundle release/SHA256SUMS.sigstore.json release/SHA256SUMS
+          cosign verify-blob --certificate-identity "$identity" --certificate-oidc-issuer "$issuer" \
+            --bundle release/SHA256SUMS.sigstore.json release/SHA256SUMS
       - uses: azure/setup-helm@v4
         with:
           version: v3.14.0
@@ -96,6 +124,6 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           printf '%s' "$GH_TOKEN" | helm registry login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
-          helm push release/optipod-console-0.3.0.tgz oci://ghcr.io/sagart-cactus/charts
-          helm push release/optipod-1.6.0-console.0.tgz oci://ghcr.io/sagart-cactus/charts
-          gh release create console-v0.3.0 release/* --verify-tag --latest=false --title 'OptiPod Console 0.3.0' --notes-file docs/console-release-0.3.0.md
+          helm push release/optipod-console-0.3.1.tgz oci://ghcr.io/sagart-cactus/charts
+          helm push release/optipod-1.6.0-console.1.tgz oci://ghcr.io/sagart-cactus/charts
+          gh release create console-v0.3.1 release/* --verify-tag --latest=false --title 'OptiPod Console 0.3.1' --notes-file docs/console-release-0.3.1.md
