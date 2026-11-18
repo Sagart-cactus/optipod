@@ -54,6 +54,7 @@ type ResourceMetrics struct {
 	CoveragePercent float64
 	Points          []Point
 	P50             resource.Quantity // 50th percentile (median)
+	P80             resource.Quantity // 80th percentile
 	P90             resource.Quantity // 90th percentile
 	P95             resource.Quantity // 95th percentile
 	P99             resource.Quantity // 99th percentile

@@ -37,6 +37,7 @@ type ContainerMetrics struct {
 // ResourceMetrics contains percentile data for a resource
 type ResourceMetrics struct {
 	P50 int64
+	P80 int64
 	P90 int64
 	P95 int64
 	P99 int64
@@ -198,12 +199,14 @@ func (m *MockMetricsProvider) GetContainerMetrics(
 		CPU: ResourceMetrics{
 			P50: percentile(cpuSamples, 50),
 			P90: percentile(cpuSamples, 90),
+			P80: percentile(cpuSamples, 80),
 			P95: percentile(cpuSamples, 95),
 			P99: percentile(cpuSamples, 99),
 		},
 		Memory: ResourceMetrics{
 			P50: percentile(memSamples, 50),
 			P90: percentile(memSamples, 90),
+			P80: percentile(memSamples, 80),
 			P95: percentile(memSamples, 95),
 			P99: percentile(memSamples, 99),
 		},

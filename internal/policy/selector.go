@@ -195,7 +195,7 @@ func (ps *PolicySelector) policyMatchesWorkload(ctx context.Context, policy *opt
 		}
 	}
 
-	return true
+	return policy.Spec.Selector.MatchesAssignment(workload.Namespace, workload.Kind, ps.getWorkloadLabels(workload))
 }
 
 // getWorkloadLabels extracts labels from a workload object

@@ -77,7 +77,7 @@ func (e *Engine) ComputeRecommendation(
 
 	if policy.Spec.MetricsConfig.JVM != nil && policy.ControlsResource("memory") {
 		floor := containerMetrics.Memory.P100
-		if floor.Cmp(policy.Spec.ResourceBounds.Memory.Max) > 0 {
+		if policy.Spec.ResourceBounds.Memory.ExceedsMaximum(floor) {
 			return nil, fmt.Errorf("JVM memory floor exceeds policy maximum; raise the bound or review JVM heap/native configuration")
 		}
 		if memoryWithSafety.Cmp(floor) < 0 {
@@ -137,6 +137,8 @@ func selectPercentile(resourceMetrics metrics.ResourceMetrics, percentile string
 	switch percentile {
 	case "P50":
 		return resourceMetrics.P50
+	case "P80":
+		return resourceMetrics.P80
 	case "P99":
 		return resourceMetrics.P99
 	case "P95":
@@ -176,7 +178,7 @@ func clampToBounds(value resource.Quantity, bounds optipodv1alpha1.ResourceBound
 		return bounds.Min.DeepCopy()
 	}
 	// If value > max, return max
-	if value.Cmp(bounds.Max) > 0 {
+	if bounds.ExceedsMaximum(value) {
 		return bounds.Max.DeepCopy()
 	}
 	// Otherwise return value
