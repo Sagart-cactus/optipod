@@ -30,6 +30,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
@@ -100,8 +101,10 @@ func (wp *WorkloadProcessor) ProcessWorkload(
 	}
 
 	if wp.client != nil {
-		if err := webhook.MarkReadySpec(ctx, wp.client, workload.Object); err != nil {
-			return status, err
+		if err := retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+			return webhook.MarkReadySpec(ctx, wp.client, workload.Object)
+		}); err != nil {
+			return status, fmt.Errorf("record ready workload spec: %w", err)
 		}
 	}
 	// Get containers from workload
@@ -114,13 +117,9 @@ func (wp *WorkloadProcessor) ProcessWorkload(
 
 	var safetyState *safety.State
 	if wp.client != nil {
-		safetyState, err = safety.Load(ctx, wp.client, workload, containers)
+		safetyState, err = wp.observeSafety(ctx, workload, policy, containers)
 		if err != nil {
-			return status, err
-		}
-		safetyState.ObserveOOM(policy, time.Now())
-		if err = safetyState.Save(ctx, wp.client, workload); err != nil {
-			return status, err
+			return status, fmt.Errorf("record workload safety state: %w", err)
 		}
 		if err = safetyState.RecoveryError(policy); err != nil {
 			if policy.Spec.Mode == optipodv1alpha1.ModeAuto {
@@ -202,6 +201,24 @@ func (wp *WorkloadProcessor) ProcessWorkload(
 	}
 
 	return wp.publishRecommendations(ctx, workload, policy, status, recommendations, safetyState)
+}
+
+// Recompute the observation on conflict so a retry includes concurrent OOM history.
+func (wp *WorkloadProcessor) observeSafety(ctx context.Context, w *discovery.Workload, p *optipodv1alpha1.OptimizationPolicy, containers []corev1.Container) (*safety.State, error) {
+	var state *safety.State
+	err := retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+		observed, err := safety.Load(ctx, wp.client, w, containers)
+		if err != nil {
+			return err
+		}
+		observed.ObserveOOM(p, time.Now())
+		if err := observed.Save(ctx, wp.client, w); err != nil {
+			return err
+		}
+		state = observed
+		return nil
+	})
+	return state, err
 }
 
 // getFirstPodName gets the name of the first pod for a workload by querying the actual pods
