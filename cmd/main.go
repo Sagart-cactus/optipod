@@ -260,7 +260,8 @@ func main() {
 	case metrics.ProviderTypePrometheus:
 		// Build Prometheus configuration with authentication
 		promConfig := metrics.PrometheusConfig{
-			URL: operatorConfig.GetPrometheusURL(),
+			URL:         operatorConfig.GetPrometheusURL(),
+			ReplicaURLs: operatorConfig.GetPrometheusReplicaURLs(),
 			Auth: metrics.PrometheusAuth{
 				Type:        operatorConfig.GetPrometheusAuthType(),
 				Username:    operatorConfig.GetPrometheusUsername(),

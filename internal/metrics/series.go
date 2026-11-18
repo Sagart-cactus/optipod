@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"strconv"
+	"strings"
 	"time"
 
 	v1 "github.com/prometheus/client_golang/api/prometheus/v1"
@@ -43,20 +45,63 @@ func (p *PrometheusProvider) GetResourceSamples(ctx context.Context, ns, pod, co
 		query = fmt.Sprintf(`rate(container_cpu_usage_seconds_total{namespace=%q,pod=%q,container=%q}[1m])`, ns, pod, container)
 	}
 	end := time.Now()
-	result, warnings, _, err := p.client.QueryRange(ctx, query, v1.Range{Start: end.Add(-window), End: end, Step: p.SampleInterval(window)})
+	result, warnings, err := p.queryRange(ctx, query, v1.Range{Start: end.Add(-window), End: end, Step: p.SampleInterval(window)})
 	return matrixPoints(result, warnings, err, cpu)
 }
 
 // GetExecutionSamples reads actual scrapes for a short, finished container.
 // A range query's evaluation grid can miss the entire execution.
-func (p *PrometheusProvider) GetExecutionSamples(ctx context.Context, ns, pod, container string, start, end time.Time, cpu bool) ([]Point, error) {
+func (p *PrometheusProvider) GetExecutionSamples(ctx context.Context, ns, pod, container string, start, end time.Time, cpu bool, target string) ([]Point, error) {
 	metric := workingSetMetric
 	if cpu {
 		metric = "container_cpu_usage_seconds_total"
 	}
 	// The left edge of a PromQL range selector is open.
 	query := fmt.Sprintf(`%s{namespace=%q,pod=%q,container=%q}[%dms]`, metric, ns, pod, container, end.Sub(start).Milliseconds()+1)
-	result, warnings, _, err := p.client.Query(ctx, query, end)
+	traces, err := readReplicas(ctx, p.clients, func(ctx context.Context, c v1.API) ([]Point, error) {
+		result, warnings, _, err := c.Query(ctx, query, end)
+		points, err := executionPoints(result, warnings, err, start, end, cpu)
+		if errors.Is(err, ErrNoData) {
+			return nil, nil
+		}
+		return points, err
+	})
+	if err != nil {
+		return nil, err
+	}
+	if len(traces) == 1 && len(traces[0]) > 0 {
+		return traces[0], nil
+	}
+	// Keep one real execution trace. Joining staggered counters across scrapers
+	// can invent rates, and counting duplicate scrapes inflates confidence.
+	q, err := strconv.Atoi(strings.TrimPrefix(target, "P"))
+	if err != nil || q < 0 || q > 100 {
+		return nil, fmt.Errorf("invalid execution percentile %q", target)
+	}
+	var best []Point
+	var bestValue int64
+	for _, points := range traces {
+		if len(points) == 0 {
+			continue
+		}
+		samples := make([]int64, len(points))
+		for i, point := range points {
+			samples[i] = point.Value
+		}
+		sort.Slice(samples, func(i, j int) bool { return samples[i] < samples[j] })
+		value := percentile(samples, q)
+		if len(best) == 0 || value > bestValue || (value == bestValue && len(points) > len(best)) {
+			best = points
+			bestValue = value
+		}
+	}
+	if len(best) == 0 {
+		return nil, ErrNoData
+	}
+	return best, nil
+}
+
+func executionPoints(result model.Value, warnings v1.Warnings, err error, start, end time.Time, cpu bool) ([]Point, error) {
 	if err != nil || len(warnings) > 0 {
 		return matrixPoints(result, warnings, err, cpu)
 	}

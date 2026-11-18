@@ -333,13 +333,13 @@ func collectReplicaMetrics(ctx context.Context, series metrics.SeriesProvider, w
 	}
 	result.expected += int(math.Ceil(end.Sub(start).Seconds() / scope.step.Seconds()))
 	raw, supportsRaw := series.(interface {
-		GetExecutionSamples(context.Context, string, string, string, time.Time, time.Time, bool) ([]metrics.Point, error)
+		GetExecutionSamples(context.Context, string, string, string, time.Time, time.Time, bool, string) ([]metrics.Point, error)
 	})
 	useRaw := supportsRaw && discovery.IsBatch(w.Kind) && pod.Ended != nil && end.Sub(start) <= 2*scope.step
 	var observations []metrics.Point
 	var err error
 	if useRaw {
-		observations, err = raw.GetExecutionSamples(ctx, w.Namespace, pod.Name, container, start, end, cpu)
+		observations, err = raw.GetExecutionSamples(ctx, w.Namespace, pod.Name, container, start, end, cpu, p.Spec.MetricsConfig.ResourceSettings(cpu).Percentile)
 	} else {
 		observations, err = series.GetResourceSamples(ctx, w.Namespace, pod.Name, container, scope.window, cpu)
 	}

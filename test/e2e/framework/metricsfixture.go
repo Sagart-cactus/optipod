@@ -97,7 +97,15 @@ func NewMetricsFixtureClient(clients *Clients) (*MetricsFixtureClient, error) {
 }
 
 // URL is the in-cluster service URL the deployed controller is configured with.
-func (m *MetricsFixtureClient) URL() string { return FixtureServiceURL() }
+func (m *MetricsFixtureClient) URL() string {
+	return fmt.Sprintf("http://%s.%s.svc:%d", m.serviceName, m.namespace, m.port)
+}
+
+// InNamespace addresses an independently deployed copy of the fixture.
+func (m MetricsFixtureClient) InNamespace(namespace string) *MetricsFixtureClient {
+	m.namespace = namespace
+	return &m
+}
 
 // SetSeries atomically replaces the fixture's entire series set. Any error —
 // including the fixture's own error envelope — propagates to the caller.

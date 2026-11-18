@@ -28,6 +28,8 @@ import (
 // PrometheusConfig contains configuration for connecting to Prometheus.
 type PrometheusConfig struct {
 	URL string
+	// ReplicaURLs names every independent scraper of the same targets. When set, it replaces URL.
+	ReplicaURLs []string
 
 	// Authentication
 	Auth PrometheusAuth

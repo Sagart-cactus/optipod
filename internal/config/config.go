@@ -35,7 +35,8 @@ type OperatorConfig struct {
 	DefaultMetricsProvider string
 
 	// PrometheusURL is the URL for the Prometheus server (if using Prometheus provider)
-	PrometheusURL string
+	PrometheusURL         string
+	PrometheusReplicaURLs string
 
 	// Prometheus authentication configuration
 	PrometheusAuthType    string
@@ -128,6 +129,7 @@ func (c *OperatorConfig) LoadFromDir(dir string) error {
 	stringKeys := map[string]*string{
 		"metrics-provider":          &c.DefaultMetricsProvider,
 		"prometheus-url":            &c.PrometheusURL,
+		"prometheus-replica-urls":   &c.PrometheusReplicaURLs,
 		"metrics-bind-address":      &c.MetricsAddr,
 		"health-probe-bind-address": &c.ProbeAddr,
 	}
@@ -188,6 +190,7 @@ func (c *OperatorConfig) LoadFromEnv() error {
 	stringKeys := map[string]*string{
 		"OPTIPOD_METRICS_PROVIDER":          &c.DefaultMetricsProvider,
 		"OPTIPOD_PROMETHEUS_URL":            &c.PrometheusURL,
+		"OPTIPOD_PROMETHEUS_REPLICA_URLS":   &c.PrometheusReplicaURLs,
 		"OPTIPOD_METRICS_BIND_ADDRESS":      &c.MetricsAddr,
 		"OPTIPOD_HEALTH_PROBE_BIND_ADDRESS": &c.ProbeAddr,
 	}
@@ -300,6 +303,7 @@ func (c *OperatorConfig) BindFlags() {
 		"Enable global dry-run mode. When enabled, OptiPod computes recommendations but never applies them.")
 	flag.StringVar(&c.DefaultMetricsProvider, "metrics-provider", c.DefaultMetricsProvider,
 		"Default metrics provider to use (metrics-server, prometheus, or custom)")
+	flag.StringVar(&c.PrometheusReplicaURLs, "prometheus-replica-urls", c.PrometheusReplicaURLs, "Comma-separated direct URLs of HA scrapers of the same cluster; overrides prometheus-url")
 	flag.StringVar(&c.PrometheusURL, "prometheus-url", c.PrometheusURL,
 		"URL for Prometheus server (used when metrics-provider is prometheus)")
 	flag.StringVar(&c.PrometheusAuthType, "prometheus-auth-type", c.PrometheusAuthType,
@@ -455,4 +459,12 @@ func (c *OperatorConfig) GetPrometheusTLSInsecure() bool {
 // GetPrometheusTimeout returns the Prometheus HTTP client timeout.
 func (c *OperatorConfig) GetPrometheusTimeout() time.Duration {
 	return c.PrometheusTimeout
+}
+
+// GetPrometheusReplicaURLs returns the explicit set of independent HA scrapers.
+func (c *OperatorConfig) GetPrometheusReplicaURLs() []string {
+	if c.PrometheusReplicaURLs == "" {
+		return nil
+	}
+	return strings.Split(c.PrometheusReplicaURLs, ",")
 }
