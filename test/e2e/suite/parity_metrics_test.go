@@ -43,6 +43,15 @@ var _ = Describe("Parity: replica metrics and confidence", Label("parity", "metr
 			}
 			Expect(found).To(BeTrue(), pod.Name)
 		}
+		Expect(env.Clients.Ctrl.Get(ctx, client.ObjectKeyFromObject(p), p)).To(Succeed())
+		p.Spec.MetricsConfig.CPU = &api.ResourceMetricsConfig{ReplicaAggregation: api.ReplicaAggregationMeanPercentile}
+		Expect(env.Clients.Ctrl.Update(ctx, p)).To(Succeed())
+		waitForDeploymentAnnotation(ctx, ns.Name, dep.Name, map[string]string{"optipod.io/recommendation.app.cpu-request": "300m", "optipod.io/recommendation.app.memory-request": "256Mi"})
+		Expect(env.Clients.Ctrl.Get(ctx, client.ObjectKeyFromObject(p), p)).To(Succeed())
+		p.Spec.MetricsConfig.CPU.Percentile = "P100"
+		Expect(env.Clients.Ctrl.Update(ctx, p)).To(Succeed())
+		waitForDeploymentAnnotation(ctx, ns.Name, dep.Name, map[string]string{"optipod.io/recommendation.app.cpu-request": "500m"})
+
 	})
 	It("blocks stale startup and insufficient-history samples before recovering", func(ctx context.Context) {
 		ns := specNamespace(ctx, "parity-quality")

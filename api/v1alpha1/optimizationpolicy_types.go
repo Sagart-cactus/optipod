@@ -265,7 +265,14 @@ type MetricsConfig struct {
 }
 
 // ResourceMetricsConfig overrides individual shared metrics settings.
+const ReplicaAggregationMeanPercentile = "MeanPercentile"
+
 type ResourceMetricsConfig struct {
+	// ReplicaAggregation defaults to pooling samples. MeanPercentile gives
+	// each observed pod equal weight. P100 always uses the absolute peak.
+	// +kubebuilder:validation:Enum=Pooled;MeanPercentile
+	// +optional
+	ReplicaAggregation string `json:"replicaAggregation,omitempty"`
 	// Source overrides container usage with a scoped gauge in cores or bytes.
 	// +optional
 	Source *MetricSource `json:"source,omitempty"`
@@ -300,6 +307,7 @@ func (m MetricsConfig) ResourceSettings(cpu bool) ResourceMetricsConfig {
 		o = m.CPU
 	}
 	if o != nil {
+		r.ReplicaAggregation = o.ReplicaAggregation
 		if o.Percentile != "" {
 			r.Percentile = o.Percentile
 		}
@@ -903,6 +911,9 @@ func (r *OptimizationPolicy) validateOptimizationPolicy() error {
 	}
 	for _, cpu := range []bool{true, false} {
 		s := r.Spec.MetricsConfig.ResourceSettings(cpu)
+		if s.ReplicaAggregation != "" && s.ReplicaAggregation != "Pooled" && s.ReplicaAggregation != ReplicaAggregationMeanPercentile {
+			return fmt.Errorf("invalid replica aggregation %q", s.ReplicaAggregation)
+		}
 		switch s.Percentile {
 		case "P50", "P80", "P90", "P95", "P99", "P100":
 		default:

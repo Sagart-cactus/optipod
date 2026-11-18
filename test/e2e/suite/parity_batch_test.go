@@ -32,6 +32,10 @@ var _ = Describe("Parity: completed execution history", Label("parity", "batch")
 		Expect(job.Annotations[api.AnnotationCPURequestPrefix+".app"]).To(BeEmpty())
 		Expect(env.Clients.Ctrl.Patch(ctx, job, client.RawPatch(types.MergePatchType, []byte(`{"spec":{"suspend":false}}`)))).To(Succeed())
 		pod := waitCompletedJob(ctx, job)
+		single := completedSeries(pod, 0.25)
+		single.CPUCores = single.CPUCores[:1]
+		Expect(env.Fixture.SetSeries(ctx, []framework.FixtureSeries{single})).To(Succeed())
+		waitForWorkloadReason(ctx, p, "insufficient samples for CPU")
 		Expect(env.Fixture.SetSeries(ctx, []framework.FixtureSeries{completedSeries(pod, 0.25)})).To(Succeed())
 		Eventually(func() string {
 			Expect(env.Clients.Ctrl.Get(ctx, client.ObjectKeyFromObject(job), job)).To(Succeed())

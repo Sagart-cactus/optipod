@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"slices"
 	"sort"
 	"time"
 
@@ -103,6 +104,11 @@ func (wp *WorkloadProcessor) metricPods(ctx context.Context, w *discovery.Worklo
 func (wp *WorkloadProcessor) collectWorkloadMetrics(ctx context.Context, w *discovery.Workload, container string, p *api.OptimizationPolicy) (*metrics.ContainerMetrics, error) {
 	series, rich := wp.metricsProvider.(metrics.SeriesProvider)
 	if !rich || wp.client == nil {
+		for _, cpu := range []bool{true, false} {
+			if p.Spec.MetricsConfig.ResourceSettings(cpu).ReplicaAggregation == api.ReplicaAggregationMeanPercentile {
+				return nil, fmt.Errorf("mean replica percentiles require per-pod metric series")
+			}
+		}
 		return wp.collectLegacyMetrics(ctx, w, container, p)
 	}
 	series, err := metrics.ConfigureSeries(series, p.Spec.MetricsConfig)
@@ -211,7 +217,8 @@ func (wp *WorkloadProcessor) collectLegacyMetrics(ctx context.Context, w *discov
 
 func collectResourceMetrics(ctx context.Context, series metrics.SeriesProvider, w *discovery.Workload, container string, p *api.OptimizationPolicy, pods []observedPod, cpu bool, batchAge time.Duration) (metrics.ResourceMetrics, time.Time, error) {
 	validity := &metrics.ContainerMetrics{}
-	window := p.Spec.MetricsConfig.ResourceSettings(cpu).RollingWindow.Duration
+	settings := p.Spec.MetricsConfig.ResourceSettings(cpu)
+	window := settings.RollingWindow.Duration
 	step := series.SampleInterval(window)
 	now := time.Now()
 	cutoff := now.Add(-window)
@@ -224,6 +231,7 @@ func collectResourceMetrics(ctx context.Context, series metrics.SeriesProvider, 
 		historyMaxAge = batchAge
 	}
 	points := []metrics.Point{}
+	var replicas [][]metrics.Point
 	var newestSource time.Time
 	expected, covered := 0, 0
 	for _, pod := range pods {
@@ -238,6 +246,9 @@ func collectResourceMetrics(ctx context.Context, series metrics.SeriesProvider, 
 		expected += observation.expected
 		covered += observation.covered
 		points = append(points, observation.points...)
+		if settings.ReplicaAggregation == api.ReplicaAggregationMeanPercentile && len(observation.points) > 0 {
+			replicas = append(replicas, observation.points)
+		}
 		if observation.newestSource.After(newestSource) {
 			newestSource = observation.newestSource
 		}
@@ -247,6 +258,7 @@ func collectResourceMetrics(ctx context.Context, series metrics.SeriesProvider, 
 	}
 
 	stats := metrics.Statistics(points, cpu)
+	stats.MeanReplicaPercentiles(replicas, cpu)
 	if _, ok := series.(metrics.ObservationClock); !ok {
 		newestSource = stats.LastSample
 	}
@@ -258,6 +270,13 @@ func collectResourceMetrics(ctx context.Context, series metrics.SeriesProvider, 
 		minimum = int(*p.Spec.MetricsConfig.MinSamples)
 	}
 	if stats.Samples < minimum {
+		if discovery.IsBatch(w.Kind) {
+			resource := "memory"
+			if cpu {
+				resource = "CPU"
+			}
+			return metrics.ResourceMetrics{}, time.Time{}, fmt.Errorf("insufficient samples for %s in eligible executions: have %d need %d", resource, stats.Samples, minimum)
+		}
 		return metrics.ResourceMetrics{}, time.Time{}, fmt.Errorf("warming up or insufficient samples: have %d need %d", stats.Samples, minimum)
 	}
 	if newestSource.IsZero() || time.Since(newestSource) > historyMaxAge {
@@ -284,28 +303,12 @@ type replicaObservations struct {
 	validity          metrics.ContainerMetrics
 }
 
-func collectReplicaMetrics(ctx context.Context, series metrics.SeriesProvider, w *discovery.Workload, container string, p *api.OptimizationPolicy, pod observedPod, cpu bool, scope metricWindow) (*replicaObservations, error) {
-	result := &replicaObservations{}
-	if discovery.IsBatch(w.Kind) && pod.Ended != nil && time.Since(*pod.Ended) > scope.batchAge {
-		return nil, nil
-	}
-	if len(pod.Containers) > 0 {
-		present := false
-		for _, name := range pod.Containers {
-			if name == container {
-				present = true
-				break
-			}
-		}
-		if !present {
-			return nil, nil
-		}
-	}
+func (pod observedPod) observationBounds(container string, startupIgnore time.Duration, scope metricWindow) (time.Time, time.Time) {
 	start := pod.Created
 	if t, ok := pod.Started[container]; ok {
 		start = t
 	}
-	start = start.Add(p.Spec.MetricsConfig.StartupIgnore.Duration)
+	start = start.Add(startupIgnore)
 	if start.Before(scope.cutoff) {
 		start = scope.cutoff
 	}
@@ -313,11 +316,33 @@ func collectReplicaMetrics(ctx context.Context, series metrics.SeriesProvider, w
 	if pod.Ended != nil && pod.Ended.Before(end) {
 		end = *pod.Ended
 	}
+	return start, end
+}
+
+func collectReplicaMetrics(ctx context.Context, series metrics.SeriesProvider, w *discovery.Workload, container string, p *api.OptimizationPolicy, pod observedPod, cpu bool, scope metricWindow) (*replicaObservations, error) {
+	result := &replicaObservations{}
+	if discovery.IsBatch(w.Kind) && pod.Ended != nil && time.Since(*pod.Ended) > scope.batchAge {
+		return nil, nil
+	}
+	if len(pod.Containers) > 0 && !slices.Contains(pod.Containers, container) {
+		return nil, nil
+	}
+	start, end := pod.observationBounds(container, p.Spec.MetricsConfig.StartupIgnore.Duration, scope)
 	if !start.Before(end) {
 		return nil, nil
 	}
 	result.expected += int(math.Ceil(end.Sub(start).Seconds() / scope.step.Seconds()))
-	observations, err := series.GetResourceSamples(ctx, w.Namespace, pod.Name, container, scope.window, cpu)
+	raw, supportsRaw := series.(interface {
+		GetExecutionSamples(context.Context, string, string, string, time.Time, time.Time, bool) ([]metrics.Point, error)
+	})
+	useRaw := supportsRaw && discovery.IsBatch(w.Kind) && pod.Ended != nil && end.Sub(start) <= 2*scope.step
+	var observations []metrics.Point
+	var err error
+	if useRaw {
+		observations, err = raw.GetExecutionSamples(ctx, w.Namespace, pod.Name, container, start, end, cpu)
+	} else {
+		observations, err = series.GetResourceSamples(ctx, w.Namespace, pod.Name, container, scope.window, cpu)
+	}
 	if err != nil {
 		if errors.Is(err, metrics.ErrNoData) {
 			if pod.Active && pod.Ended == nil && scope.now.Sub(start) > scope.maxAge {
@@ -328,8 +353,10 @@ func collectReplicaMetrics(ctx context.Context, series metrics.SeriesProvider, w
 		return nil, err
 	}
 	buckets := map[int64]bool{}
-	if err := checkObservationClock(ctx, series, result, w.Namespace, pod, container, end, cpu, scope); err != nil {
-		return nil, err
+	if !useRaw {
+		if err := checkObservationClock(ctx, series, result, w.Namespace, pod, container, end, cpu, scope); err != nil {
+			return nil, err
+		}
 	}
 	var podNewest time.Time
 	for _, point := range observations {
@@ -347,6 +374,9 @@ func collectReplicaMetrics(ctx context.Context, series metrics.SeriesProvider, w
 			return nil, fmt.Errorf("stale metrics for replica %s", pod.Name)
 		}
 		capMetricsValidity(&result.validity, podNewest.Add(scope.maxAge))
+	}
+	if useRaw {
+		result.newestSource = podNewest
 	}
 	result.covered += len(buckets)
 	return result, nil

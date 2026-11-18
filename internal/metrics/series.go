@@ -10,6 +10,7 @@ import (
 
 	v1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/prometheus/common/model"
+	"k8s.io/apimachinery/pkg/api/resource"
 )
 
 var ErrNoData = errors.New("no metric samples")
@@ -43,6 +44,54 @@ func (p *PrometheusProvider) GetResourceSamples(ctx context.Context, ns, pod, co
 	}
 	end := time.Now()
 	result, warnings, _, err := p.client.QueryRange(ctx, query, v1.Range{Start: end.Add(-window), End: end, Step: p.SampleInterval(window)})
+	return matrixPoints(result, warnings, err, cpu)
+}
+
+// GetExecutionSamples reads actual scrapes for a short, finished container.
+// A range query's evaluation grid can miss the entire execution.
+func (p *PrometheusProvider) GetExecutionSamples(ctx context.Context, ns, pod, container string, start, end time.Time, cpu bool) ([]Point, error) {
+	metric := workingSetMetric
+	if cpu {
+		metric = "container_cpu_usage_seconds_total"
+	}
+	// The left edge of a PromQL range selector is open.
+	query := fmt.Sprintf(`%s{namespace=%q,pod=%q,container=%q}[%dms]`, metric, ns, pod, container, end.Sub(start).Milliseconds()+1)
+	result, warnings, _, err := p.client.Query(ctx, query, end)
+	if err != nil || len(warnings) > 0 {
+		return matrixPoints(result, warnings, err, cpu)
+	}
+	matrix, ok := result.(model.Matrix)
+	if !ok {
+		return nil, fmt.Errorf("unexpected execution result type: %T", result)
+	}
+	for _, series := range matrix {
+		var previous model.SamplePair
+		havePrevious := false
+		values := make([]model.SamplePair, 0, len(series.Values))
+		for _, sample := range series.Values {
+			if sample.Timestamp.Time().Before(start) || sample.Timestamp.Time().After(end) {
+				continue
+			}
+			if math.IsNaN(float64(sample.Value)) || math.IsInf(float64(sample.Value), 0) || sample.Value < 0 {
+				return nil, fmt.Errorf("invalid execution sample: %v", sample.Value)
+			}
+			if !cpu {
+				values = append(values, sample)
+				continue
+			}
+			// Never join different counters or estimate across a reset.
+			if havePrevious && sample.Timestamp > previous.Timestamp && sample.Value >= previous.Value {
+				seconds := sample.Timestamp.Sub(previous.Timestamp).Seconds()
+				values = append(values, model.SamplePair{Timestamp: sample.Timestamp, Value: (sample.Value - previous.Value) / model.SampleValue(seconds)})
+			}
+			previous, havePrevious = sample, true
+		}
+		series.Values = values
+	}
+	return matrixPoints(matrix, nil, nil, cpu)
+}
+
+func matrixPoints(result model.Value, warnings v1.Warnings, err error, cpu bool) ([]Point, error) {
 	if err != nil {
 		return nil, fmt.Errorf("query failed: %w", err)
 	}
@@ -102,6 +151,33 @@ func Statistics(points []Point, cpu bool) ResourceMetrics {
 	r := computePercentiles(values, cpu)
 	r.FirstSample, r.LastSample, r.Points = first, last, points
 	return r
+}
+
+// MeanReplicaPercentiles gives every nonempty replica one vote. The pooled
+// maximum, sample count, coverage and original points remain valid.
+func (r *ResourceMetrics) MeanReplicaPercentiles(replicas [][]Point, cpu bool) {
+	if len(replicas) < 2 {
+		return
+	}
+	quantiles := [...]int{50, 80, 90, 95, 99}
+	var sums, remainders [len(quantiles)]int64
+	count := int64(len(replicas))
+	for _, points := range replicas {
+		values := make([]int64, len(points))
+		for i, point := range points {
+			values[i] = point.Value
+		}
+		sort.Slice(values, func(i, j int) bool { return values[i] < values[j] })
+		for i, q := range quantiles {
+			value := percentile(values, q)
+			// Split before adding to avoid overflowing a sum of large quantities.
+			sums[i] += value / count
+			remainders[i] += value % count
+		}
+	}
+	for i, dst := range [...]*resource.Quantity{&r.P50, &r.P80, &r.P90, &r.P95, &r.P99} {
+		*dst = sampleQuantity(sums[i]+remainders[i]/count, cpu)
+	}
 }
 
 func (m *MetricsServerProvider) SampleInterval(_ time.Duration) time.Duration { return m.interval }

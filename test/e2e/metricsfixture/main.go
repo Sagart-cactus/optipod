@@ -124,6 +124,7 @@ func newServer() *server {
 
 func (s *server) mux() *http.ServeMux {
 	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/query", s.handleQueryRange)
 	mux.HandleFunc("/api/v1/query_range", s.handleQueryRange)
 	mux.HandleFunc("/api/v1/status/buildinfo", s.handleBuildinfo)
 	mux.HandleFunc("/-/series", s.handleSeries)
@@ -246,6 +247,22 @@ func (s *server) handleQueryRange(w http.ResponseWriter, r *http.Request) {
 		step = series.SpacingSeconds
 	} else {
 		step = 0.1
+	}
+	if r.URL.Path == "/api/v1/query" {
+		end, _ = strconv.ParseFloat(r.FormValue("time"), 64)
+		duration, err := time.ParseDuration(strings.TrimSuffix(query[strings.LastIndex(query, "[")+1:], "]"))
+		if err != nil {
+			http.Error(w, "expected raw range selector", http.StatusBadRequest)
+			return
+		}
+		start = end - duration.Seconds()
+		if isCPUQuery(query) {
+			counters := make([]float64, len(samples))
+			for i := 1; i < len(samples); i++ {
+				counters[i] = counters[i-1] + samples[i]*step
+			}
+			samples = counters
+		}
 	}
 	sampleEnd := end - series.AgeSeconds
 	if series.FixedEnd > 0 {

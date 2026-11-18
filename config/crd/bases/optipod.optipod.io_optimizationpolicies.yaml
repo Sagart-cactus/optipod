@@ -751,6 +751,14 @@ spec:
                         - P99
                         - P100
                         type: string
+                      replicaAggregation:
+                        description: |-
+                          ReplicaAggregation defaults to pooling samples. MeanPercentile gives
+                          each observed pod equal weight. P100 always uses the absolute peak.
+                        enum:
+                        - Pooled
+                        - MeanPercentile
+                        type: string
                       rollingWindow:
                         description: RollingWindow must be positive and no longer
                           than 30 days.
@@ -882,6 +890,14 @@ spec:
                         - P95
                         - P99
                         - P100
+                        type: string
+                      replicaAggregation:
+                        description: |-
+                          ReplicaAggregation defaults to pooling samples. MeanPercentile gives
+                          each observed pod equal weight. P100 always uses the absolute peak.
+                        enum:
+                        - Pooled
+                        - MeanPercentile
                         type: string
                       rollingWindow:
                         description: RollingWindow must be positive and no longer
