@@ -2,7 +2,6 @@ package controller
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -14,8 +13,10 @@ import (
 	"github.com/optipod/optipod/internal/discovery"
 	"github.com/optipod/optipod/internal/metrics"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -37,6 +38,16 @@ type observedPod struct {
 }
 
 func (wp *WorkloadProcessor) metricPods(ctx context.Context, w *discovery.Workload, policy *api.OptimizationPolicy) ([]observedPod, error) {
+	var pods []observedPod
+	err := retry.OnError(retry.DefaultBackoff, func(err error) bool { return apierrors.IsConflict(err) || apierrors.IsInvalid(err) }, func() error {
+		var err error
+		pods, err = wp.observeMetricPods(ctx, w, policy)
+		return err
+	})
+	return pods, err
+}
+
+func (wp *WorkloadProcessor) observeMetricPods(ctx context.Context, w *discovery.Workload, policy *api.OptimizationPolicy) ([]observedPod, error) {
 	obj := w.Object.DeepCopyObject().(client.Object)
 	if err := wp.client.Get(ctx, client.ObjectKeyFromObject(w.Object), obj); err != nil {
 		return nil, err
@@ -95,8 +106,7 @@ func (wp *WorkloadProcessor) metricPods(ctx context.Context, w *discovery.Worklo
 		return nil, err
 	}
 	if data != old {
-		patch, _ := json.Marshal(map[string]any{"metadata": map[string]any{"uid": obj.GetUID(), "resourceVersion": obj.GetResourceVersion(), "annotations": map[string]string{metricsPodsAnnotation: data}}})
-		if err := wp.client.Patch(ctx, obj, client.RawPatch(types.MergePatchType, patch)); err != nil {
+		if err := wp.client.Patch(ctx, obj, podHistoryPatch(obj, data)); err != nil {
 			return nil, fmt.Errorf("persist pod history: %w", err)
 		}
 	}
