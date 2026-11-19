@@ -14,7 +14,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-var _ = Describe("HPA CPU calibration", Label("hpa-calibration"), func() {
+var _ = Describe("HPA CPU calibration", Label("conformance", "hpa-calibration"), func() {
 	DescribeTable("replays HPA replica history for the selected container and preserves the workload and HPA specs in Recommend mode", func(ctx context.Context, external bool) {
 		ns := specNamespace(ctx, "hpa-cpu")
 		DeferCleanup(func(ctx context.Context) { Expect(framework.DeleteNamespace(ctx, env.Clients, ns.Name)).To(Succeed()) })
@@ -41,7 +41,10 @@ var _ = Describe("HPA CPU calibration", Label("hpa-calibration"), func() {
 		p := framework.NewPolicyFixture(ns.Name, "cpu", api.ModeRecommend, framework.WithReconciliationInterval(time.Second))
 		Expect(env.Clients.Ctrl.Create(ctx, p)).To(Succeed())
 		waitForWorkloadReason(ctx, p, "HPA CPU calibration")
-		series = append(series, framework.FixtureSeries{Namespace: ns.Name, HorizontalPodAutoscaler: h.Name, SpacingSeconds: 30, HPAReplicaRatio: []float64{2, 2, 2, 2}})
+		series = append(series, framework.FixtureSeries{Namespace: ns.Name, HorizontalPodAutoscaler: h.Name, SpacingSeconds: 30, HPAReplicaRatio: []float64{2}})
+		Expect(env.Fixture.SetSeries(ctx, series)).To(Succeed())
+		waitForWorkloadReason(ctx, p, "Missing metrics: container app: insufficient overlapping HPA and CPU history")
+		series[len(series)-1].HPAReplicaRatio = []float64{2, 2, 2, 2}
 		Expect(env.Fixture.SetSeries(ctx, series)).To(Succeed())
 		Eventually(func() []string {
 			Expect(env.Clients.Ctrl.Get(ctx, client.ObjectKeyFromObject(dep), dep)).To(Succeed())

@@ -743,6 +743,11 @@ func (wp *WorkloadProcessor) computeRecommendations(ctx context.Context, workloa
 
 		// Compute recommendation
 		rec, err := wp.recommendationEngine.ComputeRecommendation(containerMetrics, containerPolicy)
+		if errors.Is(err, metrics.ErrNoData) {
+			hasMetricsError = true
+			metricsErrorMsg = fmt.Sprintf("container %s: %v", container.Name, err)
+			continue
+		}
 		if err != nil {
 			if wp.client != nil && policy.Spec.Mode == optipodv1alpha1.ModeAuto {
 				if revokeErr := webhook.InvalidateRecommendations(ctx, wp.client, workload.Object, policy); revokeErr != nil {

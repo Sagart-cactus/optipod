@@ -44,7 +44,7 @@ func calibrateCPU(base resource.Quantity, percentile string, cpu []metrics.Point
 	// Sparse or stale HPA data can hide entire scaling episodes. Require a
 	// coverage of at least half of the eligible CPU timeline plus the latest interval to be observable.
 	if len(demand) < 2 || len(demand)*2 < len(buckets) || history.Factors[latest] == 0 {
-		return base, "", fmt.Errorf("insufficient overlapping HPA and CPU history (%d of %d intervals)", len(demand), len(buckets))
+		return base, "", fmt.Errorf("insufficient overlapping HPA and CPU history (%d of %d intervals): %w", len(demand), len(buckets), metrics.ErrNoData)
 	}
 	sort.Float64s(demand)
 	// Expected shortfall at the configured percentile. The fractional boundary
