@@ -33,6 +33,7 @@ type FixtureSeries struct {
 	HPADesired              []float64 `json:"hpaDesired,omitempty"`
 	AgeSeconds              float64   `json:"ageSeconds,omitempty"`
 	SpacingSeconds          float64   `json:"spacingSeconds,omitempty"`
+	StaleAfterEnd           bool      `json:"staleAfterEnd,omitempty"`
 	FixedEnd                float64   `json:"fixedEnd,omitempty"`
 	Namespace               string    `json:"namespace"`
 	Pod                     string    `json:"pod"`

@@ -172,7 +172,7 @@ func (wp *WorkloadProcessor) ProcessWorkload(
 			}
 		}
 		status.Status = StatusSkipped
-		status.Reason = fmt.Sprintf("Missing metrics: %s", metricsErrorMsg)
+		status.Reason = missingMetricReason(workload.Object, metricsErrorMsg)
 		status.Recommendations = recommendations
 		now := metav1.Now()
 		status.LastRecommendation = &now
@@ -201,6 +201,26 @@ func (wp *WorkloadProcessor) ProcessWorkload(
 	}
 
 	return wp.publishRecommendations(ctx, workload, policy, status, recommendations, safetyState)
+}
+
+// Keep an inactive target distinct from a telemetry outage. Require the
+// native controller to have observed the current generation and drained it.
+func missingMetricReason(obj client.Object, detail string) string {
+	switch o := obj.(type) {
+	case *appsv1.Deployment:
+		if o.Status.ObservedGeneration >= o.Generation && o.Spec.Replicas != nil && *o.Spec.Replicas == 0 && o.Status.Replicas == 0 {
+			return "Idle workload: scaled to zero replicas"
+		}
+	case *appsv1.StatefulSet:
+		if o.Status.ObservedGeneration >= o.Generation && o.Spec.Replicas != nil && *o.Spec.Replicas == 0 && o.Status.Replicas == 0 {
+			return "Idle workload: scaled to zero replicas"
+		}
+	case *appsv1.DaemonSet:
+		if o.Status.ObservedGeneration > 0 && o.Status.ObservedGeneration >= o.Generation && o.Status.DesiredNumberScheduled == 0 && o.Status.CurrentNumberScheduled == 0 && o.Status.NumberMisscheduled == 0 {
+			return "Idle workload: no eligible nodes for this DaemonSet"
+		}
+	}
+	return "Missing metrics: " + detail
 }
 
 // Recompute the observation on conflict so a retry includes concurrent OOM history.

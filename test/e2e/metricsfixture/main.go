@@ -54,6 +54,7 @@ type Series struct {
 	HPADesired              []float64 `json:"hpaDesired,omitempty"`
 	AgeSeconds              float64   `json:"ageSeconds,omitempty"`
 	SpacingSeconds          float64   `json:"spacingSeconds,omitempty"`
+	StaleAfterEnd           bool      `json:"staleAfterEnd,omitempty"`
 	FixedEnd                float64   `json:"fixedEnd,omitempty"`
 	Namespace               string    `json:"namespace"`
 	Pod                     string    `json:"pod"`
@@ -280,7 +281,9 @@ func (s *server) handleQueryRange(w http.ResponseWriter, r *http.Request) {
 	}
 	if strings.HasPrefix(query, "timestamp(") {
 		samples = []float64{sampleEnd}
-		sampleEnd = end
+		if !series.StaleAfterEnd || end <= sampleEnd {
+			sampleEnd = end
+		}
 	}
 	valuesFor := func(points []float64) [][2]interface{} {
 		values := make([][2]interface{}, 0, len(points))

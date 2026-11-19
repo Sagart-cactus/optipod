@@ -2,6 +2,8 @@ package suite
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"strings"
 	"time"
 
@@ -50,11 +52,43 @@ var _ = Describe("Parity: completed execution history", Label("parity", "batch")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(created.Spec.Containers[0].Resources.Requests.Cpu().MilliValue()).To(Equal(int64(300)))
 	})
+	It("uses real scrapes from a completed execution whose series is stale at pod termination", func(ctx context.Context) {
+		ns := specNamespace(ctx, "completed-scrapes")
+		DeferCleanup(func(ctx context.Context) { Expect(framework.DeleteNamespace(ctx, env.Clients, ns.Name)).To(Succeed()) })
+		// This archived execution outlived the short-execution raw query path.
+		end := time.Now().UTC().Add(-5 * time.Minute).Truncate(time.Second)
+		podName := "previous-execution"
+		record := []map[string]any{{"name": podName, "uid": "previous-pod-uid", "executionUID": "previous-job-uid", "succeeded": true, "containers": []string{"app"}, "created": end.Add(-10 * time.Minute), "ended": end}}
+		data, err := json.Marshal(record)
+		Expect(err).NotTo(HaveOccurred())
+		suspended := true
+		cron := &batchv1.CronJob{ObjectMeta: metav1.ObjectMeta{Name: "archived", Namespace: ns.Name, Annotations: map[string]string{"optipod.io/metrics-pods": string(data)}}, Spec: batchv1.CronJobSpec{Schedule: "0 0 * * *", Suspend: &suspended, JobTemplate: batchv1.JobTemplateSpec{Spec: batchv1.JobSpec{Template: batchTemplate(ns.Name)}}}}
+		Expect(env.Clients.Ctrl.Create(ctx, cron)).To(Succeed())
+		Expect(env.Fixture.SetSeries(ctx, []framework.FixtureSeries{{Namespace: ns.Name, Pod: podName, Container: "app", FixedEnd: float64(end.Add(-time.Minute).Unix()), StaleAfterEnd: true, SpacingSeconds: 30, CPUCores: []float64{0.25, 0.25, 0.25}, MemoryBytes: []float64{104857600, 104857600, 104857600}}})).To(Succeed())
+		p := batchPolicy(ns.Name, "archived", api.WorkloadTypeCronJob, 1)
+		p.Spec.Mode = api.ModeRecommend
+		Expect(env.Clients.Ctrl.Create(ctx, p)).To(Succeed())
+		Eventually(func() string {
+			Expect(env.Clients.Ctrl.Get(ctx, client.ObjectKeyFromObject(cron), cron)).To(Succeed())
+			return cron.Annotations["optipod.io/recommendation.app.cpu-request"]
+		}, time.Minute, time.Second).Should(Equal("300m"))
+		Expect(cron.Spec.JobTemplate.Spec.Template.Spec.Containers[0].Resources.Requests.Cpu().MilliValue()).To(Equal(int64(100)))
+	})
 	It("warms up across distinct CronJob executions and retains their peak across controller restart", func(ctx context.Context) {
 		ns := specNamespace(ctx, "cron-history")
 		DeferCleanup(func(ctx context.Context) { Expect(framework.DeleteNamespace(ctx, env.Clients, ns.Name)).To(Succeed()) })
 		suspend := true
 		cron := &batchv1.CronJob{ObjectMeta: metav1.ObjectMeta{Name: "scheduled", Namespace: ns.Name}, Spec: batchv1.CronJobSpec{Schedule: "* * * * *", Suspend: &suspend, JobTemplate: batchv1.JobTemplateSpec{Spec: batchv1.JobSpec{Template: batchTemplate(ns.Name)}}}}
+		// Frequent schedules retain many distinct pod identities in the execution window.
+		records := make([]map[string]any, 750)
+		ended := time.Now().UTC().Add(-10 * time.Minute)
+		for i := range records {
+			name := fmt.Sprintf("archived-execution-%04d", i)
+			records[i] = map[string]any{"name": name, "uid": fmt.Sprintf("uid-%04d", i), "containers": []string{"archived-worker"}, "created": ended.Add(-time.Minute), "ended": ended, "started": map[string]time.Time{"archived-worker": ended.Add(-time.Minute)}}
+		}
+		journal, err := json.Marshal(records)
+		Expect(err).NotTo(HaveOccurred())
+		cron.Annotations = map[string]string{"optipod.io/metrics-pods": string(journal)}
 		Expect(env.Clients.Ctrl.Create(ctx, cron)).To(Succeed())
 		p := batchPolicy(ns.Name, "cron", api.WorkloadTypeCronJob, 2)
 		Expect(env.Clients.Ctrl.Create(ctx, p)).To(Succeed())
@@ -64,6 +98,8 @@ var _ = Describe("Parity: completed execution history", Label("parity", "batch")
 		series := []framework.FixtureSeries{completedSeries(pod, 0.5)}
 		Expect(env.Fixture.SetSeries(ctx, series)).To(Succeed())
 		waitForBatchDecision(ctx, p, cron, "have 1 need 2")
+		Expect(env.Clients.Ctrl.Get(ctx, client.ObjectKeyFromObject(cron), cron)).To(Succeed())
+		Expect(cron.Annotations["optipod.io/metrics-pods"]).To(HavePrefix("gzip:"))
 		second := cronExecution(cron, "second")
 		Expect(env.Clients.Ctrl.Create(ctx, second)).To(Succeed())
 		secondPod := waitCompletedJob(ctx, second)

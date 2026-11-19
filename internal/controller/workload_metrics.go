@@ -36,7 +36,7 @@ type observedPod struct {
 	Active       bool                 `json:"-"`
 }
 
-func (wp *WorkloadProcessor) metricPods(ctx context.Context, w *discovery.Workload) ([]observedPod, error) {
+func (wp *WorkloadProcessor) metricPods(ctx context.Context, w *discovery.Workload, policy *api.OptimizationPolicy) ([]observedPod, error) {
 	obj := w.Object.DeepCopyObject().(client.Object)
 	if err := wp.client.Get(ctx, client.ObjectKeyFromObject(w.Object), obj); err != nil {
 		return nil, err
@@ -44,12 +44,15 @@ func (wp *WorkloadProcessor) metricPods(ctx context.Context, w *discovery.Worklo
 	if obj.GetUID() != w.Object.GetUID() {
 		return nil, fmt.Errorf("workload identity changed")
 	}
-	var history []observedPod
+	// Historical observations from Recommend cannot authorize automatic sizing
+	// beneath a parent controller whose resource ownership is external.
+	if policy.Spec.Mode == api.ModeAuto && metav1.GetControllerOf(obj) != nil {
+		return nil, fmt.Errorf("automatic pod metrics require a top-level workload")
+	}
 	old := obj.GetAnnotations()[metricsPodsAnnotation]
-	if old != "" {
-		if err := json.Unmarshal([]byte(old), &history); err != nil {
-			return nil, fmt.Errorf("invalid pod history: %w", err)
-		}
+	history, err := decodePodJournal(old)
+	if err != nil {
+		return nil, fmt.Errorf("invalid pod history: %w", err)
 	}
 	byUID := map[types.UID]observedPod{}
 	for _, p := range history {
@@ -62,12 +65,15 @@ func (wp *WorkloadProcessor) metricPods(ctx context.Context, w *discovery.Worklo
 	now := time.Now()
 	for i := range pods.Items {
 		pod := &pods.Items[i]
-		owner, err := discovery.ResolvePodWorkload(ctx, wp.client, pod)
-		if err != nil || owner.Object.GetUID() != w.Object.GetUID() {
+		if !wp.observesPod(ctx, w, policy, pod) {
 			continue
 		}
 		p := observePod(pod, byUID[pod.UID])
 		byUID[p.UID] = p
+	}
+	retention := 30 * 24 * time.Hour
+	if discovery.IsBatch(w.Kind) {
+		retention, _ = policy.BatchSettings()
 	}
 	history = nil
 	for _, p := range byUID {
@@ -75,7 +81,7 @@ func (wp *WorkloadProcessor) metricPods(ctx context.Context, w *discovery.Worklo
 			t := now
 			p.Ended = &t
 		}
-		if p.Ended != nil && p.Ended.Before(now.Add(-30*24*time.Hour)) {
+		if p.Ended != nil && p.Ended.Before(now.Add(-retention)) {
 			continue
 		}
 		history = append(history, p)
@@ -83,17 +89,13 @@ func (wp *WorkloadProcessor) metricPods(ctx context.Context, w *discovery.Worklo
 	if len(history) == 0 {
 		return nil, fmt.Errorf("no owned pods observed")
 	}
-	// Bound metadata; refuse rather than silently losing historical replicas.
-	if len(history) > 512 {
-		return nil, fmt.Errorf("pod history exceeds 512 entries; archive or shorten workload lifetime before optimizing")
-	}
 	sort.Slice(history, func(i, j int) bool { return history[i].UID < history[j].UID })
-	data, err := json.Marshal(history)
+	data, err := encodePodJournal(history, obj.GetAnnotations())
 	if err != nil {
 		return nil, err
 	}
-	if string(data) != old {
-		patch, _ := json.Marshal(map[string]any{"metadata": map[string]any{"uid": obj.GetUID(), "annotations": map[string]string{metricsPodsAnnotation: string(data)}}})
+	if data != old {
+		patch, _ := json.Marshal(map[string]any{"metadata": map[string]any{"uid": obj.GetUID(), "resourceVersion": obj.GetResourceVersion(), "annotations": map[string]string{metricsPodsAnnotation: data}}})
 		if err := wp.client.Patch(ctx, obj, client.RawPatch(types.MergePatchType, patch)); err != nil {
 			return nil, fmt.Errorf("persist pod history: %w", err)
 		}
@@ -115,7 +117,7 @@ func (wp *WorkloadProcessor) collectWorkloadMetrics(ctx context.Context, w *disc
 	if err != nil {
 		return nil, err
 	}
-	pods, err := wp.metricPods(ctx, w)
+	pods, err := wp.metricPods(ctx, w, p)
 	if err != nil {
 		return nil, err
 	}
@@ -280,7 +282,7 @@ func collectResourceMetrics(ctx context.Context, series metrics.SeriesProvider, 
 		return metrics.ResourceMetrics{}, time.Time{}, fmt.Errorf("warming up or insufficient samples: have %d need %d", stats.Samples, minimum)
 	}
 	if newestSource.IsZero() || time.Since(newestSource) > historyMaxAge {
-		return metrics.ResourceMetrics{}, time.Time{}, fmt.Errorf("stale metrics: newest observation exceeds %s", maxAge)
+		return metrics.ResourceMetrics{}, time.Time{}, fmt.Errorf("stale metrics: newest observation exceeds %s", historyMaxAge)
 	}
 	capMetricsValidity(validity, newestSource.Add(historyMaxAge))
 	if stats.LastSample.Sub(stats.FirstSample) < p.Spec.MetricsConfig.MinimumHistory.Duration {
@@ -354,7 +356,7 @@ func collectReplicaMetrics(ctx context.Context, series metrics.SeriesProvider, w
 	}
 	buckets := map[int64]bool{}
 	if !useRaw {
-		if err := checkObservationClock(ctx, series, result, w.Namespace, pod, container, end, cpu, scope); err != nil {
+		if err := checkObservationClock(ctx, series, result, w, pod, container, start, end, cpu, scope); err != nil {
 			return nil, err
 		}
 	}
@@ -382,9 +384,20 @@ func collectReplicaMetrics(ctx context.Context, series metrics.SeriesProvider, w
 	return result, nil
 }
 
-func checkObservationClock(ctx context.Context, series metrics.SeriesProvider, result *replicaObservations, namespace string, pod observedPod, container string, end time.Time, cpu bool, scope metricWindow) error {
+func checkObservationClock(ctx context.Context, series metrics.SeriesProvider, result *replicaObservations, w *discovery.Workload, pod observedPod, container string, start, end time.Time, cpu bool, scope metricWindow) error {
+	if clock, ok := series.(interface {
+		ExecutionSourceTimestamp(context.Context, string, string, string, time.Time, time.Time, bool) (time.Time, error)
+	}); ok && pod.Ended != nil && discovery.IsBatch(w.Kind) {
+		stamp, err := clock.ExecutionSourceTimestamp(ctx, w.Namespace, pod.Name, container, start, end, cpu)
+		if errors.Is(err, metrics.ErrNoData) {
+			return nil
+		}
+		result.newestSource = stamp
+		return err
+	}
+
 	if clock, ok := series.(metrics.ObservationClock); ok {
-		stamp, err := clock.SourceTimestamp(ctx, namespace, pod.Name, container, end, cpu)
+		stamp, err := clock.SourceTimestamp(ctx, w.Namespace, pod.Name, container, end, cpu)
 		if err != nil && !errors.Is(err, metrics.ErrNoData) {
 			return err
 		}

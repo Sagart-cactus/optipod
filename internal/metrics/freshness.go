@@ -17,12 +17,22 @@ type ObservationClock interface {
 }
 
 func (p *PrometheusProvider) SourceTimestamp(ctx context.Context, ns, pod, container string, at time.Time, cpu bool) (time.Time, error) {
+	return p.sourceTimestamp(ctx, ns, pod, container, v1.Range{Start: at, End: at, Step: time.Second}, cpu)
+}
+
+// ExecutionSourceTimestamp finds an actual scrape inside a completed run even
+// when the container series was marked stale before Kubernetes finished the pod.
+func (p *PrometheusProvider) ExecutionSourceTimestamp(ctx context.Context, ns, pod, container string, start, end time.Time, cpu bool) (time.Time, error) {
+	return p.sourceTimestamp(ctx, ns, pod, container, v1.Range{Start: start, End: end, Step: p.SampleInterval(end.Sub(start))}, cpu)
+}
+
+func (p *PrometheusProvider) sourceTimestamp(ctx context.Context, ns, pod, container string, r v1.Range, cpu bool) (time.Time, error) {
 	metric := workingSetMetric
 	if cpu {
 		metric = "container_cpu_usage_seconds_total"
 	}
 	query := fmt.Sprintf(`timestamp(%s{namespace=%q,pod=%q,container=%q})`, metric, ns, pod, container)
-	value, warnings, err := p.queryRange(ctx, query, v1.Range{Start: at, End: at, Step: time.Second})
+	value, warnings, err := p.queryRange(ctx, query, r)
 	if err != nil {
 		return time.Time{}, err
 	}
@@ -37,10 +47,13 @@ func (p *PrometheusProvider) SourceTimestamp(ctx context.Context, ns, pod, conta
 	for _, series := range matrix {
 		for _, point := range series.Values {
 			v := float64(point.Value)
-			if math.IsNaN(v) || math.IsInf(v, 0) || v <= 0 || v > float64(at.Unix()+1) {
+			if math.IsNaN(v) || math.IsInf(v, 0) || v <= 0 || v > float64(r.End.Unix()+1) {
 				return time.Time{}, fmt.Errorf("invalid source timestamp")
 			}
 			t := time.Unix(0, int64(v*1e9))
+			if r.Start.Before(r.End) && (t.Before(r.Start) || t.After(r.End)) {
+				continue
+			}
 			if t.After(newest) {
 				newest = t
 			}
