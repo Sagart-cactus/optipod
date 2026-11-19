@@ -43,7 +43,7 @@ var _ = Describe("Prometheus HA", Label("prometheus-ha"), Serial, func() {
 		policy := batchPolicy(ns.Name, "ha", api.WorkloadTypeJob, 1)
 		policy.Spec.Mode = api.ModeRecommend
 		Expect(env.Clients.Ctrl.Create(ctx, policy)).To(Succeed())
-		waitForWorkloadReason(ctx, policy, "insufficient samples for CPU")
+		waitForBatchDecision(ctx, policy, job, "insufficient samples for CPU")
 		high.CPUCores = []float64{.25, .25, .25}
 		Expect(second.SetSeries(ctx, []framework.FixtureSeries{high})).To(Succeed())
 		Eventually(func() []string {
@@ -52,6 +52,6 @@ var _ = Describe("Prometheus HA", Label("prometheus-ha"), Serial, func() {
 		}, time.Minute, time.Second).Should(Equal([]string{"300m", "192Mi"}))
 		low.Mode = framework.FixtureModeUnavailable
 		Expect(env.Fixture.SetSeries(ctx, []framework.FixtureSeries{low})).To(Succeed())
-		waitForWorkloadReason(ctx, policy, "prometheus replica 1")
+		waitForBatchDecision(ctx, policy, job, "prometheus replica 1")
 	})
 })

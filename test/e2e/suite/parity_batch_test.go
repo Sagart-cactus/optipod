@@ -2,11 +2,13 @@ package suite
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	api "github.com/optipod/optipod/api/v1alpha1"
+	"github.com/optipod/optipod/internal/report"
 	"github.com/optipod/optipod/test/e2e/framework"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -27,7 +29,7 @@ var _ = Describe("Parity: completed execution history", Label("parity", "batch")
 		// Keep the execution suspended until the controller has observed the
 		// no-history state; an eight-second Job may otherwise finish while a
 		// replacement controller is still acquiring its leadership lease.
-		waitForWorkloadReason(ctx, p, "no owned pods observed")
+		waitForBatchDecision(ctx, p, job, "no owned pods observed")
 		Expect(env.Clients.Ctrl.Get(ctx, client.ObjectKeyFromObject(job), job)).To(Succeed())
 		Expect(job.Annotations[api.AnnotationCPURequestPrefix+".app"]).To(BeEmpty())
 		Expect(env.Clients.Ctrl.Patch(ctx, job, client.RawPatch(types.MergePatchType, []byte(`{"spec":{"suspend":false}}`)))).To(Succeed())
@@ -35,7 +37,7 @@ var _ = Describe("Parity: completed execution history", Label("parity", "batch")
 		single := completedSeries(pod, 0.25)
 		single.CPUCores = single.CPUCores[:1]
 		Expect(env.Fixture.SetSeries(ctx, []framework.FixtureSeries{single})).To(Succeed())
-		waitForWorkloadReason(ctx, p, "insufficient samples for CPU")
+		waitForBatchDecision(ctx, p, job, "insufficient samples for CPU")
 		Expect(env.Fixture.SetSeries(ctx, []framework.FixtureSeries{completedSeries(pod, 0.25)})).To(Succeed())
 		Eventually(func() string {
 			Expect(env.Clients.Ctrl.Get(ctx, client.ObjectKeyFromObject(job), job)).To(Succeed())
@@ -61,7 +63,7 @@ var _ = Describe("Parity: completed execution history", Label("parity", "batch")
 		pod := waitCompletedJob(ctx, first)
 		series := []framework.FixtureSeries{completedSeries(pod, 0.5)}
 		Expect(env.Fixture.SetSeries(ctx, series)).To(Succeed())
-		waitForWorkloadReason(ctx, p, "have 1 need 2")
+		waitForBatchDecision(ctx, p, cron, "have 1 need 2")
 		second := cronExecution(cron, "second")
 		Expect(env.Clients.Ctrl.Create(ctx, second)).To(Succeed())
 		secondPod := waitCompletedJob(ctx, second)
@@ -131,4 +133,22 @@ func waitCompletedJob(ctx context.Context, j *batchv1.Job) *corev1.Pod {
 func completedSeries(p *corev1.Pod, cpu float64) framework.FixtureSeries {
 	end := p.Status.ContainerStatuses[0].State.Terminated.FinishedAt.Add(-time.Second)
 	return framework.FixtureSeries{Namespace: p.Namespace, Pod: p.Name, Container: "app", FixedEnd: float64(end.UnixNano()) / 1e9, SpacingSeconds: 1, CPUCores: []float64{cpu, cpu, cpu}, MemoryBytes: []float64{100 * 1024 * 1024, 100 * 1024 * 1024, 100 * 1024 * 1024}}
+}
+
+// Events may be coalesced when a short Job moves through several skip reasons.
+// The decision journal records each distinct reason and its policy generation.
+func waitForBatchDecision(ctx context.Context, policy *api.OptimizationPolicy, workload client.Object, reason string) {
+	collector := &report.Collector{Client: env.Clients.Ctrl, Namespace: workload.GetNamespace()}
+	Expect(framework.WaitForCondition(ctx, framework.WaitOptions{Timeout: time.Minute, Description: reason}, func(ctx context.Context) (bool, error) {
+		journal, err := collector.History(ctx, workload.GetNamespace(), string(workload.GetUID()))
+		if err != nil {
+			return false, err
+		}
+		for _, record := range journal.Records {
+			if record.Policy.UID == policy.UID && record.Policy.Generation == policy.Generation && record.Decision != nil && strings.Contains(record.Decision.Reason, reason) {
+				return true, nil
+			}
+		}
+		return false, nil
+	})).To(Succeed())
 }
