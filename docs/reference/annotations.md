@@ -532,3 +532,19 @@ If webhook fails to parse annotations:
 - [Creating Policies](../guides/creating-policies.md) - Policy configuration guide
 - [Troubleshooting](../guides/troubleshooting.md) - Common issues and solutions
 - [CLI Tools](cli-tools.md) - Recommendation report script reference
+
+### optipod.io/hpa-cpu-calibration
+
+Set this annotation on the workload's top-level metadata to opt individual containers into HPA-aware CPU sizing. Its value is a comma-separated list of container names. Remove the annotation to return those containers to the policy's ordinary CPU calculation.
+
+```yaml
+metadata:
+  annotations:
+    optipod.io/hpa-cpu-calibration: "worker"
+```
+
+OptiPod reads the target HPA and its historical current and desired replica counts from Prometheus. This works for external metrics, including KEDA-generated HPAs, and absolute CPU targets. Percentage-utilization targets keep the existing protections for their request denominators. Memory uses the policy's existing calculation.
+
+For each time interval, OptiPod averages CPU usage across sampled replicas of the selected container. When the HPA requests fewer replicas, OptiPod projects how that demand would be distributed after scale-in, using the HPA's replica bounds. While scale-out is pending it uses measured per-replica demand. At the configured CPU percentile it averages the upper tail of those estimates. For example, P95 averages the highest 5% of intervals. P100 uses the largest interval. The policy's ordinary CPU estimate serves as a floor. Headroom and policy bounds are then applied. The decision explanation records the base, the calibrated CPU in millicores and how many CPU intervals had matching HPA data.
+
+Enable the kube-state-metrics series `kube_horizontalpodautoscaler_status_current_replicas` and `kube_horizontalpodautoscaler_status_desired_replicas` for the same cluster as the container CPU metrics. For an opted-in CPU dimension, the controller requires one matching HPA and overlapping data for at least two intervals, at least half the eligible CPU intervals, and the latest interval. Calibration excludes observations from before the HPA was created. Missing history is reported in the decision. In Recommend mode, workload requests and the HPA spec are preserved.

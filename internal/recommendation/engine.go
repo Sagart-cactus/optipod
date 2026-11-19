@@ -66,6 +66,15 @@ func (e *Engine) ComputeRecommendation(
 	cpuPercentile := selectPercentile(containerMetrics.CPU, cpuConfig.Percentile)
 	memoryPercentile := selectPercentile(containerMetrics.Memory, memoryConfig.Percentile)
 
+	calibration := ""
+	if containerMetrics.HPAHistory != nil {
+		var err error
+		cpuPercentile, calibration, err = calibrateCPU(cpuPercentile, cpuConfig.Percentile, containerMetrics.CPU.Points, containerMetrics.HPAHistory)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	// Apply safety factor
 	safetyFactor := 1.2 // default
 	if policy.Spec.MetricsConfig.SafetyFactor != nil {
@@ -120,6 +129,9 @@ func (e *Engine) ComputeRecommendation(
 	}
 	if policy.Spec.MetricsConfig.Memory != nil && policy.Spec.MetricsConfig.Memory.Source != nil {
 		explanation += "; custom memory gauge: " + policy.Spec.MetricsConfig.Memory.Source.Name
+	}
+	if calibration != "" {
+		explanation += "; " + calibration
 	}
 	if forecastExplanation != "" {
 		explanation += "; " + forecastExplanation

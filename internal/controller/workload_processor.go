@@ -710,6 +710,9 @@ func (wp *WorkloadProcessor) computeRecommendations(ctx context.Context, workloa
 		metricsStartTime := time.Now()
 		containerMetrics, err := wp.collectWorkloadMetrics(ctx, workload, container.Name, containerPolicy)
 
+		if err == nil {
+			err = wp.addHPAHistory(ctx, workload, container.Name, containerPolicy, restrictions, containerMetrics)
+		}
 		metricsTimer.Observe(time.Since(metricsStartTime).Seconds())
 
 		if err != nil {

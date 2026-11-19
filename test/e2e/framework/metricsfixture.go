@@ -27,15 +27,18 @@ const (
 // samples for one namespace/pod/container target of the in-cluster fixture.
 // The JSON tags are the fixture server's wire format.
 type FixtureSeries struct {
-	AgeSeconds     float64   `json:"ageSeconds,omitempty"`
-	SpacingSeconds float64   `json:"spacingSeconds,omitempty"`
-	FixedEnd       float64   `json:"fixedEnd,omitempty"`
-	Namespace      string    `json:"namespace"`
-	Pod            string    `json:"pod"`
-	Container      string    `json:"container"`
-	Mode           string    `json:"mode,omitempty"` // empty means FixtureModePresent
-	CPUCores       []float64 `json:"cpuCores,omitempty"`
-	MemoryBytes    []float64 `json:"memoryBytes,omitempty"`
+	// HPAReplicaRatio supplies the evaluated replica-ratio series for this HPA.
+	HorizontalPodAutoscaler string    `json:"horizontalPodAutoscaler,omitempty"`
+	HPAReplicaRatio         []float64 `json:"hpaReplicaRatio,omitempty"`
+	AgeSeconds              float64   `json:"ageSeconds,omitempty"`
+	SpacingSeconds          float64   `json:"spacingSeconds,omitempty"`
+	FixedEnd                float64   `json:"fixedEnd,omitempty"`
+	Namespace               string    `json:"namespace"`
+	Pod                     string    `json:"pod"`
+	Container               string    `json:"container"`
+	Mode                    string    `json:"mode,omitempty"` // empty means FixtureModePresent
+	CPUCores                []float64 `json:"cpuCores,omitempty"`
+	MemoryBytes             []float64 `json:"memoryBytes,omitempty"`
 }
 
 // RecordedQuery is one query_range request the fixture observed, proving what

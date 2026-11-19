@@ -48,15 +48,18 @@ const (
 // Series describes the deterministic CPU (cores) and memory (bytes) samples for
 // one namespace/pod/container target.
 type Series struct {
-	AgeSeconds     float64   `json:"ageSeconds,omitempty"`
-	SpacingSeconds float64   `json:"spacingSeconds,omitempty"`
-	FixedEnd       float64   `json:"fixedEnd,omitempty"`
-	Namespace      string    `json:"namespace"`
-	Pod            string    `json:"pod"`
-	Container      string    `json:"container"`
-	Mode           string    `json:"mode"` // empty means present
-	CPUCores       []float64 `json:"cpuCores,omitempty"`
-	MemoryBytes    []float64 `json:"memoryBytes,omitempty"`
+	// HPAReplicaRatio supplies the evaluated replica-ratio series for this HPA.
+	HorizontalPodAutoscaler string    `json:"horizontalPodAutoscaler,omitempty"`
+	HPAReplicaRatio         []float64 `json:"hpaReplicaRatio,omitempty"`
+	AgeSeconds              float64   `json:"ageSeconds,omitempty"`
+	SpacingSeconds          float64   `json:"spacingSeconds,omitempty"`
+	FixedEnd                float64   `json:"fixedEnd,omitempty"`
+	Namespace               string    `json:"namespace"`
+	Pod                     string    `json:"pod"`
+	Container               string    `json:"container"`
+	Mode                    string    `json:"mode"` // empty means present
+	CPUCores                []float64 `json:"cpuCores,omitempty"`
+	MemoryBytes             []float64 `json:"memoryBytes,omitempty"`
 }
 
 type seriesKey struct {
@@ -140,7 +143,7 @@ func handleOK(w http.ResponseWriter, _ *http.Request) {
 	_, _ = w.Write([]byte("ok\n"))
 }
 
-var labelPattern = regexp.MustCompile(`(namespace|pod|container)="([^"]*)"`)
+var labelPattern = regexp.MustCompile(`(namespace|pod|container|horizontalpodautoscaler)="([^"]*)"`)
 
 // parseLabels extracts the namespace/pod/container label matchers from a PromQL
 // query string produced by the production provider.
@@ -148,6 +151,9 @@ func parseLabels(query string) seriesKey {
 	k := seriesKey{}
 	for _, m := range labelPattern.FindAllStringSubmatch(query, -1) {
 		switch m[1] {
+		case "horizontalpodautoscaler":
+			k.pod = m[2]
+			k.container = ""
 		case "namespace":
 			k.namespace = m[2]
 		case "pod":
@@ -228,6 +234,9 @@ func (s *server) handleQueryRange(w http.ResponseWriter, r *http.Request) {
 	}
 
 	samples := series.MemoryBytes
+	if series.HorizontalPodAutoscaler != "" {
+		samples = series.HPAReplicaRatio
+	}
 	if isCPUQuery(query) {
 		samples = series.CPUCores
 	}
@@ -355,7 +364,11 @@ func (s *server) handleSeries(w http.ResponseWriter, r *http.Request) {
 			mode = ModePresent
 		}
 		sr.Mode = mode
-		next[keyOf(sr.Namespace, sr.Pod, sr.Container)] = sr
+		key := keyOf(sr.Namespace, sr.Pod, sr.Container)
+		if sr.HorizontalPodAutoscaler != "" {
+			key = keyOf(sr.Namespace, sr.HorizontalPodAutoscaler, "")
+		}
+		next[key] = sr
 	}
 	s.mu.Lock()
 	s.series = next

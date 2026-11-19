@@ -42,6 +42,7 @@ type SamplingTargetRegistrar interface {
 
 // ContainerMetrics contains resource usage statistics for a single container.
 type ContainerMetrics struct {
+	HPAHistory *HPAHistory
 	ValidUntil time.Time
 	CPU        ResourceMetrics
 	Memory     ResourceMetrics
