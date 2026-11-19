@@ -27,9 +27,10 @@ const (
 // samples for one namespace/pod/container target of the in-cluster fixture.
 // The JSON tags are the fixture server's wire format.
 type FixtureSeries struct {
-	// HPAReplicaRatio supplies the evaluated replica-ratio series for this HPA.
+	// HPA gauges share the same evaluation grid as container CPU.
 	HorizontalPodAutoscaler string    `json:"horizontalPodAutoscaler,omitempty"`
-	HPAReplicaRatio         []float64 `json:"hpaReplicaRatio,omitempty"`
+	HPACurrent              []float64 `json:"hpaCurrent,omitempty"`
+	HPADesired              []float64 `json:"hpaDesired,omitempty"`
 	AgeSeconds              float64   `json:"ageSeconds,omitempty"`
 	SpacingSeconds          float64   `json:"spacingSeconds,omitempty"`
 	FixedEnd                float64   `json:"fixedEnd,omitempty"`

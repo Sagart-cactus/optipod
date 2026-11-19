@@ -48,9 +48,10 @@ const (
 // Series describes the deterministic CPU (cores) and memory (bytes) samples for
 // one namespace/pod/container target.
 type Series struct {
-	// HPAReplicaRatio supplies the evaluated replica-ratio series for this HPA.
+	// HPA gauges share the same evaluation grid as container CPU.
 	HorizontalPodAutoscaler string    `json:"horizontalPodAutoscaler,omitempty"`
-	HPAReplicaRatio         []float64 `json:"hpaReplicaRatio,omitempty"`
+	HPACurrent              []float64 `json:"hpaCurrent,omitempty"`
+	HPADesired              []float64 `json:"hpaDesired,omitempty"`
 	AgeSeconds              float64   `json:"ageSeconds,omitempty"`
 	SpacingSeconds          float64   `json:"spacingSeconds,omitempty"`
 	FixedEnd                float64   `json:"fixedEnd,omitempty"`
@@ -235,7 +236,7 @@ func (s *server) handleQueryRange(w http.ResponseWriter, r *http.Request) {
 
 	samples := series.MemoryBytes
 	if series.HorizontalPodAutoscaler != "" {
-		samples = series.HPAReplicaRatio
+		samples = series.HPACurrent
 	}
 	if isCPUQuery(query) {
 		samples = series.CPUCores
@@ -281,22 +282,24 @@ func (s *server) handleQueryRange(w http.ResponseWriter, r *http.Request) {
 		samples = []float64{sampleEnd}
 		sampleEnd = end
 	}
-	values := make([][2]interface{}, 0, len(samples))
-	for i, v := range samples {
-		ts := sampleEnd - float64(len(samples)-1-i)*step
-		if ts < start || ts > end {
-			continue
+	valuesFor := func(points []float64) [][2]interface{} {
+		values := make([][2]interface{}, 0, len(points))
+		for i, v := range points {
+			ts := sampleEnd - float64(len(points)-1-i)*step
+			if ts >= start && ts <= end {
+				values = append(values, [2]interface{}{ts, strconv.FormatFloat(v, 'f', -1, 64)})
+			}
 		}
-		values = append(values, [2]interface{}{ts, strconv.FormatFloat(v, 'f', -1, 64)})
+		return values
 	}
-	result, err := json.Marshal([]matrixEntry{{
-		Metric: map[string]string{
-			"namespace": k.namespace,
-			"pod":       k.pod,
-			"container": k.container,
-		},
-		Values: values,
-	}})
+	entries := []matrixEntry{{Metric: map[string]string{"namespace": k.namespace, "pod": k.pod, "container": k.container}, Values: valuesFor(samples)}}
+	if series.HorizontalPodAutoscaler != "" {
+		entries = []matrixEntry{
+			{Metric: map[string]string{"__name__": "kube_horizontalpodautoscaler_status_current_replicas"}, Values: valuesFor(series.HPACurrent)},
+			{Metric: map[string]string{"__name__": "kube_horizontalpodautoscaler_status_desired_replicas"}, Values: valuesFor(series.HPADesired)},
+		}
+	}
+	result, err := json.Marshal(entries)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, apiResponse{
 			Status: statusError, ErrorType: errorTypeInternal, Error: err.Error(),

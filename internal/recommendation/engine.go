@@ -66,13 +66,16 @@ func (e *Engine) ComputeRecommendation(
 	cpuPercentile := selectPercentile(containerMetrics.CPU, cpuConfig.Percentile)
 	memoryPercentile := selectPercentile(containerMetrics.Memory, memoryConfig.Percentile)
 
-	calibration := ""
+	var replay cpuReplay
+	baseCPU := cpuPercentile.MilliValue()
 	if containerMetrics.HPAHistory != nil {
+		var candidate int64
 		var err error
-		cpuPercentile, calibration, err = calibrateCPU(cpuPercentile, cpuConfig.Percentile, containerMetrics.CPU.Points, containerMetrics.HPAHistory)
+		replay, candidate, err = replayCPU(containerMetrics.CPU.Points, containerMetrics.HPAHistory)
 		if err != nil {
 			return nil, err
 		}
+		cpuPercentile = *resource.NewMilliQuantity(candidate, resource.DecimalSI)
 	}
 
 	// Apply safety factor
@@ -130,8 +133,13 @@ func (e *Engine) ComputeRecommendation(
 	if policy.Spec.MetricsConfig.Memory != nil && policy.Spec.MetricsConfig.Memory.Source != nil {
 		explanation += "; custom memory gauge: " + policy.Spec.MetricsConfig.Memory.Source.Name
 	}
-	if calibration != "" {
-		explanation += "; " + calibration
+	if len(replay.intervals) > 0 {
+		original := replay.evaluate(baseCPU)
+		final := replay.evaluate(cpuRecommendation.MilliValue())
+		explanation += fmt.Sprintf("; HPA CPU calibration: %dm base, %dm before headroom, %d/%d aligned intervals; CPU-work delay budget %s, modeled max delay %.2fs at base / %.2fs at final request, mean fleet CPU reserved %.1fm / %.1fm", baseCPU, cpuPercentile.MilliValue(), len(replay.intervals), replay.eligible, replay.budget, original.maxDelay, final.maxDelay, original.averageReserved, final.averageReserved)
+		if replay.scaleOutTarget > 0 {
+			explanation += fmt.Sprintf("; sole CPU scale-out target %dm", replay.scaleOutTarget)
+		}
 	}
 	if forecastExplanation != "" {
 		explanation += "; " + forecastExplanation
