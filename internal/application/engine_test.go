@@ -1259,7 +1259,7 @@ func TestSSAErrorHandling(t *testing.T) {
 	}{
 		{
 			name:          "conflict error",
-			err:           errors.NewConflict(schema.GroupResource{Group: "apps", Resource: "deployments"}, "test-deployment", fmt.Errorf("field manager conflict")),
+			err:           errors.NewApplyConflict([]metav1.StatusCause{{Type: metav1.CauseTypeFieldManagerConflict}}, "field manager conflict"),
 			expectedMsg:   "SSA conflict",
 			shouldContain: []string{"SSA conflict", "another field manager owns these fields"},
 		},
@@ -1383,7 +1383,7 @@ type mockResourceInterfaceWithError struct {
 func (m *mockResourceInterfaceWithError) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, options metav1.PatchOptions, subresources ...string) (*unstructured.Unstructured, error) {
 	switch m.errorType {
 	case "conflict":
-		return nil, errors.NewConflict(schema.GroupResource{Group: "apps", Resource: "deployments"}, name, fmt.Errorf("field manager conflict"))
+		return nil, errors.NewApplyConflict([]metav1.StatusCause{{Type: metav1.CauseTypeFieldManagerConflict}}, "field manager conflict")
 	case "forbidden":
 		return nil, errors.NewForbidden(schema.GroupResource{Group: "apps", Resource: "deployments"}, name, fmt.Errorf("insufficient permissions"))
 	case "invalid":
