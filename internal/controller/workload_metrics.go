@@ -331,6 +331,24 @@ func (pod observedPod) observationBounds(container string, startupIgnore time.Du
 	return start, end
 }
 
+// Short batch executions use raw scrapes to retain their source clock. Continuous
+// P100 memory uses bucket maxima and the provider's normal freshness checks.
+func replicaSamples(ctx context.Context, series metrics.SeriesProvider, w *discovery.Workload, pod observedPod, container string, cpu bool, percentile string, start, end time.Time, scope metricWindow) ([]metrics.Point, bool, error) {
+	raw, supportsRaw := series.(interface {
+		GetExecutionSamples(context.Context, string, string, string, time.Time, time.Time, bool, string) ([]metrics.Point, error)
+	})
+	if supportsRaw && discovery.IsBatch(w.Kind) && pod.Ended != nil && end.Sub(start) <= 2*scope.step {
+		points, err := raw.GetExecutionSamples(ctx, w.Namespace, pod.Name, container, start, end, cpu, percentile)
+		return points, true, err
+	}
+	if peaks, ok := series.(metrics.MemoryPeakProvider); ok && !cpu && percentile == "P100" {
+		points, err := peaks.MemoryPeakSamples(ctx, w.Namespace, pod.Name, container, start, end, scope.window)
+		return points, false, err
+	}
+	points, err := series.GetResourceSamples(ctx, w.Namespace, pod.Name, container, scope.window, cpu)
+	return points, false, err
+}
+
 func collectReplicaMetrics(ctx context.Context, series metrics.SeriesProvider, w *discovery.Workload, container string, p *api.OptimizationPolicy, pod observedPod, cpu bool, scope metricWindow) (*replicaObservations, error) {
 	result := &replicaObservations{}
 	if discovery.IsBatch(w.Kind) && pod.Ended != nil && time.Since(*pod.Ended) > scope.batchAge {
@@ -344,17 +362,8 @@ func collectReplicaMetrics(ctx context.Context, series metrics.SeriesProvider, w
 		return nil, nil
 	}
 	result.expected += int(math.Ceil(end.Sub(start).Seconds() / scope.step.Seconds()))
-	raw, supportsRaw := series.(interface {
-		GetExecutionSamples(context.Context, string, string, string, time.Time, time.Time, bool, string) ([]metrics.Point, error)
-	})
-	useRaw := supportsRaw && discovery.IsBatch(w.Kind) && pod.Ended != nil && end.Sub(start) <= 2*scope.step
-	var observations []metrics.Point
-	var err error
-	if useRaw {
-		observations, err = raw.GetExecutionSamples(ctx, w.Namespace, pod.Name, container, start, end, cpu, p.Spec.MetricsConfig.ResourceSettings(cpu).Percentile)
-	} else {
-		observations, err = series.GetResourceSamples(ctx, w.Namespace, pod.Name, container, scope.window, cpu)
-	}
+	observations, useRaw, err := replicaSamples(ctx, series, w, pod, container, cpu,
+		p.Spec.MetricsConfig.ResourceSettings(cpu).Percentile, start, end, scope)
 	if err != nil {
 		if errors.Is(err, metrics.ErrNoData) {
 			if pod.Active && pod.Ended == nil && scope.now.Sub(start) > scope.maxAge {
