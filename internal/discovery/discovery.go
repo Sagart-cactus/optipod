@@ -18,6 +18,7 @@ package discovery
 
 import (
 	"context"
+	"slices"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -94,7 +95,7 @@ func DiscoverWorkloads(ctx context.Context, c client.Client, policy *optipodv1al
 
 	}
 
-	return allWorkloads, nil
+	return slices.DeleteFunc(allWorkloads, func(w Workload) bool { return !policy.Spec.Selector.MatchesAssignment(w.Namespace, w.Kind, w.Labels) }), nil
 }
 
 // getMatchingNamespaces returns namespaces that match the policy selectors

@@ -148,6 +148,9 @@ type OptimizationPolicySpec struct {
 
 // WorkloadSelector defines which workloads a policy applies to
 type WorkloadSelector struct {
+	// AnyOf requires at least one matching assignment rule when supplied.
+	// +kubebuilder:validation:MinItems=1
+	AnyOf []AssignmentRule `json:"anyOf,omitempty"`
 	// NamespaceSelector selects namespaces by labels
 	// +optional
 	NamespaceSelector *metav1.LabelSelector `json:"namespaceSelector,omitempty"`
@@ -249,7 +252,7 @@ type MetricsConfig struct {
 	RollingWindow metav1.Duration `json:"rollingWindow,omitempty"`
 
 	// Percentile defines which percentile to use for recommendations
-	// +kubebuilder:validation:Enum=P50;P90;P95;P99;P100
+	// +kubebuilder:validation:Enum=P50;P80;P90;P95;P99;P100
 	// +kubebuilder:default="P90"
 	// +optional
 	Percentile string `json:"percentile,omitempty"`
@@ -262,11 +265,18 @@ type MetricsConfig struct {
 }
 
 // ResourceMetricsConfig overrides individual shared metrics settings.
+const ReplicaAggregationMeanPercentile = "MeanPercentile"
+
 type ResourceMetricsConfig struct {
+	// ReplicaAggregation defaults to pooling samples. MeanPercentile gives
+	// each observed pod equal weight. P100 always uses the absolute peak.
+	// +kubebuilder:validation:Enum=Pooled;MeanPercentile
+	// +optional
+	ReplicaAggregation string `json:"replicaAggregation,omitempty"`
 	// Source overrides container usage with a scoped gauge in cores or bytes.
 	// +optional
 	Source *MetricSource `json:"source,omitempty"`
-	// +kubebuilder:validation:Enum=P50;P90;P95;P99;P100
+	// +kubebuilder:validation:Enum=P50;P80;P90;P95;P99;P100
 	// +optional
 	Percentile string `json:"percentile,omitempty"`
 	// RollingWindow must be positive and no longer than 30 days.
@@ -297,6 +307,7 @@ func (m MetricsConfig) ResourceSettings(cpu bool) ResourceMetricsConfig {
 		o = m.CPU
 	}
 	if o != nil {
+		r.ReplicaAggregation = o.ReplicaAggregation
 		if o.Percentile != "" {
 			r.Percentile = o.Percentile
 		}
@@ -338,9 +349,17 @@ type ResourceBound struct {
 	// +kubebuilder:validation:Required
 	Min resource.Quantity `json:"min"`
 
-	// Max is the maximum allowed value
-	// +kubebuilder:validation:Required
-	Max resource.Quantity `json:"max"`
+	// Max is required unless NoMaximum is set.
+	// +optional
+	Max resource.Quantity `json:"max,omitempty"`
+	// NoMaximum explicitly removes the upper bound while retaining the minimum.
+	// +optional
+	NoMaximum bool `json:"noMaximum,omitempty"`
+}
+
+// ExceedsMaximum reports whether the configured upper bound would be crossed.
+func (b ResourceBound) ExceedsMaximum(q resource.Quantity) bool {
+	return !b.NoMaximum && q.Cmp(b.Max) > 0
 }
 
 // UpdateStrategy defines how resource updates are applied to workloads
@@ -805,8 +824,8 @@ func (r *OptimizationPolicy) validateOptimizationPolicy() error {
 	// Validate selector - at least one selector must be specified
 	if r.Spec.Selector.NamespaceSelector == nil &&
 		r.Spec.Selector.WorkloadSelector == nil &&
-		r.Spec.Selector.Namespaces == nil {
-		return fmt.Errorf("selector is required: at least one of namespaceSelector, workloadSelector, or namespaces must be specified")
+		r.Spec.Selector.Namespaces == nil && len(r.Spec.Selector.AnyOf) == 0 {
+		return fmt.Errorf("selector is required: specify namespaceSelector, workloadSelector, namespaces, or anyOf")
 	}
 
 	// Validate selector syntax if provided
@@ -829,36 +848,47 @@ func (r *OptimizationPolicy) validateOptimizationPolicy() error {
 		}
 	}
 
+	for i, rule := range r.Spec.Selector.AnyOf {
+		if err := rule.validate(); err != nil {
+			return fmt.Errorf("selector.anyOf[%d]: %w", i, err)
+		}
+	}
 	// Validate metrics provider
 	if r.Spec.MetricsConfig.Provider == "" {
 		return fmt.Errorf("metricsConfig.provider is required")
 	}
 
 	// Validate CPU bounds
-	if r.Spec.ResourceBounds.CPU.Min.IsZero() {
+	if r.Spec.ResourceBounds.CPU.Min.Sign() <= 0 {
 		return fmt.Errorf("resourceBounds.cpu.min is required and must be greater than zero")
 	}
 
-	if r.Spec.ResourceBounds.CPU.Max.IsZero() {
+	if r.Spec.ResourceBounds.CPU.NoMaximum && !r.Spec.ResourceBounds.CPU.Max.IsZero() {
+		return fmt.Errorf("cannot specify both max and noMaximum")
+	}
+	if !r.Spec.ResourceBounds.CPU.NoMaximum && r.Spec.ResourceBounds.CPU.Max.IsZero() {
 		return fmt.Errorf("resourceBounds.cpu.max is required and must be greater than zero")
 	}
 
-	if r.Spec.ResourceBounds.CPU.Min.Cmp(r.Spec.ResourceBounds.CPU.Max) > 0 {
+	if !r.Spec.ResourceBounds.CPU.NoMaximum && r.Spec.ResourceBounds.CPU.Min.Cmp(r.Spec.ResourceBounds.CPU.Max) > 0 {
 		return fmt.Errorf("CPU min (%s) must be less than or equal to max (%s)",
 			r.Spec.ResourceBounds.CPU.Min.String(),
 			r.Spec.ResourceBounds.CPU.Max.String())
 	}
 
 	// Validate memory bounds
-	if r.Spec.ResourceBounds.Memory.Min.IsZero() {
+	if r.Spec.ResourceBounds.Memory.Min.Sign() <= 0 {
 		return fmt.Errorf("resourceBounds.memory.min is required and must be greater than zero")
 	}
 
-	if r.Spec.ResourceBounds.Memory.Max.IsZero() {
+	if r.Spec.ResourceBounds.Memory.NoMaximum && !r.Spec.ResourceBounds.Memory.Max.IsZero() {
+		return fmt.Errorf("cannot specify both max and noMaximum")
+	}
+	if !r.Spec.ResourceBounds.Memory.NoMaximum && r.Spec.ResourceBounds.Memory.Max.IsZero() {
 		return fmt.Errorf("resourceBounds.memory.max is required and must be greater than zero")
 	}
 
-	if r.Spec.ResourceBounds.Memory.Min.Cmp(r.Spec.ResourceBounds.Memory.Max) > 0 {
+	if !r.Spec.ResourceBounds.Memory.NoMaximum && r.Spec.ResourceBounds.Memory.Min.Cmp(r.Spec.ResourceBounds.Memory.Max) > 0 {
 		return fmt.Errorf("memory min (%s) must be less than or equal to max (%s)",
 			r.Spec.ResourceBounds.Memory.Min.String(),
 			r.Spec.ResourceBounds.Memory.Max.String())
@@ -881,8 +911,11 @@ func (r *OptimizationPolicy) validateOptimizationPolicy() error {
 	}
 	for _, cpu := range []bool{true, false} {
 		s := r.Spec.MetricsConfig.ResourceSettings(cpu)
+		if s.ReplicaAggregation != "" && s.ReplicaAggregation != "Pooled" && s.ReplicaAggregation != ReplicaAggregationMeanPercentile {
+			return fmt.Errorf("invalid replica aggregation %q", s.ReplicaAggregation)
+		}
 		switch s.Percentile {
-		case "P50", "P90", "P95", "P99", "P100":
+		case "P50", "P80", "P90", "P95", "P99", "P100":
 		default:
 			return fmt.Errorf("invalid resource percentile %q", s.Percentile)
 		}

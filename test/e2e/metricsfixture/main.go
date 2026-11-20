@@ -48,15 +48,20 @@ const (
 // Series describes the deterministic CPU (cores) and memory (bytes) samples for
 // one namespace/pod/container target.
 type Series struct {
-	AgeSeconds     float64   `json:"ageSeconds,omitempty"`
-	SpacingSeconds float64   `json:"spacingSeconds,omitempty"`
-	FixedEnd       float64   `json:"fixedEnd,omitempty"`
-	Namespace      string    `json:"namespace"`
-	Pod            string    `json:"pod"`
-	Container      string    `json:"container"`
-	Mode           string    `json:"mode"` // empty means present
-	CPUCores       []float64 `json:"cpuCores,omitempty"`
-	MemoryBytes    []float64 `json:"memoryBytes,omitempty"`
+	// HPA gauges share the same evaluation grid as container CPU.
+	HorizontalPodAutoscaler string    `json:"horizontalPodAutoscaler,omitempty"`
+	HPACurrent              []float64 `json:"hpaCurrent,omitempty"`
+	HPADesired              []float64 `json:"hpaDesired,omitempty"`
+	AgeSeconds              float64   `json:"ageSeconds,omitempty"`
+	SpacingSeconds          float64   `json:"spacingSeconds,omitempty"`
+	StaleAfterEnd           bool      `json:"staleAfterEnd,omitempty"`
+	FixedEnd                float64   `json:"fixedEnd,omitempty"`
+	Namespace               string    `json:"namespace"`
+	Pod                     string    `json:"pod"`
+	Container               string    `json:"container"`
+	Mode                    string    `json:"mode"` // empty means present
+	CPUCores                []float64 `json:"cpuCores,omitempty"`
+	MemoryBytes             []float64 `json:"memoryBytes,omitempty"`
 }
 
 type seriesKey struct {
@@ -124,6 +129,7 @@ func newServer() *server {
 
 func (s *server) mux() *http.ServeMux {
 	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/query", s.handleQueryRange)
 	mux.HandleFunc("/api/v1/query_range", s.handleQueryRange)
 	mux.HandleFunc("/api/v1/status/buildinfo", s.handleBuildinfo)
 	mux.HandleFunc("/-/series", s.handleSeries)
@@ -139,7 +145,7 @@ func handleOK(w http.ResponseWriter, _ *http.Request) {
 	_, _ = w.Write([]byte("ok\n"))
 }
 
-var labelPattern = regexp.MustCompile(`(namespace|pod|container)="([^"]*)"`)
+var labelPattern = regexp.MustCompile(`(namespace|pod|container|horizontalpodautoscaler)="([^"]*)"`)
 
 // parseLabels extracts the namespace/pod/container label matchers from a PromQL
 // query string produced by the production provider.
@@ -147,6 +153,9 @@ func parseLabels(query string) seriesKey {
 	k := seriesKey{}
 	for _, m := range labelPattern.FindAllStringSubmatch(query, -1) {
 		switch m[1] {
+		case "horizontalpodautoscaler":
+			k.pod = m[2]
+			k.container = ""
 		case "namespace":
 			k.namespace = m[2]
 		case "pod":
@@ -227,6 +236,9 @@ func (s *server) handleQueryRange(w http.ResponseWriter, r *http.Request) {
 	}
 
 	samples := series.MemoryBytes
+	if series.HorizontalPodAutoscaler != "" {
+		samples = series.HPACurrent
+	}
 	if isCPUQuery(query) {
 		samples = series.CPUCores
 	}
@@ -247,30 +259,50 @@ func (s *server) handleQueryRange(w http.ResponseWriter, r *http.Request) {
 	} else {
 		step = 0.1
 	}
+	if r.URL.Path == "/api/v1/query" {
+		end, _ = strconv.ParseFloat(r.FormValue("time"), 64)
+		duration, err := time.ParseDuration(strings.TrimSuffix(query[strings.LastIndex(query, "[")+1:], "]"))
+		if err != nil {
+			http.Error(w, "expected raw range selector", http.StatusBadRequest)
+			return
+		}
+		start = end - duration.Seconds()
+		if isCPUQuery(query) {
+			counters := make([]float64, len(samples))
+			for i := 1; i < len(samples); i++ {
+				counters[i] = counters[i-1] + samples[i]*step
+			}
+			samples = counters
+		}
+	}
 	sampleEnd := end - series.AgeSeconds
 	if series.FixedEnd > 0 {
 		sampleEnd = series.FixedEnd
 	}
 	if strings.HasPrefix(query, "timestamp(") {
 		samples = []float64{sampleEnd}
-		sampleEnd = end
-	}
-	values := make([][2]interface{}, 0, len(samples))
-	for i, v := range samples {
-		ts := sampleEnd - float64(len(samples)-1-i)*step
-		if ts < start || ts > end {
-			continue
+		if !series.StaleAfterEnd || end <= sampleEnd {
+			sampleEnd = end
 		}
-		values = append(values, [2]interface{}{ts, strconv.FormatFloat(v, 'f', -1, 64)})
 	}
-	result, err := json.Marshal([]matrixEntry{{
-		Metric: map[string]string{
-			"namespace": k.namespace,
-			"pod":       k.pod,
-			"container": k.container,
-		},
-		Values: values,
-	}})
+	valuesFor := func(points []float64) [][2]interface{} {
+		values := make([][2]interface{}, 0, len(points))
+		for i, v := range points {
+			ts := sampleEnd - float64(len(points)-1-i)*step
+			if ts >= start && ts <= end {
+				values = append(values, [2]interface{}{ts, strconv.FormatFloat(v, 'f', -1, 64)})
+			}
+		}
+		return values
+	}
+	entries := []matrixEntry{{Metric: map[string]string{"namespace": k.namespace, "pod": k.pod, "container": k.container}, Values: valuesFor(samples)}}
+	if series.HorizontalPodAutoscaler != "" {
+		entries = []matrixEntry{
+			{Metric: map[string]string{"__name__": "kube_horizontalpodautoscaler_status_current_replicas"}, Values: valuesFor(series.HPACurrent)},
+			{Metric: map[string]string{"__name__": "kube_horizontalpodautoscaler_status_desired_replicas"}, Values: valuesFor(series.HPADesired)},
+		}
+	}
+	result, err := json.Marshal(entries)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, apiResponse{
 			Status: statusError, ErrorType: errorTypeInternal, Error: err.Error(),
@@ -338,7 +370,11 @@ func (s *server) handleSeries(w http.ResponseWriter, r *http.Request) {
 			mode = ModePresent
 		}
 		sr.Mode = mode
-		next[keyOf(sr.Namespace, sr.Pod, sr.Container)] = sr
+		key := keyOf(sr.Namespace, sr.Pod, sr.Container)
+		if sr.HorizontalPodAutoscaler != "" {
+			key = keyOf(sr.Namespace, sr.HorizontalPodAutoscaler, "")
+		}
+		next[key] = sr
 	}
 	s.mu.Lock()
 	s.series = next

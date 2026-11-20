@@ -19,6 +19,8 @@ package metrics
 import (
 	"context"
 	"fmt"
+	"net/url"
+	"strings"
 	"time"
 
 	"github.com/prometheus/client_golang/api"
@@ -27,7 +29,7 @@ import (
 
 // PrometheusProvider implements MetricsProvider using Prometheus.
 type PrometheusProvider struct {
-	client v1.API
+	clients []v1.API
 }
 
 // NewPrometheusProvider creates a new PrometheusProvider with authentication support.
@@ -38,17 +40,29 @@ func NewPrometheusProvider(config PrometheusConfig) (*PrometheusProvider, error)
 		return nil, fmt.Errorf("failed to build HTTP client: %w", err)
 	}
 
-	client, err := api.NewClient(api.Config{
-		Address:      config.URL,
-		RoundTripper: httpClient.Transport,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to create Prometheus client: %w", err)
+	addresses := config.ReplicaURLs
+	if len(addresses) == 0 {
+		addresses = []string{config.URL}
 	}
-
-	return &PrometheusProvider{
-		client: v1.NewAPI(client),
-	}, nil
+	provider := &PrometheusProvider{}
+	seen := map[string]bool{}
+	for _, address := range addresses {
+		address = strings.TrimRight(strings.TrimSpace(address), "/")
+		u, err := url.Parse(address)
+		if len(config.ReplicaURLs) > 0 && (err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") || u.RawQuery != "" || u.Fragment != "" || u.User != nil) {
+			return nil, fmt.Errorf("invalid Prometheus endpoint; expected an HTTP(S) base URL")
+		}
+		if seen[address] {
+			return nil, fmt.Errorf("duplicate Prometheus endpoint")
+		}
+		seen[address] = true
+		c, err := api.NewClient(api.Config{Address: address, Client: httpClient})
+		if err != nil {
+			return nil, fmt.Errorf("failed to create Prometheus client: %w", err)
+		}
+		provider.clients = append(provider.clients, v1.NewAPI(c))
+	}
+	return provider, nil
 }
 
 // GetContainerMetrics queries Prometheus for container CPU and memory usage
@@ -68,7 +82,7 @@ func (p *PrometheusProvider) GetContainerMetrics(ctx context.Context, namespace,
 // HealthCheck verifies that Prometheus is accessible.
 func (p *PrometheusProvider) HealthCheck(ctx context.Context) error {
 	// Query Prometheus build info as a health check
-	_, err := p.client.Buildinfo(ctx)
+	_, err := readReplicas(ctx, p.clients, func(ctx context.Context, c v1.API) (v1.BuildinfoResult, error) { return c.Buildinfo(ctx) })
 	if err != nil {
 		return fmt.Errorf("prometheus health check failed: %w", err)
 	}

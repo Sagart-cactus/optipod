@@ -10,6 +10,9 @@ data:
   dry-run: {{ ternary "true" "false" .Values.controller.dryRun | quote }}
   metrics-provider: {{ .Values.metricsProvider.type | quote }}
   prometheus-url: {{ .Values.metricsProvider.prometheus.url | quote }}
+  {{- with .Values.metricsProvider.prometheus.replicaURLs }}
+  prometheus-replica-urls: {{ join "," . | quote }}
+  {{- end }}
   prometheus-timeout: {{ .Values.metricsProvider.prometheus.timeout | quote }}
   reconciliation-interval: {{ .Values.controller.reconciliationInterval | quote }}
   leader-election: {{ ternary "true" "false" .Values.controller.leaderElect | quote }}

@@ -27,15 +27,20 @@ const (
 // samples for one namespace/pod/container target of the in-cluster fixture.
 // The JSON tags are the fixture server's wire format.
 type FixtureSeries struct {
-	AgeSeconds     float64   `json:"ageSeconds,omitempty"`
-	SpacingSeconds float64   `json:"spacingSeconds,omitempty"`
-	FixedEnd       float64   `json:"fixedEnd,omitempty"`
-	Namespace      string    `json:"namespace"`
-	Pod            string    `json:"pod"`
-	Container      string    `json:"container"`
-	Mode           string    `json:"mode,omitempty"` // empty means FixtureModePresent
-	CPUCores       []float64 `json:"cpuCores,omitempty"`
-	MemoryBytes    []float64 `json:"memoryBytes,omitempty"`
+	// HPA gauges share the same evaluation grid as container CPU.
+	HorizontalPodAutoscaler string    `json:"horizontalPodAutoscaler,omitempty"`
+	HPACurrent              []float64 `json:"hpaCurrent,omitempty"`
+	HPADesired              []float64 `json:"hpaDesired,omitempty"`
+	AgeSeconds              float64   `json:"ageSeconds,omitempty"`
+	SpacingSeconds          float64   `json:"spacingSeconds,omitempty"`
+	StaleAfterEnd           bool      `json:"staleAfterEnd,omitempty"`
+	FixedEnd                float64   `json:"fixedEnd,omitempty"`
+	Namespace               string    `json:"namespace"`
+	Pod                     string    `json:"pod"`
+	Container               string    `json:"container"`
+	Mode                    string    `json:"mode,omitempty"` // empty means FixtureModePresent
+	CPUCores                []float64 `json:"cpuCores,omitempty"`
+	MemoryBytes             []float64 `json:"memoryBytes,omitempty"`
 }
 
 // RecordedQuery is one query_range request the fixture observed, proving what
@@ -97,7 +102,15 @@ func NewMetricsFixtureClient(clients *Clients) (*MetricsFixtureClient, error) {
 }
 
 // URL is the in-cluster service URL the deployed controller is configured with.
-func (m *MetricsFixtureClient) URL() string { return FixtureServiceURL() }
+func (m *MetricsFixtureClient) URL() string {
+	return fmt.Sprintf("http://%s.%s.svc:%d", m.serviceName, m.namespace, m.port)
+}
+
+// InNamespace addresses an independently deployed copy of the fixture.
+func (m MetricsFixtureClient) InNamespace(namespace string) *MetricsFixtureClient {
+	m.namespace = namespace
+	return &m
+}
 
 // SetSeries atomically replaces the fixture's entire series set. Any error —
 // including the fixture's own error envelope — propagates to the caller.

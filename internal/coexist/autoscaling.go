@@ -17,6 +17,7 @@ import (
 type Restrictions struct {
 	Resources map[string]map[string]string
 	Targets   []string
+	HPAs      []*autoscalingv2.HorizontalPodAutoscaler
 }
 
 func (r *Restrictions) add(container, resource, reason string) {
@@ -65,10 +66,12 @@ func Read(ctx context.Context, c client.Reader, namespace, kind, name string) (*
 	if err := c.List(ctx, list, client.InNamespace(namespace)); err != nil {
 		return nil, fmt.Errorf("inspect HPA coexistence: %w", err)
 	}
-	for _, hpa := range list.Items {
+	for i := range list.Items {
+		hpa := &list.Items[i]
 		if hpa.Spec.ScaleTargetRef.Name != name || hpa.Spec.ScaleTargetRef.Kind != kind {
 			continue
 		}
+		r.HPAs = append(r.HPAs, hpa)
 		reason := "HPA " + hpa.Name
 		r.Targets = append(r.Targets, reason)
 		if len(hpa.Spec.Metrics) == 0 {

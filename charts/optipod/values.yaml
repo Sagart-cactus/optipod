@@ -329,6 +329,9 @@ metricsProvider:
   prometheus:
     # Prometheus server URL
     url: "http://prometheus:9090"
+    # Direct URLs of independent HA scrapers observing the same cluster.
+    # When set, these replace url. A failed replica query blocks the decision.
+    replicaURLs: []
 
     # Authentication configuration
     auth:

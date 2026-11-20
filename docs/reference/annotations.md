@@ -532,3 +532,23 @@ If webhook fails to parse annotations:
 - [Creating Policies](../guides/creating-policies.md) - Policy configuration guide
 - [Troubleshooting](../guides/troubleshooting.md) - Common issues and solutions
 - [CLI Tools](cli-tools.md) - Recommendation report script reference
+
+### optipod.io/hpa-cpu-calibration
+
+Set this annotation on the workload's top-level metadata to opt individual containers into HPA-aware CPU sizing. Its value is a comma-separated list of container names. Remove the annotation to return those containers to the policy's ordinary CPU calculation.
+
+```yaml
+metadata:
+  annotations:
+    optipod.io/hpa-cpu-calibration: "worker"
+```
+
+OptiPod reads the target HPA and its historical current and desired replica counts from Prometheus. This works for external metrics, including KEDA-generated HPAs, and absolute CPU targets. Percentage-utilization targets keep the existing protections for their request denominators. Memory uses the policy's existing calculation.
+
+The controller replays CPU demand in time order. It averages sampled container CPU per replica, multiplies by the HPA's observed current replicas, and carries unfinished CPU work into the next consecutive interval. Scale-in uses the smaller desired serving fleet. Scale-out takes effect once the HPA reports the added replicas. For a sole absolute container CPU target, or an absolute pod CPU target on a single-container template, a candidate at or below the target cannot earn new replicas under the contention assumption. In this case the replay follows observed scale-downs and suppresses later scale-outs until a new contiguous segment starts. Mixed metrics, external metrics, and pod-wide targets with multiple containers follow the observed replica trajectory. Missing intervals start a new replay segment.
+
+OptiPod selects the smallest whole-millicore request that can serve the observed work over the window and keep the modeled maximum drain time within the delay budget. The workload annotation `optipod.io/hpa-cpu-delay-budget` accepts a nonnegative duration, defaults to `30s`, and supports `0s` for zero modeled backlog. The policy's headroom, bounds and predictive settings then apply. The decision compares the configured percentile and final request by modeled maximum delay and mean CPU reserved across the observed fleet. A policy cap can leave the final request above the delay budget in the replay.
+
+The model assumes contention limits CPU service to the request and that work can be distributed across serving replicas. Its delay is the time needed to drain pending CPU work at that capacity. It does not measure user latency or external queue wait. Reserved CPU is a resource cost proxy. The replay uses the observed HPA trajectory and does not forecast changes in external throughput, pod startup latency, or currency costs.
+
+Enable the kube-state-metrics series `kube_horizontalpodautoscaler_status_current_replicas` and `kube_horizontalpodautoscaler_status_desired_replicas` for the same cluster as the container CPU metrics. For an opted-in CPU dimension, the controller requires one matching HPA and overlapping data for at least two intervals, at least half the eligible CPU intervals, and the latest interval. Calibration excludes observations from before the HPA was created. Missing history is reported in the decision. In Recommend mode, workload requests and the HPA spec are preserved.

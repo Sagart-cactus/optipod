@@ -2,10 +2,10 @@ package controller
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
+	"slices"
 	"sort"
 	"time"
 
@@ -13,8 +13,10 @@ import (
 	"github.com/optipod/optipod/internal/discovery"
 	"github.com/optipod/optipod/internal/metrics"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -35,7 +37,17 @@ type observedPod struct {
 	Active       bool                 `json:"-"`
 }
 
-func (wp *WorkloadProcessor) metricPods(ctx context.Context, w *discovery.Workload) ([]observedPod, error) {
+func (wp *WorkloadProcessor) metricPods(ctx context.Context, w *discovery.Workload, policy *api.OptimizationPolicy) ([]observedPod, error) {
+	var pods []observedPod
+	err := retry.OnError(retry.DefaultBackoff, func(err error) bool { return apierrors.IsConflict(err) || apierrors.IsInvalid(err) }, func() error {
+		var err error
+		pods, err = wp.observeMetricPods(ctx, w, policy)
+		return err
+	})
+	return pods, err
+}
+
+func (wp *WorkloadProcessor) observeMetricPods(ctx context.Context, w *discovery.Workload, policy *api.OptimizationPolicy) ([]observedPod, error) {
 	obj := w.Object.DeepCopyObject().(client.Object)
 	if err := wp.client.Get(ctx, client.ObjectKeyFromObject(w.Object), obj); err != nil {
 		return nil, err
@@ -43,12 +55,15 @@ func (wp *WorkloadProcessor) metricPods(ctx context.Context, w *discovery.Worklo
 	if obj.GetUID() != w.Object.GetUID() {
 		return nil, fmt.Errorf("workload identity changed")
 	}
-	var history []observedPod
+	// Historical observations from Recommend cannot authorize automatic sizing
+	// beneath a parent controller whose resource ownership is external.
+	if policy.Spec.Mode == api.ModeAuto && metav1.GetControllerOf(obj) != nil {
+		return nil, fmt.Errorf("automatic pod metrics require a top-level workload")
+	}
 	old := obj.GetAnnotations()[metricsPodsAnnotation]
-	if old != "" {
-		if err := json.Unmarshal([]byte(old), &history); err != nil {
-			return nil, fmt.Errorf("invalid pod history: %w", err)
-		}
+	history, err := decodePodJournal(old)
+	if err != nil {
+		return nil, fmt.Errorf("invalid pod history: %w", err)
 	}
 	byUID := map[types.UID]observedPod{}
 	for _, p := range history {
@@ -61,12 +76,15 @@ func (wp *WorkloadProcessor) metricPods(ctx context.Context, w *discovery.Worklo
 	now := time.Now()
 	for i := range pods.Items {
 		pod := &pods.Items[i]
-		owner, err := discovery.ResolvePodWorkload(ctx, wp.client, pod)
-		if err != nil || owner.Object.GetUID() != w.Object.GetUID() {
+		if !wp.observesPod(ctx, w, policy, pod) {
 			continue
 		}
 		p := observePod(pod, byUID[pod.UID])
 		byUID[p.UID] = p
+	}
+	retention := 30 * 24 * time.Hour
+	if discovery.IsBatch(w.Kind) {
+		retention, _ = policy.BatchSettings()
 	}
 	history = nil
 	for _, p := range byUID {
@@ -74,7 +92,7 @@ func (wp *WorkloadProcessor) metricPods(ctx context.Context, w *discovery.Worklo
 			t := now
 			p.Ended = &t
 		}
-		if p.Ended != nil && p.Ended.Before(now.Add(-30*24*time.Hour)) {
+		if p.Ended != nil && p.Ended.Before(now.Add(-retention)) {
 			continue
 		}
 		history = append(history, p)
@@ -82,18 +100,13 @@ func (wp *WorkloadProcessor) metricPods(ctx context.Context, w *discovery.Worklo
 	if len(history) == 0 {
 		return nil, fmt.Errorf("no owned pods observed")
 	}
-	// Bound metadata; refuse rather than silently losing historical replicas.
-	if len(history) > 512 {
-		return nil, fmt.Errorf("pod history exceeds 512 entries; archive or shorten workload lifetime before optimizing")
-	}
 	sort.Slice(history, func(i, j int) bool { return history[i].UID < history[j].UID })
-	data, err := json.Marshal(history)
+	data, err := encodePodJournal(history, obj.GetAnnotations())
 	if err != nil {
 		return nil, err
 	}
-	if string(data) != old {
-		patch, _ := json.Marshal(map[string]any{"metadata": map[string]any{"uid": obj.GetUID(), "annotations": map[string]string{metricsPodsAnnotation: string(data)}}})
-		if err := wp.client.Patch(ctx, obj, client.RawPatch(types.MergePatchType, patch)); err != nil {
+	if data != old {
+		if err := wp.client.Patch(ctx, obj, podHistoryPatch(obj, data)); err != nil {
 			return nil, fmt.Errorf("persist pod history: %w", err)
 		}
 	}
@@ -103,13 +116,18 @@ func (wp *WorkloadProcessor) metricPods(ctx context.Context, w *discovery.Worklo
 func (wp *WorkloadProcessor) collectWorkloadMetrics(ctx context.Context, w *discovery.Workload, container string, p *api.OptimizationPolicy) (*metrics.ContainerMetrics, error) {
 	series, rich := wp.metricsProvider.(metrics.SeriesProvider)
 	if !rich || wp.client == nil {
+		for _, cpu := range []bool{true, false} {
+			if p.Spec.MetricsConfig.ResourceSettings(cpu).ReplicaAggregation == api.ReplicaAggregationMeanPercentile {
+				return nil, fmt.Errorf("mean replica percentiles require per-pod metric series")
+			}
+		}
 		return wp.collectLegacyMetrics(ctx, w, container, p)
 	}
 	series, err := metrics.ConfigureSeries(series, p.Spec.MetricsConfig)
 	if err != nil {
 		return nil, err
 	}
-	pods, err := wp.metricPods(ctx, w)
+	pods, err := wp.metricPods(ctx, w, p)
 	if err != nil {
 		return nil, err
 	}
@@ -211,7 +229,8 @@ func (wp *WorkloadProcessor) collectLegacyMetrics(ctx context.Context, w *discov
 
 func collectResourceMetrics(ctx context.Context, series metrics.SeriesProvider, w *discovery.Workload, container string, p *api.OptimizationPolicy, pods []observedPod, cpu bool, batchAge time.Duration) (metrics.ResourceMetrics, time.Time, error) {
 	validity := &metrics.ContainerMetrics{}
-	window := p.Spec.MetricsConfig.ResourceSettings(cpu).RollingWindow.Duration
+	settings := p.Spec.MetricsConfig.ResourceSettings(cpu)
+	window := settings.RollingWindow.Duration
 	step := series.SampleInterval(window)
 	now := time.Now()
 	cutoff := now.Add(-window)
@@ -224,6 +243,7 @@ func collectResourceMetrics(ctx context.Context, series metrics.SeriesProvider, 
 		historyMaxAge = batchAge
 	}
 	points := []metrics.Point{}
+	var replicas [][]metrics.Point
 	var newestSource time.Time
 	expected, covered := 0, 0
 	for _, pod := range pods {
@@ -238,6 +258,9 @@ func collectResourceMetrics(ctx context.Context, series metrics.SeriesProvider, 
 		expected += observation.expected
 		covered += observation.covered
 		points = append(points, observation.points...)
+		if settings.ReplicaAggregation == api.ReplicaAggregationMeanPercentile && len(observation.points) > 0 {
+			replicas = append(replicas, observation.points)
+		}
 		if observation.newestSource.After(newestSource) {
 			newestSource = observation.newestSource
 		}
@@ -247,6 +270,7 @@ func collectResourceMetrics(ctx context.Context, series metrics.SeriesProvider, 
 	}
 
 	stats := metrics.Statistics(points, cpu)
+	stats.MeanReplicaPercentiles(replicas, cpu)
 	if _, ok := series.(metrics.ObservationClock); !ok {
 		newestSource = stats.LastSample
 	}
@@ -258,10 +282,17 @@ func collectResourceMetrics(ctx context.Context, series metrics.SeriesProvider, 
 		minimum = int(*p.Spec.MetricsConfig.MinSamples)
 	}
 	if stats.Samples < minimum {
+		if discovery.IsBatch(w.Kind) {
+			resource := "memory"
+			if cpu {
+				resource = "CPU"
+			}
+			return metrics.ResourceMetrics{}, time.Time{}, fmt.Errorf("insufficient samples for %s in eligible executions: have %d need %d", resource, stats.Samples, minimum)
+		}
 		return metrics.ResourceMetrics{}, time.Time{}, fmt.Errorf("warming up or insufficient samples: have %d need %d", stats.Samples, minimum)
 	}
 	if newestSource.IsZero() || time.Since(newestSource) > historyMaxAge {
-		return metrics.ResourceMetrics{}, time.Time{}, fmt.Errorf("stale metrics: newest observation exceeds %s", maxAge)
+		return metrics.ResourceMetrics{}, time.Time{}, fmt.Errorf("stale metrics: newest observation exceeds %s", historyMaxAge)
 	}
 	capMetricsValidity(validity, newestSource.Add(historyMaxAge))
 	if stats.LastSample.Sub(stats.FirstSample) < p.Spec.MetricsConfig.MinimumHistory.Duration {
@@ -284,28 +315,12 @@ type replicaObservations struct {
 	validity          metrics.ContainerMetrics
 }
 
-func collectReplicaMetrics(ctx context.Context, series metrics.SeriesProvider, w *discovery.Workload, container string, p *api.OptimizationPolicy, pod observedPod, cpu bool, scope metricWindow) (*replicaObservations, error) {
-	result := &replicaObservations{}
-	if discovery.IsBatch(w.Kind) && pod.Ended != nil && time.Since(*pod.Ended) > scope.batchAge {
-		return nil, nil
-	}
-	if len(pod.Containers) > 0 {
-		present := false
-		for _, name := range pod.Containers {
-			if name == container {
-				present = true
-				break
-			}
-		}
-		if !present {
-			return nil, nil
-		}
-	}
+func (pod observedPod) observationBounds(container string, startupIgnore time.Duration, scope metricWindow) (time.Time, time.Time) {
 	start := pod.Created
 	if t, ok := pod.Started[container]; ok {
 		start = t
 	}
-	start = start.Add(p.Spec.MetricsConfig.StartupIgnore.Duration)
+	start = start.Add(startupIgnore)
 	if start.Before(scope.cutoff) {
 		start = scope.cutoff
 	}
@@ -313,11 +328,42 @@ func collectReplicaMetrics(ctx context.Context, series metrics.SeriesProvider, w
 	if pod.Ended != nil && pod.Ended.Before(end) {
 		end = *pod.Ended
 	}
+	return start, end
+}
+
+// Short batch executions use raw scrapes to retain their source clock. Continuous
+// P100 memory uses bucket maxima and the provider's normal freshness checks.
+func replicaSamples(ctx context.Context, series metrics.SeriesProvider, w *discovery.Workload, pod observedPod, container string, cpu bool, percentile string, start, end time.Time, scope metricWindow) ([]metrics.Point, bool, error) {
+	raw, supportsRaw := series.(interface {
+		GetExecutionSamples(context.Context, string, string, string, time.Time, time.Time, bool, string) ([]metrics.Point, error)
+	})
+	if supportsRaw && discovery.IsBatch(w.Kind) && pod.Ended != nil && end.Sub(start) <= 2*scope.step {
+		points, err := raw.GetExecutionSamples(ctx, w.Namespace, pod.Name, container, start, end, cpu, percentile)
+		return points, true, err
+	}
+	if peaks, ok := series.(metrics.MemoryPeakProvider); ok && !cpu && percentile == "P100" {
+		points, err := peaks.MemoryPeakSamples(ctx, w.Namespace, pod.Name, container, start, end, scope.window)
+		return points, false, err
+	}
+	points, err := series.GetResourceSamples(ctx, w.Namespace, pod.Name, container, scope.window, cpu)
+	return points, false, err
+}
+
+func collectReplicaMetrics(ctx context.Context, series metrics.SeriesProvider, w *discovery.Workload, container string, p *api.OptimizationPolicy, pod observedPod, cpu bool, scope metricWindow) (*replicaObservations, error) {
+	result := &replicaObservations{}
+	if discovery.IsBatch(w.Kind) && pod.Ended != nil && time.Since(*pod.Ended) > scope.batchAge {
+		return nil, nil
+	}
+	if len(pod.Containers) > 0 && !slices.Contains(pod.Containers, container) {
+		return nil, nil
+	}
+	start, end := pod.observationBounds(container, p.Spec.MetricsConfig.StartupIgnore.Duration, scope)
 	if !start.Before(end) {
 		return nil, nil
 	}
 	result.expected += int(math.Ceil(end.Sub(start).Seconds() / scope.step.Seconds()))
-	observations, err := series.GetResourceSamples(ctx, w.Namespace, pod.Name, container, scope.window, cpu)
+	observations, useRaw, err := replicaSamples(ctx, series, w, pod, container, cpu,
+		p.Spec.MetricsConfig.ResourceSettings(cpu).Percentile, start, end, scope)
 	if err != nil {
 		if errors.Is(err, metrics.ErrNoData) {
 			if pod.Active && pod.Ended == nil && scope.now.Sub(start) > scope.maxAge {
@@ -328,8 +374,10 @@ func collectReplicaMetrics(ctx context.Context, series metrics.SeriesProvider, w
 		return nil, err
 	}
 	buckets := map[int64]bool{}
-	if err := checkObservationClock(ctx, series, result, w.Namespace, pod, container, end, cpu, scope); err != nil {
-		return nil, err
+	if !useRaw {
+		if err := checkObservationClock(ctx, series, result, w, pod, container, start, end, cpu, scope); err != nil {
+			return nil, err
+		}
 	}
 	var podNewest time.Time
 	for _, point := range observations {
@@ -348,13 +396,27 @@ func collectReplicaMetrics(ctx context.Context, series metrics.SeriesProvider, w
 		}
 		capMetricsValidity(&result.validity, podNewest.Add(scope.maxAge))
 	}
+	if useRaw {
+		result.newestSource = podNewest
+	}
 	result.covered += len(buckets)
 	return result, nil
 }
 
-func checkObservationClock(ctx context.Context, series metrics.SeriesProvider, result *replicaObservations, namespace string, pod observedPod, container string, end time.Time, cpu bool, scope metricWindow) error {
+func checkObservationClock(ctx context.Context, series metrics.SeriesProvider, result *replicaObservations, w *discovery.Workload, pod observedPod, container string, start, end time.Time, cpu bool, scope metricWindow) error {
+	if clock, ok := series.(interface {
+		ExecutionSourceTimestamp(context.Context, string, string, string, time.Time, time.Time, bool) (time.Time, error)
+	}); ok && pod.Ended != nil && discovery.IsBatch(w.Kind) {
+		stamp, err := clock.ExecutionSourceTimestamp(ctx, w.Namespace, pod.Name, container, start, end, cpu)
+		if errors.Is(err, metrics.ErrNoData) {
+			return nil
+		}
+		result.newestSource = stamp
+		return err
+	}
+
 	if clock, ok := series.(metrics.ObservationClock); ok {
-		stamp, err := clock.SourceTimestamp(ctx, namespace, pod.Name, container, end, cpu)
+		stamp, err := clock.SourceTimestamp(ctx, w.Namespace, pod.Name, container, end, cpu)
 		if err != nil && !errors.Is(err, metrics.ErrNoData) {
 			return err
 		}

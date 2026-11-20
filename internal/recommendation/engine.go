@@ -66,6 +66,18 @@ func (e *Engine) ComputeRecommendation(
 	cpuPercentile := selectPercentile(containerMetrics.CPU, cpuConfig.Percentile)
 	memoryPercentile := selectPercentile(containerMetrics.Memory, memoryConfig.Percentile)
 
+	var replay cpuReplay
+	baseCPU := cpuPercentile.MilliValue()
+	if containerMetrics.HPAHistory != nil {
+		var candidate int64
+		var err error
+		replay, candidate, err = replayCPU(containerMetrics.CPU.Points, containerMetrics.HPAHistory)
+		if err != nil {
+			return nil, err
+		}
+		cpuPercentile = *resource.NewMilliQuantity(candidate, resource.DecimalSI)
+	}
+
 	// Apply safety factor
 	safetyFactor := 1.2 // default
 	if policy.Spec.MetricsConfig.SafetyFactor != nil {
@@ -77,7 +89,7 @@ func (e *Engine) ComputeRecommendation(
 
 	if policy.Spec.MetricsConfig.JVM != nil && policy.ControlsResource("memory") {
 		floor := containerMetrics.Memory.P100
-		if floor.Cmp(policy.Spec.ResourceBounds.Memory.Max) > 0 {
+		if policy.Spec.ResourceBounds.Memory.ExceedsMaximum(floor) {
 			return nil, fmt.Errorf("JVM memory floor exceeds policy maximum; raise the bound or review JVM heap/native configuration")
 		}
 		if memoryWithSafety.Cmp(floor) < 0 {
@@ -121,6 +133,14 @@ func (e *Engine) ComputeRecommendation(
 	if policy.Spec.MetricsConfig.Memory != nil && policy.Spec.MetricsConfig.Memory.Source != nil {
 		explanation += "; custom memory gauge: " + policy.Spec.MetricsConfig.Memory.Source.Name
 	}
+	if len(replay.intervals) > 0 {
+		original := replay.evaluate(baseCPU)
+		final := replay.evaluate(cpuRecommendation.MilliValue())
+		explanation += fmt.Sprintf("; HPA CPU calibration: %dm base, %dm before headroom, %d/%d aligned intervals; CPU-work delay budget %s, modeled max delay %.2fs at base / %.2fs at final request, mean fleet CPU reserved %.1fm / %.1fm", baseCPU, cpuPercentile.MilliValue(), len(replay.intervals), replay.eligible, replay.budget, original.maxDelay, final.maxDelay, original.averageReserved, final.averageReserved)
+		if replay.scaleOutTarget > 0 {
+			explanation += fmt.Sprintf("; sole CPU scale-out target %dm", replay.scaleOutTarget)
+		}
+	}
 	if forecastExplanation != "" {
 		explanation += "; " + forecastExplanation
 	}
@@ -137,6 +157,8 @@ func selectPercentile(resourceMetrics metrics.ResourceMetrics, percentile string
 	switch percentile {
 	case "P50":
 		return resourceMetrics.P50
+	case "P80":
+		return resourceMetrics.P80
 	case "P99":
 		return resourceMetrics.P99
 	case "P95":
@@ -176,7 +198,7 @@ func clampToBounds(value resource.Quantity, bounds optipodv1alpha1.ResourceBound
 		return bounds.Min.DeepCopy()
 	}
 	// If value > max, return max
-	if value.Cmp(bounds.Max) > 0 {
+	if bounds.ExceedsMaximum(value) {
 		return bounds.Max.DeepCopy()
 	}
 	// Otherwise return value

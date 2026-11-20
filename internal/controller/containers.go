@@ -33,8 +33,7 @@ func (wp *WorkloadProcessor) selectedContainers(ctx context.Context, w *discover
 	}
 	for i := range pods.Items {
 		pod := &pods.Items[i]
-		owner, err := discovery.ResolvePodWorkload(ctx, wp.client, pod)
-		if err != nil || owner.Object.GetUID() != w.Object.GetUID() {
+		if !wp.observesPod(ctx, w, p, pod) {
 			continue
 		}
 		for _, slot := range discovery.ContainerSlots(&pod.Spec) {
@@ -49,4 +48,14 @@ func (wp *WorkloadProcessor) selectedContainers(ctx context.Context, w *discover
 		}
 	}
 	return result, nil
+}
+
+// Recommend can observe a selected workload beneath an external operator.
+// Active policies continue to require a supported top-level owner.
+func (wp *WorkloadProcessor) observesPod(ctx context.Context, w *discovery.Workload, p *api.OptimizationPolicy, pod *corev1.Pod) bool {
+	if p.Spec.Mode == api.ModeRecommend {
+		return discovery.PodBelongsTo(ctx, wp.client, pod, w)
+	}
+	owner, err := discovery.ResolvePodWorkload(ctx, wp.client, pod)
+	return err == nil && owner.Object.GetUID() == w.Object.GetUID()
 }

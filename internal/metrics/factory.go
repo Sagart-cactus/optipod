@@ -106,7 +106,7 @@ func NewProvider(config ProviderConfig) (MetricsProvider, error) {
 		), nil
 
 	case ProviderTypePrometheus:
-		if config.PrometheusURL == "" && config.Prometheus.URL == "" {
+		if config.PrometheusURL == "" && config.Prometheus.URL == "" && len(config.Prometheus.ReplicaURLs) == 0 {
 			return nil, fmt.Errorf("prometheus URL is required for prometheus provider")
 		}
 

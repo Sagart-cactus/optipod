@@ -18,6 +18,7 @@ type Resource struct {
 	Target         string   `json:"target"`
 	LookBackPeriod string   `json:"lookBackPeriod"`
 	Min            string   `json:"min"`
+	NoMaximum      bool     `json:"noMaximum,omitempty"`
 	Max            string   `json:"max"`
 	Overhead       *float64 `json:"overhead"`
 	Limit          struct {
@@ -129,7 +130,7 @@ func translateResources(p *api.OptimizationPolicy, resources []Resource) error {
 			target = "P100"
 		}
 		switch target {
-		case "P50", "P90", "P95", "P99", "P100":
+		case "P50", "P80", "P90", "P95", "P99", "P100":
 		default:
 			return fmt.Errorf("%s target %q has no exact supported percentile; choose an explicit target", name, r.Target)
 		}
@@ -146,11 +147,14 @@ func translateResources(p *api.OptimizationPolicy, resources []Resource) error {
 		if err != nil {
 			return fmt.Errorf("%s min: %w", name, err)
 		}
-		max, err := resource.ParseQuantity(r.Max)
-		if err != nil {
-			return fmt.Errorf("%s max: %w", name, err)
+		var max resource.Quantity
+		if !r.NoMaximum || r.Max != "" {
+			max, err = resource.ParseQuantity(r.Max)
+			if err != nil {
+				return fmt.Errorf("%s max: %w", name, err)
+			}
 		}
-		bound := api.ResourceBound{Min: min, Max: max}
+		bound := api.ResourceBound{Min: min, Max: max, NoMaximum: r.NoMaximum}
 		mode := ""
 		switch r.Limit.Type {
 		case "noLimit":

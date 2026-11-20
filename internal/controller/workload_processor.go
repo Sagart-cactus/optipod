@@ -30,6 +30,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
@@ -100,8 +101,10 @@ func (wp *WorkloadProcessor) ProcessWorkload(
 	}
 
 	if wp.client != nil {
-		if err := webhook.MarkReadySpec(ctx, wp.client, workload.Object); err != nil {
-			return status, err
+		if err := retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+			return webhook.MarkReadySpec(ctx, wp.client, workload.Object)
+		}); err != nil {
+			return status, fmt.Errorf("record ready workload spec: %w", err)
 		}
 	}
 	// Get containers from workload
@@ -114,13 +117,9 @@ func (wp *WorkloadProcessor) ProcessWorkload(
 
 	var safetyState *safety.State
 	if wp.client != nil {
-		safetyState, err = safety.Load(ctx, wp.client, workload, containers)
+		safetyState, err = wp.observeSafety(ctx, workload, policy, containers)
 		if err != nil {
-			return status, err
-		}
-		safetyState.ObserveOOM(policy, time.Now())
-		if err = safetyState.Save(ctx, wp.client, workload); err != nil {
-			return status, err
+			return status, fmt.Errorf("record workload safety state: %w", err)
 		}
 		if err = safetyState.RecoveryError(policy); err != nil {
 			if policy.Spec.Mode == optipodv1alpha1.ModeAuto {
@@ -173,7 +172,7 @@ func (wp *WorkloadProcessor) ProcessWorkload(
 			}
 		}
 		status.Status = StatusSkipped
-		status.Reason = fmt.Sprintf("Missing metrics: %s", metricsErrorMsg)
+		status.Reason = missingMetricReason(workload.Object, metricsErrorMsg)
 		status.Recommendations = recommendations
 		now := metav1.Now()
 		status.LastRecommendation = &now
@@ -202,6 +201,44 @@ func (wp *WorkloadProcessor) ProcessWorkload(
 	}
 
 	return wp.publishRecommendations(ctx, workload, policy, status, recommendations, safetyState)
+}
+
+// Keep an inactive target distinct from a telemetry outage. Require the
+// native controller to have observed the current generation and drained it.
+func missingMetricReason(obj client.Object, detail string) string {
+	switch o := obj.(type) {
+	case *appsv1.Deployment:
+		if o.Status.ObservedGeneration >= o.Generation && o.Spec.Replicas != nil && *o.Spec.Replicas == 0 && o.Status.Replicas == 0 {
+			return "Idle workload: scaled to zero replicas"
+		}
+	case *appsv1.StatefulSet:
+		if o.Status.ObservedGeneration >= o.Generation && o.Spec.Replicas != nil && *o.Spec.Replicas == 0 && o.Status.Replicas == 0 {
+			return "Idle workload: scaled to zero replicas"
+		}
+	case *appsv1.DaemonSet:
+		if o.Status.ObservedGeneration > 0 && o.Status.ObservedGeneration >= o.Generation && o.Status.DesiredNumberScheduled == 0 && o.Status.CurrentNumberScheduled == 0 && o.Status.NumberMisscheduled == 0 {
+			return "Idle workload: no eligible nodes for this DaemonSet"
+		}
+	}
+	return "Missing metrics: " + detail
+}
+
+// Recompute the observation on conflict so a retry includes concurrent OOM history.
+func (wp *WorkloadProcessor) observeSafety(ctx context.Context, w *discovery.Workload, p *optipodv1alpha1.OptimizationPolicy, containers []corev1.Container) (*safety.State, error) {
+	var state *safety.State
+	err := retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+		observed, err := safety.Load(ctx, wp.client, w, containers)
+		if err != nil {
+			return err
+		}
+		observed.ObserveOOM(p, time.Now())
+		if err := observed.Save(ctx, wp.client, w); err != nil {
+			return err
+		}
+		state = observed
+		return nil
+	})
+	return state, err
 }
 
 // getFirstPodName gets the name of the first pod for a workload by querying the actual pods
@@ -693,6 +730,9 @@ func (wp *WorkloadProcessor) computeRecommendations(ctx context.Context, workloa
 		metricsStartTime := time.Now()
 		containerMetrics, err := wp.collectWorkloadMetrics(ctx, workload, container.Name, containerPolicy)
 
+		if err == nil {
+			err = wp.addHPAHistory(ctx, workload, container.Name, containerPolicy, restrictions, containerMetrics)
+		}
 		metricsTimer.Observe(time.Since(metricsStartTime).Seconds())
 
 		if err != nil {
@@ -723,6 +763,11 @@ func (wp *WorkloadProcessor) computeRecommendations(ctx context.Context, workloa
 
 		// Compute recommendation
 		rec, err := wp.recommendationEngine.ComputeRecommendation(containerMetrics, containerPolicy)
+		if errors.Is(err, metrics.ErrNoData) {
+			hasMetricsError = true
+			metricsErrorMsg = fmt.Sprintf("container %s: %v", container.Name, err)
+			continue
+		}
 		if err != nil {
 			if wp.client != nil && policy.Spec.Mode == optipodv1alpha1.ModeAuto {
 				if revokeErr := webhook.InvalidateRecommendations(ctx, wp.client, workload.Object, policy); revokeErr != nil {

@@ -31,6 +31,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	controlleroptions "sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
@@ -621,7 +622,11 @@ func (r *OptimizationPolicyReconciler) recordDisabledDecision(ctx context.Contex
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *OptimizationPolicyReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	// Initial-list events must get a turn even when pod churn continually
+	// requeues busy policies. Preserve FIFO across policy and pod events.
+	usePriorityQueue := false
 	return ctrl.NewControllerManagedBy(mgr).
+		WithOptions(controlleroptions.Options{UsePriorityQueue: &usePriorityQueue}).
 		For(&optipodv1alpha1.OptimizationPolicy{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Watches(&corev1.Pod{}, handler.EnqueueRequestsFromMapFunc(r.policyForPod), builder.WithPredicates(podLifecycleEvents)).
 		Named("optimizationpolicy").

@@ -42,6 +42,7 @@ type SamplingTargetRegistrar interface {
 
 // ContainerMetrics contains resource usage statistics for a single container.
 type ContainerMetrics struct {
+	HPAHistory *HPAHistory
 	ValidUntil time.Time
 	CPU        ResourceMetrics
 	Memory     ResourceMetrics
@@ -54,6 +55,7 @@ type ResourceMetrics struct {
 	CoveragePercent float64
 	Points          []Point
 	P50             resource.Quantity // 50th percentile (median)
+	P80             resource.Quantity // 80th percentile
 	P90             resource.Quantity // 90th percentile
 	P95             resource.Quantity // 95th percentile
 	P99             resource.Quantity // 99th percentile

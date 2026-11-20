@@ -13,8 +13,11 @@ import (
 	api "github.com/optipod/optipod/api/v1alpha1"
 	"github.com/optipod/optipod/internal/discovery"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -29,11 +32,12 @@ type ContainerState struct {
 	AcceptedLimit  *resource.Quantity `json:"acceptedLimit,omitempty"`
 }
 type State struct {
-	Pods       []corev1.Pod                           `json:"-"`
-	Containers map[string]*ContainerState             `json:"containers"`
-	LastChange time.Time                              `json:"lastChange,omitempty"`
-	PlanHash   string                                 `json:"planHash,omitempty"`
-	Current    map[string]corev1.ResourceRequirements `json:"-"`
+	observedAnnotation string
+	Pods               []corev1.Pod                           `json:"-"`
+	Containers         map[string]*ContainerState             `json:"containers"`
+	LastChange         time.Time                              `json:"lastChange,omitempty"`
+	PlanHash           string                                 `json:"planHash,omitempty"`
+	Current            map[string]corev1.ResourceRequirements `json:"-"`
 }
 
 // Load considers actual owned pods, including mixed revisions. Taking the
@@ -46,14 +50,9 @@ func Load(ctx context.Context, c client.Client, w *discovery.Workload, container
 	if obj.GetUID() != w.Object.GetUID() {
 		return nil, fmt.Errorf("workload identity changed")
 	}
-	s := &State{Containers: map[string]*ContainerState{}, Current: map[string]corev1.ResourceRequirements{}}
-	if raw := obj.GetAnnotations()[StateAnnotation]; raw != "" {
-		if err := json.Unmarshal([]byte(raw), s); err != nil {
-			return nil, fmt.Errorf("invalid safety state: %w", err)
-		}
-	}
-	if s.Containers == nil {
-		s.Containers = map[string]*ContainerState{}
+	s, err := storedState(obj)
+	if err != nil {
+		return nil, err
 	}
 	for _, co := range containers {
 		s.Current[co.Name] = *co.Resources.DeepCopy()
@@ -220,14 +219,56 @@ func copyQ(q *resource.Quantity) *resource.Quantity {
 	return &v
 }
 
-// Accept is called only after successful application. Renewing freshness does
-// not reset cooldowns. State is stored with a workload UID precondition.
+func storedState(obj client.Object) (*State, error) {
+	s := &State{Containers: map[string]*ContainerState{}, Current: map[string]corev1.ResourceRequirements{}}
+	s.observedAnnotation = obj.GetAnnotations()[StateAnnotation]
+	if s.observedAnnotation != "" {
+		if err := json.Unmarshal([]byte(s.observedAnnotation), s); err != nil {
+			return nil, fmt.Errorf("invalid safety state: %w", err)
+		}
+	}
+	if s.Containers == nil {
+		s.Containers = map[string]*ContainerState{}
+	}
+	return s, nil
+}
+
+// Accept records the plan only after the workload mutation succeeds. Rebase
+// the accepted quantities on each read to preserve concurrent OOM observations.
 func (s *State) Accept(ctx context.Context, c client.Client, w *discovery.Workload, recs []api.ContainerRecommendation, now time.Time) error {
+	return retry.RetryOnConflict(wait.Backoff{Steps: 4, Duration: 200 * time.Millisecond, Factor: 2, Jitter: 0.1}, func() error {
+		obj := w.Object.DeepCopyObject().(client.Object)
+		if err := c.Get(ctx, client.ObjectKeyFromObject(obj), obj); err != nil {
+			return err
+		}
+		if obj.GetUID() != w.Object.GetUID() {
+			return fmt.Errorf("workload identity changed before recording accepted plan")
+		}
+		latest, err := storedState(obj)
+		if err != nil {
+			return err
+		}
+		prior := latest.PlanHash
+		if err := latest.acceptPlan(recs, now); err != nil {
+			return err
+		}
+		if prior != s.PlanHash && prior != latest.PlanHash {
+			return fmt.Errorf("a different accepted plan was recorded during application")
+		}
+		if err := latest.saveTo(ctx, c, obj); err != nil {
+			return err
+		}
+		s.Containers, s.PlanHash, s.LastChange, s.observedAnnotation = latest.Containers, latest.PlanHash, latest.LastChange, latest.observedAnnotation
+		return nil
+	})
+}
+
+func (s *State) acceptPlan(recs []api.ContainerRecommendation, now time.Time) error {
 	plan := map[string]ContainerState{}
 	for _, r := range recs {
 		v := s.Containers[r.Container]
 		if v == nil {
-			continue
+			return fmt.Errorf("missing observed safety state for container %s", r.Container)
 		}
 		v.AcceptedCPU = copyQ(r.CPU)
 		v.AcceptedMemory = copyQ(r.Memory)
@@ -241,10 +282,28 @@ func (s *State) Accept(ctx context.Context, c client.Client, w *discovery.Worklo
 		s.LastChange = now
 		s.PlanHash = next
 	}
-	return s.Save(ctx, c, w)
+	return nil
 }
 
 func (s *State) Save(ctx context.Context, c client.Client, w *discovery.Workload) error {
+	obj := w.Object.DeepCopyObject().(client.Object)
+	if err := c.Get(ctx, client.ObjectKeyFromObject(obj), obj); err != nil {
+		return err
+	}
+	if obj.GetUID() != w.Object.GetUID() {
+		return fmt.Errorf("workload identity changed before saving safety state")
+	}
+	if s.observedAnnotation != obj.GetAnnotations()[StateAnnotation] {
+		gvr, err := discovery.GVR(w.Kind)
+		if err != nil {
+			return err
+		}
+		return apierrors.NewConflict(gvr.GroupResource(), w.Name, fmt.Errorf("concurrent safety state update"))
+	}
+	return s.saveTo(ctx, c, obj)
+}
+
+func (s *State) saveTo(ctx context.Context, c client.Client, obj client.Object) error {
 	data, err := json.Marshal(s)
 	if err != nil {
 		return err
@@ -252,13 +311,13 @@ func (s *State) Save(ctx context.Context, c client.Client, w *discovery.Workload
 	if len(data) > 64*1024 {
 		return fmt.Errorf("safety state exceeds 64KiB")
 	}
-	obj := w.Object.DeepCopyObject().(client.Object)
-	if err := c.Get(ctx, client.ObjectKeyFromObject(w.Object), obj); err != nil {
-		return err
-	}
 	if string(data) == obj.GetAnnotations()[StateAnnotation] {
 		return nil
 	}
-	patch, _ := json.Marshal(map[string]any{"metadata": map[string]any{"uid": w.Object.GetUID(), "resourceVersion": obj.GetResourceVersion(), "annotations": map[string]string{StateAnnotation: string(data)}}})
-	return c.Patch(ctx, obj, client.RawPatch(types.MergePatchType, patch))
+	patch, _ := json.Marshal(map[string]any{"metadata": map[string]any{"uid": obj.GetUID(), "resourceVersion": obj.GetResourceVersion(), "annotations": map[string]string{StateAnnotation: string(data)}}})
+	if err := c.Patch(ctx, obj, client.RawPatch(types.MergePatchType, patch)); err != nil {
+		return err
+	}
+	s.observedAnnotation = string(data)
+	return nil
 }
