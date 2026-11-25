@@ -7,9 +7,13 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to release (e.g., v1.0.0)'
+        description: 'Existing release tag (e.g., v1.6.1)'
         required: true
         type: string
+
+concurrency:
+  group: release-${{ inputs.version || github.ref_name }}
+  cancel-in-progress: false
 
 permissions:
   contents: write
@@ -27,9 +31,12 @@ env:
 jobs:
   setup:
     name: Setup and Validate
+    if: github.ref_type == 'tag' || (github.ref == 'refs/heads/main' && github.ref_protected)
     runs-on: ubuntu-latest
     outputs:
-      version: ${{ steps.get_version.outputs.version }}
+      version: ${{ steps.release_source.outputs.version }}
+      source_commit: ${{ steps.release_source.outputs.source_commit }}
+      recovering: ${{ steps.release_source.outputs.recovering }}
       image_name_lower: ${{ steps.lowercase_repo.outputs.image_name_lower }}
     steps:
       - name: Checkout code
@@ -42,25 +49,46 @@ jobs:
         run: |
           echo "image_name_lower=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
 
-      - name: Get version from tag or input
-        id: get_version
+      - name: Resolve release tag and source commit
+        id: release_source
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            VERSION="${{ github.event.inputs.version }}"
-          else
-            VERSION="${GITHUB_REF#refs/tags/}"
+          set -euo pipefail
+          version="${GITHUB_REF#refs/tags/}"
+          expected_commit="$GITHUB_SHA"
+          recovering=false
+          if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]]; then
+            version="$REQUESTED_VERSION"
           fi
-          echo "version=${VERSION}" >> $GITHUB_OUTPUT
-          echo "Version: ${VERSION}"
-
-      - name: Validate version format
-        run: |
-          VERSION="${{ steps.get_version.outputs.version }}"
-          if ! echo "${VERSION}" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$'; then
-            echo "Error: Invalid version format '${VERSION}'. Expected format: v1.2.3 or v1.2.3-alpha.1"
+          if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch && "$GITHUB_REF" == refs/heads/main ]]; then
+            recovering=true
+            expected_tag=f4120bdd6440a72aa572e7616f4ea7f03b9002d6
+            expected_commit=2c3e32dd4c0583dd152877308a7cceb5000fbbcc
+            [[ "$version" == v1.6.1 && "$GITHUB_REF" == refs/heads/main ]]
+            [[ "$(git rev-parse --verify "refs/tags/$version")" == "$expected_tag" ]]
+            [[ "$(git rev-parse --verify "refs/tags/$version^{commit}")" == "$expected_commit" ]]
+            if [[ "$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-version:refname | sed -n '1p')" != "$version" ]]; then
+              echo "Refusing recovery after a newer release tag was created" >&2
+              exit 1
+            fi
+            if result=$(gh release view "$version" --repo "$GITHUB_REPOSITORY" 2>&1); then
+              echo "Release $version already exists" >&2
+              exit 1
+            elif [[ "$result" != "release not found" ]]; then
+              printf '%s\n' "$result" >&2
+              exit 1
+            fi
+          fi
+          if [[ ! "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
+            echo "Invalid release tag: $version" >&2
             exit 1
           fi
-          echo "Version format is valid: ${VERSION}"
+          [[ "$recovering" == true || "$GITHUB_REF" == "refs/tags/$version" ]]
+          source_commit=$(git rev-parse --verify "refs/tags/$version^{commit}")
+          [[ "$source_commit" == "$expected_commit" ]]
+          printf 'version=%s\nsource_commit=%s\nrecovering=%s\n' "$version" "$source_commit" "$recovering" >> "$GITHUB_OUTPUT"
 
   lint:
     name: Run Linting
@@ -69,6 +97,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.setup.outputs.source_commit }}
 
       - name: Setup Go
         uses: actions/setup-go@v7
@@ -87,6 +117,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.setup.outputs.source_commit }}
 
       - name: Setup Go
         uses: actions/setup-go@v7
@@ -107,6 +139,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.setup.outputs.source_commit }}
 
       - name: Setup Go
         uses: actions/setup-go@v7
@@ -148,6 +182,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.setup.outputs.source_commit }}
 
       - name: Install Helm
         uses: azure/setup-helm@v4
@@ -155,6 +191,7 @@ jobs:
           version: 'v3.14.0'
 
       - name: Update Chart metadata
+        if: needs.setup.outputs.recovering != 'true'
         run: |
           VERSION="${{ needs.setup.outputs.version }}"
           VERSION_NO_V="${VERSION#v}"
@@ -180,20 +217,42 @@ jobs:
           cat charts/optipod/values.yaml | grep -A1 "repository:"
 
       - name: Update Helm dependencies
+        if: needs.setup.outputs.recovering != 'true'
         run: |
           cd charts/optipod
           helm dependency update
 
       - name: Lint Helm chart
+        if: needs.setup.outputs.recovering != 'true'
         run: |
           helm lint charts/optipod
 
       - name: Package Helm chart
+        if: needs.setup.outputs.recovering != 'true'
         run: |
           mkdir -p deploy
           helm package charts/optipod --destination deploy
           echo "Packaged chart:"
           ls -lh deploy/
+
+      - name: Recover original v1.6.1 chart artifact
+        if: needs.setup.outputs.recovering == 'true'
+        uses: actions/download-artifact@v8
+        with:
+          name: helm-chart
+          run-id: 45557186196
+          github-token: ${{ github.token }}
+          path: deploy
+
+      - name: Match the recovered chart to the published OCI chart
+        if: needs.setup.outputs.recovering == 'true'
+        run: |
+          set -euo pipefail
+          owner=$(printf '%s' "$GITHUB_REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')
+          directory=$(mktemp -d)
+          helm pull "oci://ghcr.io/$owner/charts/optipod" --version 1.6.1 --destination "$directory"
+          cmp deploy/optipod-1.6.1.tgz "$directory/optipod-1.6.1.tgz"
+          echo '7b8faa8d5765bafac8a475e5b2f1ca8e8cd04da39c6b4b615d1c97e6c395b8c0  deploy/optipod-1.6.1.tgz' | sha256sum -c -
 
       - name: Upload chart artifact
         uses: actions/upload-artifact@v7
@@ -204,10 +263,12 @@ jobs:
           if-no-files-found: error
 
       - name: Login to GitHub Container Registry
+        if: needs.setup.outputs.recovering != 'true'
         run: |
           echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u ${{ github.actor }} --password-stdin
 
       - name: Push chart to OCI registry
+        if: needs.setup.outputs.recovering != 'true'
         run: |
           CHART_FILE=$(ls deploy/*.tgz)
           echo "Pushing chart: ${CHART_FILE}"
@@ -233,6 +294,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.setup.outputs.source_commit }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -248,12 +311,12 @@ jobs:
             ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ needs.setup.outputs.version }}-${{ matrix.arch }}
           build-args: |
             VERSION=${{ needs.setup.outputs.version }}
-            COMMIT=${{ github.sha }}
+            COMMIT=${{ needs.setup.outputs.source_commit }}
             BUILD_DATE=${{ github.event.repository.updated_at }}
           labels: |
             org.opencontainers.image.source=${{ github.repositoryUrl }}
             org.opencontainers.image.version=${{ needs.setup.outputs.version }}
-            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.revision=${{ needs.setup.outputs.source_commit }}
             org.opencontainers.image.licenses=Apache-2.0
             org.opencontainers.image.created=${{ github.event.repository.updated_at }}
           cache-from: type=gha,scope=${{ matrix.arch }}
@@ -280,6 +343,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.setup.outputs.source_commit }}
 
       - name: Download ${{ matrix.arch }} image artifact
         uses: actions/download-artifact@v8
@@ -365,6 +430,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.setup.outputs.source_commit }}
 
       - name: Download ${{ matrix.arch }} image artifact
         uses: actions/download-artifact@v8
@@ -401,6 +468,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.setup.outputs.source_commit }}
 
       - name: Download ${{ matrix.arch }} image artifact
         uses: actions/download-artifact@v8
@@ -451,7 +520,7 @@ jobs:
               \"configSource\": {
                 \"uri\": \"git+https://github.com/${{ github.repository }}\",
                 \"digest\": {
-                  \"sha1\": \"${{ github.sha }}\"
+                  \"sha1\": \"$GITHUB_WORKFLOW_SHA\"
                 },
                 \"entryPoint\": \".github/workflows/release.yml\"
               }
@@ -471,7 +540,7 @@ jobs:
               {
                 \"uri\": \"git+https://github.com/${{ github.repository }}\",
                 \"digest\": {
-                  \"sha1\": \"${{ github.sha }}\"
+                  \"sha1\": \"${{ needs.setup.outputs.source_commit }}\"
                 }
               }
             ]
@@ -488,7 +557,7 @@ jobs:
         run: |
           cosign attest --yes \
             --predicate /tmp/sbom-${{ matrix.arch }}.json \
-            --type spdx \
+            --type spdxjson \
             ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ needs.setup.outputs.version }}-${{ matrix.arch }}
 
       - name: Verify signature
@@ -507,6 +576,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.setup.outputs.source_commit }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -588,6 +659,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.setup.outputs.source_commit }}
 
       - name: Setup kubectl
         uses: azure/setup-kubectl@v4
@@ -658,6 +731,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.setup.outputs.source_commit }}
 
       - name: Setup Go
         uses: actions/setup-go@v7
@@ -671,7 +746,7 @@ jobs:
           CGO_ENABLED: 0
         run: |
           go build -a -o optipod-${{ matrix.goos }}-${{ matrix.goarch }} \
-            -ldflags "-X main.version=${{ needs.setup.outputs.version }} -X main.commit=${{ github.sha }}" \
+            -ldflags "-X main.version=${{ needs.setup.outputs.version }} -X main.commit=${{ needs.setup.outputs.source_commit }}" \
             cmd/main.go
 
       - name: Upload binary
@@ -714,6 +789,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
+          ref: ${{ needs.setup.outputs.source_commit }}
           fetch-depth: 0
 
       - name: Download install manifest
@@ -762,13 +838,14 @@ jobs:
         env:
           IMAGE: ${{ needs.publish-ghcr.outputs.image }}
           VERSION: ${{ needs.setup.outputs.version }}
+          SOURCE_COMMIT: ${{ needs.setup.outputs.source_commit }}
         run: |
           set -euo pipefail
           identity="https://github.com/$GITHUB_WORKFLOW_REF"
           issuer=https://token.actions.githubusercontent.com
-          jq -n --arg version "$VERSION" --arg commit "$GITHUB_SHA" --arg image "$IMAGE" \
-            --arg identity "$identity" --arg issuer "$issuer" \
-            '{version:$version,commit:$commit,image:$image,identity:$identity,issuer:$issuer}' > artifacts/IMAGES.json
+          jq -n --arg version "$VERSION" --arg commit "$SOURCE_COMMIT" --arg image "$IMAGE" \
+            --arg identity "$identity" --arg issuer "$issuer" --arg workflowCommit "$GITHUB_WORKFLOW_SHA" \
+            '{version:$version,commit:$commit,image:$image,identity:$identity,issuer:$issuer,workflowCommit:$workflowCommit}' > artifacts/IMAGES.json
           # GitHub release downloads use flat asset filenames.
           python3 - <<'PYTHON'
           import hashlib
@@ -908,5 +985,7 @@ jobs:
             artifacts/SHA256SUMS.sigstore.json
             artifacts/sbom/*.json
             artifacts/security-scan/*.json
+            artifacts/security-scan/*.sarif
+          fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
