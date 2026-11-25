@@ -19,14 +19,19 @@ package webhook
 import (
 	"context"
 	"fmt"
+	"maps"
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	optipodv1alpha1 "github.com/optipod/optipod/api/v1alpha1"
+	"github.com/optipod/optipod/internal/discovery"
+	"github.com/optipod/optipod/internal/history"
+	policyselection "github.com/optipod/optipod/internal/policy"
 )
 
 const (
@@ -97,6 +102,104 @@ func (rc *RolloutController) SupportsRollingRestart(workload client.Object) bool
 	}
 }
 
+// TriggerRecommendationRollout retries only the atomic template write for an
+// unchanged recommendation. ReplicaSet restarts use the separate eviction path.
+func (rc *RolloutController) TriggerRecommendationRollout(ctx context.Context, workload client.Object, policy *optipodv1alpha1.OptimizationPolicy, recommendations []ResourceRecommendation) (bool, error) {
+	if _, evictsPods := workload.(*appsv1.ReplicaSet); evictsPods || !rc.SupportsRollingRestart(workload) {
+		return false, fmt.Errorf("workload kind %s does not support recommendation rollout retries", rc.GetWorkloadKind(workload))
+	}
+	plan := resourcePlanHash(recommendations)
+	spec := specHash(workload)
+	var before map[string]string
+	applied := false
+	err := retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		current := workload.DeepCopyObject().(client.Object)
+		if err := rc.client.Get(ctx, client.ObjectKeyFromObject(workload), current); err != nil {
+			return fmt.Errorf("failed to get current workload: %w", err)
+		}
+		if current.GetUID() != workload.GetUID() {
+			return fmt.Errorf("workload identity changed before restart")
+		}
+		annotations := current.GetAnnotations()
+		if annotations[RecommendationHash] != plan || !ValidRecommendations(annotations, policy, time.Now()) {
+			return fmt.Errorf("recommendation changed or expired before rollout")
+		}
+		if annotations[RolloutHash] == plan {
+			return nil
+		}
+		if before != nil && !sameRestartIntent(before, annotations) {
+			return fmt.Errorf("rollout intent changed before restart")
+		}
+		if err := rc.validateRestart(ctx, current, policy, spec); err != nil {
+			return err
+		}
+		if !ValidRecommendations(annotations, policy, time.Now()) {
+			return fmt.Errorf("recommendation expired before rollout")
+		}
+		if before == nil {
+			before = maps.Clone(annotations)
+		}
+		annotations[RolloutHash] = plan
+		current.SetAnnotations(annotations)
+		if err := rc.writeRestart(ctx, current); err != nil {
+			return err
+		}
+		applied = true
+		return nil
+	})
+	return applied, err
+}
+
+func sameRestartIntent(before, after map[string]string) bool {
+	if before[RecommendationExpiry] != after[RecommendationExpiry] || before[RolloutHash] != after[RolloutHash] || before[history.RollbackTo] != after[history.RollbackTo] {
+		return false
+	}
+	manager := &AnnotationManager{}
+	for name, value := range before {
+		if manager.isRecommendationAnnotation(name) && after[name] != value {
+			return false
+		}
+	}
+	for name, value := range after {
+		if manager.isRecommendationAnnotation(name) && before[name] != value {
+			return false
+		}
+	}
+	return true
+}
+
+func (rc *RolloutController) validateRestart(ctx context.Context, current client.Object, policy *optipodv1alpha1.OptimizationPolicy, spec string) error {
+	if spec == "" || specHash(current) != spec {
+		return fmt.Errorf("workload spec changed before restart")
+	}
+	annotations := current.GetAnnotations()
+	if current.GetDeletionTimestamp() != nil || annotations[history.Paused] == trueValue {
+		return fmt.Errorf("workload is paused or terminating")
+	}
+	if deployment, ok := current.(*appsv1.Deployment); ok && deployment.Spec.Paused {
+		return fmt.Errorf("deployment is paused")
+	}
+	if !rc.IsWorkloadReady(current) {
+		return fmt.Errorf("rollout deferred: workload is not fully ready")
+	}
+	if annotations[optipodv1alpha1.AnnotationWebhookEnabled] != trueValue || annotations[optipodv1alpha1.AnnotationStrategy] != string(optipodv1alpha1.StrategyWebhook) {
+		return fmt.Errorf("webhook rollout intent changed before restart")
+	}
+	winner, err := policyselection.NewPolicySelector(rc.client).SelectBestPolicy(ctx, &discovery.Workload{
+		Kind: rc.GetWorkloadKind(current), Namespace: current.GetNamespace(), Name: current.GetName(), Object: current, Labels: current.GetLabels(),
+	})
+	if err != nil {
+		return fmt.Errorf("revalidate rollout policy: %w", err)
+	}
+	if winner.UID != policy.UID || winner.Generation != policy.Generation || winner.Spec.Mode != optipodv1alpha1.ModeAuto || !winner.IsWebhookStrategy() {
+		return fmt.Errorf("selected policy changed before rollout")
+	}
+	return nil
+}
+
 // UpdatePodTemplate updates the workload's pod template to trigger a rolling restart
 func (rc *RolloutController) UpdatePodTemplate(ctx context.Context, workload client.Object) error {
 	log := rolloutLog.WithValues(
@@ -125,7 +228,10 @@ func (rc *RolloutController) UpdatePodTemplate(ctx context.Context, workload cli
 		current.SetAnnotations(a)
 	}
 
-	// Update pod template based on workload type
+	return rc.writeRestart(ctx, current)
+}
+
+func (rc *RolloutController) writeRestart(ctx context.Context, current client.Object) error {
 	switch obj := current.(type) {
 	case *appsv1.Deployment:
 		return rc.updateDeploymentPodTemplate(ctx, obj)

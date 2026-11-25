@@ -27,6 +27,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/util/retry"
 
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -943,33 +944,22 @@ func (e *Engine) ApplyWithWebhook(
 
 	// Handle rollout strategy
 	if policy.GetRolloutStrategy() == optipodv1alpha1.RolloutImmediate {
-		// StoreRecommendations updated the resourceVersion. Refresh before the
-		// atomic template/hash update, and never restart for an unchanged plan.
-		if err := e.client.Get(ctx, client.ObjectKeyFromObject(workloadObj), workloadObj); err != nil {
-			return nil, err
-		}
-		a := workloadObj.GetAnnotations()
-		if a[webhook.RolloutHash] == a[webhook.RecommendationHash] {
-			return &ApplyResult{Method: "WebhookNoChange"}, nil
-		}
-		if !e.rolloutController.IsWorkloadReady(workloadObj) {
-			return nil, fmt.Errorf("rollout deferred: workload is not fully ready")
-		}
-		a[webhook.RolloutHash] = a[webhook.RecommendationHash]
-		workloadObj.SetAnnotations(a)
-		if err := e.rolloutController.TriggerRollingRestart(ctx, workloadObj, policy); err != nil {
+		restarted, err := e.applyImmediateWebhookRollout(ctx, workloadObj, policy, recommendations)
+		if err != nil {
 			log.Error(err, "Failed to trigger rolling restart",
 				"workload", fmt.Sprintf("%s/%s", workload.Namespace, workload.Name),
 				fieldContainers, containerNames(recs),
 				"rolloutStrategy", policy.GetRolloutStrategy(),
 			)
 			return nil, fmt.Errorf("rollout not applied: %w", err)
-		} else {
-			log.Info("Rolling restart triggered successfully",
-				"workload", fmt.Sprintf("%s/%s", workload.Namespace, workload.Name),
-				"rolloutStrategy", policy.GetRolloutStrategy(),
-			)
 		}
+		if !restarted {
+			return &ApplyResult{Method: "WebhookNoChange"}, nil
+		}
+		log.Info("Rolling restart triggered successfully",
+			"workload", fmt.Sprintf("%s/%s", workload.Namespace, workload.Name),
+			"rolloutStrategy", policy.GetRolloutStrategy(),
+		)
 	}
 
 	// Record resource change magnitudes per container
@@ -1007,6 +997,27 @@ func (e *Engine) ApplyWithWebhook(
 		Method:         "Webhook",
 		FieldOwnership: false, // Webhooks don't use field ownership
 	}, nil
+}
+
+func (e *Engine) applyImmediateWebhookRollout(ctx context.Context, workload client.Object, policy *optipodv1alpha1.OptimizationPolicy, recommendations []webhook.ResourceRecommendation) (bool, error) {
+	if _, evictsPods := workload.(*appsv1.ReplicaSet); !evictsPods && policy.UID != "" && !isRollback(ctx) {
+		return e.rolloutController.TriggerRecommendationRollout(ctx, workload, policy, recommendations)
+	}
+	// ReplicaSet evictions and explicit rollback keep their existing lifecycle.
+	if err := e.client.Get(ctx, client.ObjectKeyFromObject(workload), workload); err != nil {
+		return false, err
+	}
+	annotations := workload.GetAnnotations()
+	if annotations[webhook.RolloutHash] == annotations[webhook.RecommendationHash] {
+		return false, nil
+	}
+	if !e.rolloutController.IsWorkloadReady(workload) {
+		return false, fmt.Errorf("rollout deferred: workload is not fully ready")
+	}
+	annotations[webhook.RolloutHash] = annotations[webhook.RecommendationHash]
+	workload.SetAnnotations(annotations)
+	err := e.rolloutController.TriggerRollingRestart(ctx, workload, policy)
+	return err == nil, err
 }
 
 type ssaVersionConflict struct{ error }
