@@ -31,10 +31,10 @@ func (wp *WorkloadProcessor) selectedContainers(ctx context.Context, w *discover
 	if err := wp.client.List(ctx, pods, client.InNamespace(w.Namespace)); err != nil {
 		return nil, err
 	}
+	scan := discovery.NewPodOwnerScan(wp.client, w.Namespace)
 	for i := range pods.Items {
 		pod := &pods.Items[i]
-		owner, err := discovery.ResolvePodWorkload(ctx, wp.client, pod)
-		if err != nil || owner.Object.GetUID() != w.Object.GetUID() {
+		if !scan.Matches(ctx, pod, w, p.Spec.Mode == api.ModeRecommend) {
 			continue
 		}
 		for _, slot := range discovery.ContainerSlots(&pod.Spec) {

@@ -18,10 +18,16 @@ package application
 
 import (
 	"context"
+	stderrors "errors"
 	"fmt"
+	"reflect"
 	"strings"
 	"time"
 
+	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/util/retry"
+
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -423,7 +429,25 @@ func (e *Engine) Apply(
 	workload *Workload,
 	recs []ContainerRecommendation,
 	policy *optipodv1alpha1.OptimizationPolicy,
-) (result *ApplyResult, applyErr error) {
+) (*ApplyResult, error) {
+	var previous *unstructured.Unstructured
+	var result *ApplyResult
+	err := retry.OnError(wait.Backoff{Steps: 4, Duration: 200 * time.Millisecond, Factor: 2, Jitter: 0.1}, func(err error) bool {
+		var stale *ssaVersionConflict
+		return e.client != nil && policy.UID != "" && stderrors.As(err, &stale) && ctx.Err() == nil
+	}, func() error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		var err error
+		result, err = e.applyAttempt(ctx, workload, recs, policy, previous)
+		previous = workload.Object
+		return err
+	})
+	return result, err
+}
+
+func (e *Engine) applyAttempt(ctx context.Context, workload *Workload, recs []ContainerRecommendation, policy *optipodv1alpha1.OptimizationPolicy, previous *unstructured.Unstructured) (result *ApplyResult, applyErr error) {
 	if workloaddiscovery.IsBatch(workload.Kind) {
 		if !policy.IsWebhookStrategy() {
 			return nil, fmt.Errorf("batch workloads require webhook admission")
@@ -441,30 +465,8 @@ func (e *Engine) Apply(
 	if e.dryRun || policy.Spec.Mode != optipodv1alpha1.ModeAuto {
 		return nil, fmt.Errorf("application blocked: Auto mode is required and global dry-run must be disabled")
 	}
-	if e.client != nil && policy.UID != "" {
-		if err := e.revalidateApplication(ctx, workload, recs, policy); err != nil {
-			return nil, err
-		}
-	}
-	optimizable := false
-	for _, r := range recs {
-		if (policy.ControlsResource(resourceCPU) && !r.Recommendation.PreserveCPU) || (policy.ControlsResource("memory") && !r.Recommendation.PreserveMemory) {
-			optimizable = true
-		}
-	}
-	if !optimizable {
-		return nil, fmt.Errorf("application blocked: no optimizable resources after final scaler checks")
-	}
-	if e.client != nil && policy.UID != "" {
-		if err := e.preserveAutomaticLimits(ctx, workload, recs, policy); err != nil {
-			return nil, err
-		}
-		if err := e.validateConstraints(ctx, workload, recs, policy); err != nil {
-			return nil, err
-		}
-	}
-	if len(recs) == 0 {
-		return nil, fmt.Errorf("no container recommendations to apply")
+	if err := e.validateAttempt(ctx, workload, recs, policy, previous); err != nil {
+		return nil, err
 	}
 
 	if e.client != nil && policy.UID != "" && !isRollback(ctx) {
@@ -488,7 +490,7 @@ func (e *Engine) Apply(
 			}
 			if err := history.Complete(ctx, e.client, auditWorkload, record, method, applyErr); err != nil {
 				if applyErr != nil {
-					applyErr = fmt.Errorf("%w; persist history: %v", applyErr, err)
+					applyErr = fmt.Errorf("apply failed (%v) and history finalization failed: %w", applyErr, err)
 				} else {
 					applyErr = fmt.Errorf("mutation completed but history finalization failed: %w", err)
 				}
@@ -496,6 +498,49 @@ func (e *Engine) Apply(
 		}()
 	}
 	return e.applyValidated(ctx, workload, recs, policy)
+}
+
+func (e *Engine) validateAttempt(ctx context.Context, workload *Workload, recs []ContainerRecommendation, policy *optipodv1alpha1.OptimizationPolicy, previous *unstructured.Unstructured) error {
+	if e.client != nil && policy.UID != "" {
+		if err := e.revalidateApplication(ctx, workload, recs, policy); err != nil {
+			return err
+		}
+	}
+	// A metadata or status writer can invalidate the version without invalidating
+	// the recommendation. A changed spec needs a new reconciliation and history.
+	if previous != nil {
+		if !reflect.DeepEqual(previous.Object["spec"], workload.Object.Object["spec"]) {
+			return fmt.Errorf("application deferred: workload spec changed during apply")
+		}
+		for _, rec := range recs {
+			until := rec.Recommendation.ValidUntil
+			if !until.IsZero() && !time.Now().Before(until) {
+				return fmt.Errorf("application deferred: recommendation expired during apply")
+			}
+		}
+	}
+	optimizable := false
+	for _, r := range recs {
+		if (policy.ControlsResource(resourceCPU) && !r.Recommendation.PreserveCPU) || (policy.ControlsResource("memory") && !r.Recommendation.PreserveMemory) {
+			optimizable = true
+		}
+	}
+	if !optimizable {
+		return fmt.Errorf("application blocked: no optimizable resources after final scaler checks")
+	}
+	if e.client != nil && policy.UID != "" {
+		if err := e.preserveAutomaticLimits(ctx, workload, recs, policy); err != nil {
+			return err
+		}
+		if err := e.validateConstraints(ctx, workload, recs, policy); err != nil {
+			return err
+		}
+	}
+	if len(recs) == 0 {
+		return fmt.Errorf("no container recommendations to apply")
+	}
+
+	return nil
 }
 
 // ApplyWithStrategicMerge applies the workload's full per-container recommendation
@@ -668,7 +713,7 @@ func (e *Engine) ApplyWithSSA(
 		fieldContainers, containerNames(recs),
 		"policy", policy.Name,
 		"fieldManager", FieldManagerName,
-		"force", true,
+		"force", policy.Spec.UpdateStrategy.AllowFieldOwnershipTakeover,
 		"updateRequestsOnly", policy.Spec.UpdateStrategy.UpdateRequestsOnly,
 		"resourceChanges", describeResourceChanges(currentResources, recs),
 		"reason", "Direct recommendation application without safety checks",
@@ -899,33 +944,22 @@ func (e *Engine) ApplyWithWebhook(
 
 	// Handle rollout strategy
 	if policy.GetRolloutStrategy() == optipodv1alpha1.RolloutImmediate {
-		// StoreRecommendations updated the resourceVersion. Refresh before the
-		// atomic template/hash update, and never restart for an unchanged plan.
-		if err := e.client.Get(ctx, client.ObjectKeyFromObject(workloadObj), workloadObj); err != nil {
-			return nil, err
-		}
-		a := workloadObj.GetAnnotations()
-		if a[webhook.RolloutHash] == a[webhook.RecommendationHash] {
-			return &ApplyResult{Method: "WebhookNoChange"}, nil
-		}
-		if !e.rolloutController.IsWorkloadReady(workloadObj) {
-			return nil, fmt.Errorf("rollout deferred: workload is not fully ready")
-		}
-		a[webhook.RolloutHash] = a[webhook.RecommendationHash]
-		workloadObj.SetAnnotations(a)
-		if err := e.rolloutController.TriggerRollingRestart(ctx, workloadObj, policy); err != nil {
+		restarted, err := e.applyImmediateWebhookRollout(ctx, workloadObj, policy, recommendations)
+		if err != nil {
 			log.Error(err, "Failed to trigger rolling restart",
 				"workload", fmt.Sprintf("%s/%s", workload.Namespace, workload.Name),
 				fieldContainers, containerNames(recs),
 				"rolloutStrategy", policy.GetRolloutStrategy(),
 			)
 			return nil, fmt.Errorf("rollout not applied: %w", err)
-		} else {
-			log.Info("Rolling restart triggered successfully",
-				"workload", fmt.Sprintf("%s/%s", workload.Namespace, workload.Name),
-				"rolloutStrategy", policy.GetRolloutStrategy(),
-			)
 		}
+		if !restarted {
+			return &ApplyResult{Method: "WebhookNoChange"}, nil
+		}
+		log.Info("Rolling restart triggered successfully",
+			"workload", fmt.Sprintf("%s/%s", workload.Namespace, workload.Name),
+			"rolloutStrategy", policy.GetRolloutStrategy(),
+		)
 	}
 
 	// Record resource change magnitudes per container
@@ -965,9 +999,37 @@ func (e *Engine) ApplyWithWebhook(
 	}, nil
 }
 
+func (e *Engine) applyImmediateWebhookRollout(ctx context.Context, workload client.Object, policy *optipodv1alpha1.OptimizationPolicy, recommendations []webhook.ResourceRecommendation) (bool, error) {
+	if _, evictsPods := workload.(*appsv1.ReplicaSet); !evictsPods && policy.UID != "" && !isRollback(ctx) {
+		return e.rolloutController.TriggerRecommendationRollout(ctx, workload, policy, recommendations)
+	}
+	// ReplicaSet evictions and explicit rollback keep their existing lifecycle.
+	if err := e.client.Get(ctx, client.ObjectKeyFromObject(workload), workload); err != nil {
+		return false, err
+	}
+	annotations := workload.GetAnnotations()
+	if annotations[webhook.RolloutHash] == annotations[webhook.RecommendationHash] {
+		return false, nil
+	}
+	if !e.rolloutController.IsWorkloadReady(workload) {
+		return false, fmt.Errorf("rollout deferred: workload is not fully ready")
+	}
+	annotations[webhook.RolloutHash] = annotations[webhook.RecommendationHash]
+	workload.SetAnnotations(annotations)
+	err := e.rolloutController.TriggerRollingRestart(ctx, workload, policy)
+	return err == nil, err
+}
+
+type ssaVersionConflict struct{ error }
+
+func (e *ssaVersionConflict) Unwrap() error { return e.error }
+
 // handleSSAError processes SSA-specific errors and provides helpful messages
 func (e *Engine) handleSSAError(err error) error {
 	if errors.IsConflict(err) {
+		if !errors.HasStatusCause(err, metav1.CauseTypeFieldManagerConflict) {
+			return &ssaVersionConflict{fmt.Errorf("SSA conflict on workload version: %w", err)}
+		}
 		return fmt.Errorf("SSA conflict: another field manager owns these fields. "+
 			"This may indicate a configuration issue. Error: %w", err)
 	}

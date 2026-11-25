@@ -20,7 +20,8 @@ import (
 	"context"
 	"fmt"
 	"math"
-	"math/rand"
+	"math/rand/v2"
+	"sync"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -31,18 +32,17 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	controlleroptions "sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	optipodv1alpha1 "github.com/optipod/optipod/api/v1alpha1"
 	"github.com/optipod/optipod/internal/discovery"
 	"github.com/optipod/optipod/internal/observability"
 	"github.com/optipod/optipod/internal/policy"
 )
-
-// Initialize random generator once at package level to ensure proper jitter
-var rng = rand.New(rand.NewSource(time.Now().UnixNano()))
 
 // OptimizationPolicyReconciler reconciles a OptimizationPolicy object
 type OptimizationPolicyReconciler struct {
@@ -52,6 +52,10 @@ type OptimizationPolicyReconciler struct {
 	WorkloadProcessor *WorkloadProcessor
 	EventRecorder     *observability.EventRecorder
 	PolicySelector    *policy.PolicySelector
+	PolicyWorkers     int
+	AdmissionWorkers  int
+	admissionSlots    chan struct{}
+	acceptsPolicy     func(*optipodv1alpha1.OptimizationPolicy) bool
 }
 
 // +kubebuilder:rbac:groups=optipod.optipod.io,resources=optimizationpolicies,verbs=get;list;watch;create;update;patch;delete
@@ -107,6 +111,10 @@ func (r *OptimizationPolicyReconciler) Reconcile(ctx context.Context, req ctrl.R
 		return ctrl.Result{}, err
 	}
 
+	// A delayed item can outlive a switch between Auto and Recommend.
+	if r.acceptsPolicy != nil && !r.acceptsPolicy(optimizationPolicy) {
+		return ctrl.Result{}, nil
+	}
 	log.Info("Starting reconciliation", "policy", optimizationPolicy.Name, "namespace", optimizationPolicy.Namespace, "mode", optimizationPolicy.Spec.Mode)
 
 	// Validate the policy
@@ -168,6 +176,10 @@ func (r *OptimizationPolicyReconciler) Reconcile(ctx context.Context, req ctrl.R
 	// Calculate requeue interval with adaptive scheduling
 	requeueAfter := r.calculateRequeueInterval(optimizationPolicy, discoveredCount, processedCount)
 	requeueAfter = metricsRefreshInterval(optimizationPolicy, requeueAfter)
+	if needsAdmissionRefresh(optimizationPolicy) {
+		// Plans for early workloads were issued before the policy pass completed.
+		requeueAfter = max(requeueAfter/4, requeueAfter-time.Since(startTime.Time))
+	}
 
 	log.Info("Successfully reconciled OptimizationPolicy", "policy", optimizationPolicy.Name, "requeueAfter", requeueAfter)
 	return ctrl.Result{RequeueAfter: requeueAfter}, nil
@@ -457,7 +469,7 @@ func (r *OptimizationPolicyReconciler) calculateRequeueInterval(policyObj *optip
 	}
 
 	// Active processing - use base interval but with some jitter to avoid thundering herd
-	jitter := time.Duration(float64(baseInterval) * 0.1 * (0.5 + 0.5*rng.Float64()))
+	jitter := time.Duration(float64(baseInterval) * 0.1 * (0.5 + 0.5*rand.Float64()))
 	return baseInterval + jitter
 }
 
@@ -467,8 +479,9 @@ func (r *OptimizationPolicyReconciler) processWorkloadsWithPolicySelection(ctx c
 	var retryErr error
 
 	// Initialize policy selector if not already done
-	if r.PolicySelector == nil {
-		r.PolicySelector = policy.NewPolicySelector(r.Client)
+	selector := r.PolicySelector
+	if selector == nil {
+		selector = policy.NewPolicySelector(r.Client)
 	}
 
 	// Discover all workloads that match this policy
@@ -504,102 +517,45 @@ func (r *OptimizationPolicyReconciler) processWorkloadsWithPolicySelection(ctx c
 		return 0, 0, nil
 	}
 
-	// Process each workload with the best matching policy
+	// Share the configured admission worker budget across policies and their
+	// members. Only deferred, request-only plans may run concurrently within
+	// a policy. Immediate rollouts and horizontal updates remain sequential.
+	type result struct {
+		processed bool
+		err       error
+	}
+	results := make([]result, len(workloads))
+	var pending sync.WaitGroup
+	for i := range workloads {
+		if r.admissionSlots != nil {
+			select {
+			case r.admissionSlots <- struct{}{}:
+			case <-ctx.Done():
+				pending.Wait()
+				return 0, len(workloads), ctx.Err()
+			}
+		}
+		run := func() {
+			if r.admissionSlots != nil {
+				defer func() { <-r.admissionSlots }()
+			}
+			results[i].processed, results[i].err = r.processSelected(ctx, triggeringPolicy, selector, &workloads[i])
+		}
+		effective := triggeringPolicy.ForWorkload(string(workloads[i].Object.GetUID()))
+		if r.admissionSlots != nil && effective.GetRolloutStrategy() == optipodv1alpha1.RolloutOnNextRestart && effective.Spec.UpdateStrategy.UpdateRequestsOnly && effective.Spec.HorizontalScaling == nil {
+			pending.Go(run)
+		} else {
+			run()
+		}
+	}
+	pending.Wait()
 	processedCount := 0
-	for _, workload := range workloads {
-		// Find the best policy for this workload
-		bestPolicy, err := r.PolicySelector.SelectBestPolicy(ctx, &workload)
-		if err != nil {
-			log.Error(err, "Failed to select best policy for workload",
-				"workload", fmt.Sprintf("%s/%s", workload.Namespace, workload.Name))
-			continue
-		}
-
-		// Only process if this policy is the best match
-		if bestPolicy.Name != triggeringPolicy.Name || bestPolicy.Namespace != triggeringPolicy.Namespace {
-			log.V(1).Info("Workload handled by higher priority policy, skipping",
-				"workload", fmt.Sprintf("%s/%s", workload.Namespace, workload.Name),
-				"triggeringPolicy", triggeringPolicy.Name,
-				"triggeringWeight", triggeringPolicy.GetWeight(),
-				"bestPolicy", bestPolicy.Name,
-				"bestWeight", bestPolicy.GetWeight())
-			continue
-		}
-		// A winning Disabled policy is an authoritative exclusion. It must
-		// participate in precedence, but never process or apply recommendations.
-		if bestPolicy.Spec.Mode == optipodv1alpha1.ModeDisabled {
-			if err := r.recordDisabledDecision(ctx, &workload, bestPolicy); err != nil {
-				retryErr = err
-			}
-			continue
-		}
-
-		// Process the workload with this policy
-		if r.WorkloadProcessor != nil {
-			log.Info("Processing workload with selected policy",
-				"workload", fmt.Sprintf("%s/%s", workload.Namespace, workload.Name),
-				"policy", bestPolicy.Name,
-				"weight", bestPolicy.GetWeight())
-
-			status, err := r.WorkloadProcessor.ProcessWorkload(ctx, &workload, bestPolicy)
-			if err != nil {
-				log.Error(err, "Failed to process workload",
-					"workload", fmt.Sprintf("%s/%s", workload.Namespace, workload.Name),
-					"policy", bestPolicy.Name)
-
-				// Emit detailed event for processing failure
-				if r.EventRecorder != nil {
-					r.EventRecorder.RecordWorkloadUpdateFailure(triggeringPolicy, workload.Name, workload.Namespace, err)
-				} else {
-					r.Recorder.Event(triggeringPolicy, corev1.EventTypeWarning, "ProcessingFailed",
-						fmt.Sprintf("Failed to process workload %s/%s: %v", workload.Namespace, workload.Name, err))
-				}
-				observability.ReconciliationErrors.WithLabelValues(triggeringPolicy.Name, "processing_error").Inc()
-				if apierrors.IsConflict(err) || apierrors.IsTimeout(err) || apierrors.IsServerTimeout(err) || apierrors.IsTooManyRequests(err) || apierrors.IsServiceUnavailable(err) {
-					retryErr = err
-				}
-				continue
-			}
-
-			// Emit events based on processing outcome
-			if status != nil {
-				switch status.Status {
-				case StatusApplied:
-					if r.EventRecorder != nil {
-						method := "Unknown"
-						if status.LastApplyMethod != "" {
-							method = status.LastApplyMethod
-						}
-						r.EventRecorder.RecordWorkloadUpdateSuccess(triggeringPolicy, workload.Name, workload.Namespace, method)
-					} else {
-						r.Recorder.Event(triggeringPolicy, corev1.EventTypeNormal, "OptimizationApplied",
-							fmt.Sprintf("Successfully applied optimization to workload %s/%s", workload.Namespace, workload.Name))
-					}
-				case StatusRecommended:
-					if r.EventRecorder != nil {
-						containerCount := len(status.Recommendations)
-						r.EventRecorder.RecordRecommendationGenerated(triggeringPolicy, workload.Name, workload.Namespace, containerCount)
-					} else {
-						r.Recorder.Event(triggeringPolicy, corev1.EventTypeNormal, "RecommendationGenerated",
-							fmt.Sprintf("Generated recommendations for workload %s/%s", workload.Namespace, workload.Name))
-					}
-				case StatusSkipped:
-					if r.EventRecorder != nil {
-						r.EventRecorder.RecordWorkloadSkipped(triggeringPolicy, workload.Name, workload.Namespace, status.Reason)
-					} else {
-						r.Recorder.Event(triggeringPolicy, corev1.EventTypeNormal, "WorkloadSkipped",
-							fmt.Sprintf("Skipped workload %s/%s: %s", workload.Namespace, workload.Name, status.Reason))
-					}
-				case StatusError:
-					if r.EventRecorder != nil {
-						r.EventRecorder.RecordWorkloadUpdateFailure(triggeringPolicy, workload.Name, workload.Namespace, fmt.Errorf("%s", status.Reason))
-					} else {
-						r.Recorder.Event(triggeringPolicy, corev1.EventTypeWarning, "ProcessingError",
-							fmt.Sprintf("Error processing workload %s/%s: %s", workload.Namespace, workload.Name, status.Reason))
-					}
-				}
-			}
+	for _, out := range results {
+		if out.processed {
 			processedCount++
+		}
+		if out.err != nil {
+			retryErr = out.err
 		}
 	}
 
@@ -611,6 +567,109 @@ func (r *OptimizationPolicyReconciler) processWorkloadsWithPolicySelection(ctx c
 	return processedCount, len(workloads), retryErr
 }
 
+func (r *OptimizationPolicyReconciler) processSelected(ctx context.Context, triggeringPolicy *optipodv1alpha1.OptimizationPolicy, selector *policy.PolicySelector, workload *discovery.Workload) (bool, error) {
+	log := logf.FromContext(ctx)
+	// Find the best policy for this workload
+	bestPolicy, err := selector.SelectBestPolicy(ctx, workload)
+	if err != nil {
+		log.Error(err, "Failed to select best policy for workload",
+			"workload", fmt.Sprintf("%s/%s", workload.Namespace, workload.Name))
+		return false, nil
+	}
+
+	// Only process if this policy is the best match
+	if bestPolicy.Name != triggeringPolicy.Name || bestPolicy.Namespace != triggeringPolicy.Namespace || bestPolicy.UID != triggeringPolicy.UID {
+		log.V(1).Info("Workload handled by higher priority policy, skipping",
+			"workload", fmt.Sprintf("%s/%s", workload.Namespace, workload.Name),
+			"triggeringPolicy", triggeringPolicy.Name,
+			"triggeringWeight", triggeringPolicy.GetWeight(),
+			"bestPolicy", bestPolicy.Name,
+			"bestWeight", bestPolicy.GetWeight())
+		return false, nil
+	}
+	// A mode change may have moved the selected policy to the other worker.
+	if r.acceptsPolicy != nil && (triggeringPolicy.Generation != bestPolicy.Generation || !r.acceptsPolicy(triggeringPolicy)) {
+		return false, nil
+	}
+	// A winning Disabled policy is an authoritative exclusion. It must
+	// participate in precedence, but never process or apply recommendations.
+	if bestPolicy.Spec.Mode == optipodv1alpha1.ModeDisabled {
+		if err := r.recordDisabledDecision(ctx, workload, bestPolicy); err != nil {
+			return false, err
+		}
+		return false, nil
+	}
+
+	// Process the workload with this policy
+	if r.WorkloadProcessor != nil {
+		log.Info("Processing workload with selected policy",
+			"workload", fmt.Sprintf("%s/%s", workload.Namespace, workload.Name),
+			"policy", bestPolicy.Name,
+			"weight", bestPolicy.GetWeight())
+
+		status, err := r.WorkloadProcessor.ProcessWorkload(ctx, workload, bestPolicy)
+		if err != nil {
+			log.Error(err, "Failed to process workload",
+				"workload", fmt.Sprintf("%s/%s", workload.Namespace, workload.Name),
+				"policy", bestPolicy.Name)
+
+			// Emit detailed event for processing failure
+			if r.EventRecorder != nil {
+				r.EventRecorder.RecordWorkloadUpdateFailure(triggeringPolicy, workload.Name, workload.Namespace, err)
+			} else {
+				r.Recorder.Event(triggeringPolicy, corev1.EventTypeWarning, "ProcessingFailed",
+					fmt.Sprintf("Failed to process workload %s/%s: %v", workload.Namespace, workload.Name, err))
+			}
+			observability.ReconciliationErrors.WithLabelValues(triggeringPolicy.Name, "processing_error").Inc()
+			if apierrors.IsConflict(err) || apierrors.IsTimeout(err) || apierrors.IsServerTimeout(err) || apierrors.IsTooManyRequests(err) || apierrors.IsServiceUnavailable(err) {
+				return false, err
+			}
+			return false, nil
+		}
+
+		// Emit events based on processing outcome
+		if status != nil {
+			switch status.Status {
+			case StatusApplied:
+				if r.EventRecorder != nil {
+					method := "Unknown"
+					if status.LastApplyMethod != "" {
+						method = status.LastApplyMethod
+					}
+					r.EventRecorder.RecordWorkloadUpdateSuccess(triggeringPolicy, workload.Name, workload.Namespace, method)
+				} else {
+					r.Recorder.Event(triggeringPolicy, corev1.EventTypeNormal, "OptimizationApplied",
+						fmt.Sprintf("Successfully applied optimization to workload %s/%s", workload.Namespace, workload.Name))
+				}
+			case StatusRecommended:
+				if r.EventRecorder != nil {
+					containerCount := len(status.Recommendations)
+					r.EventRecorder.RecordRecommendationGenerated(triggeringPolicy, workload.Name, workload.Namespace, containerCount)
+				} else {
+					r.Recorder.Event(triggeringPolicy, corev1.EventTypeNormal, "RecommendationGenerated",
+						fmt.Sprintf("Generated recommendations for workload %s/%s", workload.Namespace, workload.Name))
+				}
+			case StatusSkipped:
+				if r.EventRecorder != nil {
+					r.EventRecorder.RecordWorkloadSkipped(triggeringPolicy, workload.Name, workload.Namespace, status.Reason)
+				} else {
+					r.Recorder.Event(triggeringPolicy, corev1.EventTypeNormal, "WorkloadSkipped",
+						fmt.Sprintf("Skipped workload %s/%s: %s", workload.Namespace, workload.Name, status.Reason))
+				}
+			case StatusError:
+				if r.EventRecorder != nil {
+					r.EventRecorder.RecordWorkloadUpdateFailure(triggeringPolicy, workload.Name, workload.Namespace, fmt.Errorf("%s", status.Reason))
+				} else {
+					r.Recorder.Event(triggeringPolicy, corev1.EventTypeWarning, "ProcessingError",
+						fmt.Sprintf("Error processing workload %s/%s: %s", workload.Namespace, workload.Name, status.Reason))
+				}
+			}
+		}
+		return true, nil
+	}
+	return false, nil
+}
+
 func (r *OptimizationPolicyReconciler) recordDisabledDecision(ctx context.Context, workload *discovery.Workload, p *optipodv1alpha1.OptimizationPolicy) error {
 	if r.WorkloadProcessor == nil {
 		return nil
@@ -619,11 +678,46 @@ func (r *OptimizationPolicyReconciler) recordDisabledDecision(ctx context.Contex
 	return r.WorkloadProcessor.recordDecision(ctx, workload, p, status, nil)
 }
 
-// SetupWithManager sets up the controller with the Manager.
+// SetupWithManager gives expiring admission plans a dedicated queue. Each
+// queue is FIFO, so pod churn cannot starve initial policy discovery.
 func (r *OptimizationPolicyReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewControllerManagedBy(mgr).
-		For(&optipodv1alpha1.OptimizationPolicy{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
-		Watches(&corev1.Pod{}, handler.EnqueueRequestsFromMapFunc(r.policyForPod), builder.WithPredicates(podLifecycleEvents)).
-		Named("optimizationpolicy").
-		Complete(r)
+	var inFlight sync.Map
+	for _, admission := range []bool{false, true} {
+		worker := *r
+		worker.acceptsPolicy = func(p *optipodv1alpha1.OptimizationPolicy) bool { return needsAdmissionRefresh(p) == admission }
+		name := "optimizationpolicy"
+		workers := r.PolicyWorkers
+		if admission {
+			// Independent policies can spend most of a renewal waiting on metrics.
+			// Bound concurrent queries while the workqueue serializes each key.
+			workers = r.AdmissionWorkers
+			name += "-admission"
+		}
+		if workers < 1 || workers > 32 {
+			return fmt.Errorf("%s worker count must be between 1 and 32, got %d", name, workers)
+		}
+		if admission {
+			worker.admissionSlots = make(chan struct{}, workers)
+		}
+		fifo := false
+		err := ctrl.NewControllerManagedBy(mgr).
+			WithOptions(controlleroptions.Options{UsePriorityQueue: &fifo, MaxConcurrentReconciles: workers}).
+			For(&optipodv1alpha1.OptimizationPolicy{}, builder.WithPredicates(predicate.GenerationChangedPredicate{}, predicate.NewPredicateFuncs(func(obj client.Object) bool {
+				return worker.acceptsPolicy(obj.(*optipodv1alpha1.OptimizationPolicy))
+			}))).
+			Watches(&corev1.Pod{}, handler.EnqueueRequestsFromMapFunc(worker.policyForPod), builder.WithPredicates(podLifecycleEvents)).
+			Named(name).
+			Complete(reconcile.Func(func(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+				// A mode change can enqueue the same policy on the other worker.
+				if _, busy := inFlight.LoadOrStore(req, struct{}{}); busy {
+					return ctrl.Result{RequeueAfter: time.Second}, nil
+				}
+				defer inFlight.Delete(req)
+				return worker.Reconcile(ctx, req)
+			}))
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }

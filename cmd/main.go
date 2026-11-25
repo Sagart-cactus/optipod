@@ -260,7 +260,8 @@ func main() {
 	case metrics.ProviderTypePrometheus:
 		// Build Prometheus configuration with authentication
 		promConfig := metrics.PrometheusConfig{
-			URL: operatorConfig.GetPrometheusURL(),
+			URL:         operatorConfig.GetPrometheusURL(),
+			ReplicaURLs: operatorConfig.GetPrometheusReplicaURLs(),
 			Auth: metrics.PrometheusAuth{
 				Type:        operatorConfig.GetPrometheusAuthType(),
 				Username:    operatorConfig.GetPrometheusUsername(),
@@ -364,6 +365,7 @@ func main() {
 	eventRecorder := observability.NewEventRecorder(mgr.GetEventRecorderFor("optimizationpolicy-controller"))
 
 	if err := (&controller.OptimizationPolicyReconciler{
+		PolicyWorkers: operatorConfig.PolicyWorkers, AdmissionWorkers: operatorConfig.AdmissionWorkers,
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
 		//nolint:staticcheck // SA1019: events API migration tracked separately

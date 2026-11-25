@@ -23,12 +23,16 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/api/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	optipodv1alpha1 "github.com/optipod/optipod/api/v1alpha1"
+	"github.com/optipod/optipod/internal/capturedlimits"
 	"github.com/optipod/optipod/internal/coexist"
 	"github.com/optipod/optipod/internal/constraints"
 	"github.com/optipod/optipod/internal/discovery"
@@ -43,6 +47,7 @@ var mutatorLog = logf.Log.WithName("webhook-mutator")
 const (
 	// Constants for string literals
 	trueValue      = "true"
+	podKind        = "Pod"
 	appsV1APIGroup = "apps/v1"
 	// patchOpAdd is the JSON patch "add" operation.
 	patchOpAdd = "add"
@@ -92,7 +97,8 @@ func (m *Mutator) MutatePod(req *AdmissionRequest) *AdmissionResponse {
 	log.V(1).Info("Processing pod mutation request")
 
 	// Check if webhook strategy is enabled for this pod
-	if !m.isWebhookEnabled(req.Pod) {
+	enabled, configured := m.webhookPreference(req.Pod)
+	if configured && !enabled {
 		log.V(1).Info("Webhook strategy not enabled for pod, skipping mutation")
 		return &AdmissionResponse{
 			Allowed: true,
@@ -133,6 +139,9 @@ func (m *Mutator) MutatePod(req *AdmissionRequest) *AdmissionResponse {
 
 	// Use the highest weight policy
 	selectedPolicy := matchingPolicies[0]
+	if !configured && !selectedPolicy.WorkloadActivated() {
+		return &AdmissionResponse{Allowed: true, Message: "Webhook strategy not enabled"}
+	}
 	if selectedPolicy.Spec.Mode != optipodv1alpha1.ModeAuto {
 		return &AdmissionResponse{Allowed: true, Message: "Selected policy is not in Auto mode"}
 	}
@@ -147,30 +156,44 @@ func (m *Mutator) MutatePod(req *AdmissionRequest) *AdmissionResponse {
 		}
 	}
 
+	return m.mutateSelectedPod(ctx, req, selectedPolicy, startTime, log)
+}
+
+func (m *Mutator) mutateSelectedPod(ctx context.Context, req *AdmissionRequest, selectedPolicy *optipodv1alpha1.OptimizationPolicy, startTime time.Time, log logr.Logger) *AdmissionResponse {
 	// Extract resource recommendations from annotations
 	owner, err := discovery.ResolvePodWorkload(ctx, m.client, req.Pod)
 	if err != nil {
 		return &AdmissionResponse{Allowed: true, Message: "Cannot resolve workload"}
 	}
+	if metav1.GetControllerOf(owner.Object) != nil && !selectedPolicy.AllowsOperatorOwnedAdmission() {
+		return &AdmissionResponse{Allowed: true, Message: "Operator-owned workload requires deferred request-only activation"}
+	}
+	capture, err := m.captureForPod(ctx, req.Pod, owner, selectedPolicy)
+	if err != nil {
+		return &AdmissionResponse{Allowed: false, Message: err.Error()}
+	}
 	recommendations, rollback, failure := m.admissionRecommendations(ctx, req, owner, selectedPolicy)
-	if failure != nil {
+	if failure != nil && capture == nil {
 		return failure
 	}
 
 	restrictions, err := coexist.Read(ctx, m.client, owner.Namespace, owner.Kind, owner.Name)
 	if err != nil {
-		return &AdmissionResponse{Allowed: true, Message: "Cannot verify horizontal scaler coexistence"}
+		return &AdmissionResponse{Allowed: capture == nil, Message: "Cannot verify horizontal scaler coexistence"}
 	}
 	template, templateErr := discovery.Template(owner.Object)
 	// Ownerless Pod admission remains supported for legacy callers.
-	if owner.Kind == "Pod" {
+	if owner.Kind == podKind {
 		template = &corev1.PodTemplateSpec{Spec: req.Pod.Spec}
 		templateErr = nil
 	}
 	if templateErr != nil {
-		return &AdmissionResponse{Allowed: true, Message: "Cannot verify container ownership"}
+		return &AdmissionResponse{Allowed: capture == nil, Message: "Cannot verify container ownership"}
 	}
 	recommendations = filterRecommendations(req.Pod, template, recommendations, selectedPolicy, restrictions, rollback)
+	if capture != nil {
+		recommendations = restoreCapturedLimits(req.Pod, template, recommendations, capture, selectedPolicy, restrictions)
+	}
 
 	if len(recommendations) == 0 {
 		log.V(1).Info("No resource recommendations found in annotations, skipping mutation")
@@ -181,20 +204,39 @@ func (m *Mutator) MutatePod(req *AdmissionRequest) *AdmissionResponse {
 	}
 
 	updates := recommendationUpdates(recommendations)
-	candidate, err := constraints.Overlay(req.Pod, updates)
+	whole := constraints.WholePodRequests(req.Pod, selectedPolicy)
+	candidate, err := projectPodResources(req.Pod, updates, whole, restrictions)
 	if err != nil {
-		return &AdmissionResponse{Allowed: true, Message: "Invalid resource plan"}
+		return &AdmissionResponse{Allowed: capture == nil, Message: "Invalid resource plan"}
 	}
-	if err := constraints.Validate(ctx, m.client, req.Pod.Namespace, []constraints.Change{{Before: req.Pod, After: candidate, NewPod: true}}, selectedPolicy.Spec.UpdateStrategy.PreserveQoS); err != nil {
-		return &AdmissionResponse{Allowed: true, Message: "Resource plan blocked by constraints: " + err.Error()}
+	// A capture can request removal of an already absent field. With no change
+	// to the Pod, its owner's resource budget remains authoritative.
+	if equality.Semantic.DeepEqual(req.Pod.Spec, candidate.Spec) {
+		return &AdmissionResponse{Allowed: true, Message: "Pod resources already match"}
+	}
+	if err := constraints.Validate(ctx, m.client, req.Pod.Namespace, []constraints.Change{{Before: req.Pod, After: candidate, NewPod: true, WholePodRequests: whole}}, selectedPolicy.Spec.UpdateStrategy.PreserveQoS); err != nil {
+		return &AdmissionResponse{Allowed: capture == nil, Message: "Resource plan blocked by constraints: " + err.Error()}
 	}
 	// Recheck the winning revision after source and constraint reads. All mutation
 	// paths, including node sizing, must honor policy changes during admission.
 	if failure := m.revalidateAdmission(ctx, req, owner, selectedPolicy); failure != nil {
+		if capture != nil {
+			failure.Allowed = false
+		}
 		return failure
 	}
 	// Generate patches to modify pod resources
-	patches := m.generateResourcePatches(req.Pod, recommendations, selectedPolicy.Name)
+	var patches []PatchOperation
+	if whole {
+		for _, key := range []corev1.ResourceName{corev1.ResourceCPU, corev1.ResourceMemory} {
+			value, found := candidate.Spec.Resources.Requests[key]
+			if found && value.Cmp(req.Pod.Spec.Resources.Requests[key]) != 0 {
+				patches = append(patches, PatchOperation{Op: patchOpAdd, Path: "/spec/resources/requests/" + string(key), Value: value.String()})
+			}
+		}
+	} else {
+		patches = m.generateResourcePatches(req.Pod, recommendations, selectedPolicy.Name)
+	}
 
 	if len(patches) == 0 {
 		log.V(1).Info("No patches needed, pod resources already match recommendations")
@@ -231,39 +273,53 @@ func (m *Mutator) MutatePod(req *AdmissionRequest) *AdmissionResponse {
 	}
 }
 
-// isWebhookEnabled checks if webhook strategy is enabled for the pod
-// For ArgoCD compatibility, it checks both pod annotations and parent deployment annotations
-func (m *Mutator) isWebhookEnabled(pod *corev1.Pod) bool {
-	ctx := context.Background()
+func (m *Mutator) captureForPod(ctx context.Context, pod *corev1.Pod, owner *discovery.Workload, selectedPolicy *optipodv1alpha1.OptimizationPolicy) (*capturedlimits.Snapshot, error) {
+	uid := owner.Object.GetUID()
+	raw := capturedlimits.ForOwner(selectedPolicy.Annotations, uid)
+	if raw == "" || owner.Kind == podKind || owner.Object.GetAnnotations()[history.Paused] == trueValue ||
+		selectedPolicy.Spec.DaemonSetSizing != nil || !selectedPolicy.Spec.UpdateStrategy.UpdateRequestsOnly {
+		return nil, nil
+	}
+	snapshot, err := capturedlimits.Parse(raw)
+	if err != nil {
+		return nil, fmt.Errorf("invalid captured limits: %w", err)
+	}
+	if _, keyed := selectedPolicy.Annotations["optipod.io/capture-"+string(uid)]; keyed && snapshot.WorkloadUID != uid {
+		return nil, fmt.Errorf("captured resource owner UID differs from the policy key")
+	}
+	return snapshot.ForPod(ctx, m.client, owner.Kind, uid, pod)
+}
 
-	// First check pod annotations
-	if pod.Annotations != nil {
-		// Check webhook enabled annotation
-		if enabled, exists := pod.Annotations[optipodv1alpha1.AnnotationWebhookEnabled]; exists {
-			return enabled == trueValue
-		}
-
-		// Check strategy annotation
-		if strategy, exists := pod.Annotations[optipodv1alpha1.AnnotationStrategy]; exists {
-			return strategy == string(optipodv1alpha1.StrategyWebhook)
+func projectPodResources(pod *corev1.Pod, updates map[string]map[string]any, whole bool, restrictions *coexist.Restrictions) (*corev1.Pod, error) {
+	if !whole {
+		return constraints.Overlay(pod, updates)
+	}
+	for name, sections := range updates {
+		fields, _ := sections["requests"].(map[string]any)
+		for _, dim := range []string{"cpu", "memory"} {
+			if restrictions.Reason(name, dim) != "" {
+				delete(fields, dim)
+			}
 		}
 	}
+	return constraints.BudgetCandidate(pod, updates)
+}
 
-	// Fall back to checking parent deployment annotations (ArgoCD-compatible)
-	parentAnnotations := m.getParentDeploymentAnnotations(ctx, pod)
-	if len(parentAnnotations) > 0 {
-		// Check webhook enabled annotation
-		if enabled, exists := parentAnnotations[optipodv1alpha1.AnnotationWebhookEnabled]; exists {
-			return enabled == trueValue
+// Explicit Pod and owner preferences take precedence over policy opt-in.
+func (m *Mutator) webhookPreference(pod *corev1.Pod) (enabled, configured bool) {
+	preference := func(a map[string]string) (bool, bool) {
+		if v, exists := a[optipodv1alpha1.AnnotationWebhookEnabled]; exists {
+			return v == trueValue, true
 		}
-
-		// Check strategy annotation
-		if strategy, exists := parentAnnotations[optipodv1alpha1.AnnotationStrategy]; exists {
-			return strategy == string(optipodv1alpha1.StrategyWebhook)
+		if v, exists := a[optipodv1alpha1.AnnotationStrategy]; exists {
+			return v == string(optipodv1alpha1.StrategyWebhook), true
 		}
+		return false, false
 	}
-
-	return false
+	if enabled, set := preference(pod.Annotations); set {
+		return enabled, true
+	}
+	return preference(m.getParentDeploymentAnnotations(context.Background(), pod))
 }
 
 // getParentDeploymentAnnotations retrieves annotations from the parent workload (Deployment, StatefulSet, or DaemonSet)
@@ -271,7 +327,7 @@ func (m *Mutator) isWebhookEnabled(pod *corev1.Pod) bool {
 // but allows extra annotations on workload metadata
 func (m *Mutator) getParentDeploymentAnnotations(ctx context.Context, pod *corev1.Pod) map[string]string {
 	owner, err := discovery.ResolvePodWorkload(ctx, m.client, pod)
-	if err != nil || owner.Kind == "Pod" {
+	if err != nil || owner.Kind == podKind {
 		return nil
 	}
 	return owner.Object.GetAnnotations()
@@ -668,11 +724,11 @@ func nodeReceiptPatches(req *AdmissionRequest, owner *discovery.Workload, select
 
 func (m *Mutator) revalidateAdmission(ctx context.Context, req *AdmissionRequest, owner *discovery.Workload, selectedPolicy *optipodv1alpha1.OptimizationPolicy) *AdmissionResponse {
 	finalPolicies, err := m.findMatchingPolicies(ctx, req.Pod)
-	if err != nil || len(finalPolicies) == 0 || finalPolicies[0].UID != selectedPolicy.UID || finalPolicies[0].Generation != selectedPolicy.Generation || finalPolicies[0].Spec.Mode != optipodv1alpha1.ModeAuto {
+	if err != nil || len(finalPolicies) == 0 || finalPolicies[0].UID != selectedPolicy.UID || finalPolicies[0].Generation != selectedPolicy.Generation || capturedlimits.ForOwner(finalPolicies[0].Annotations, owner.Object.GetUID()) != capturedlimits.ForOwner(selectedPolicy.Annotations, owner.Object.GetUID()) || finalPolicies[0].Spec.Mode != optipodv1alpha1.ModeAuto {
 		return &AdmissionResponse{Allowed: true, Message: "Winning policy changed during admission"}
 	}
 	finalOwner, err := discovery.ResolvePodWorkload(ctx, m.client, req.Pod)
-	if err != nil || finalOwner.Object.GetUID() != owner.Object.GetUID() || finalOwner.Object.GetAnnotations()[history.Paused] != owner.Object.GetAnnotations()[history.Paused] || finalOwner.Object.GetAnnotations()[history.RollbackTo] != owner.Object.GetAnnotations()[history.RollbackTo] {
+	if err != nil || finalOwner.Object.GetUID() != owner.Object.GetUID() || (capturedlimits.ForOwner(selectedPolicy.Annotations, owner.Object.GetUID()) != "" && finalOwner.Object.GetGeneration() != owner.Object.GetGeneration()) || finalOwner.Object.GetAnnotations()[history.Paused] != owner.Object.GetAnnotations()[history.Paused] || finalOwner.Object.GetAnnotations()[history.RollbackTo] != owner.Object.GetAnnotations()[history.RollbackTo] {
 		return &AdmissionResponse{Allowed: true, Message: "Workload state changed during admission"}
 	}
 	return nil

@@ -105,7 +105,7 @@ func (s *State) ObserveOOM(p *api.OptimizationPolicy, now time.Time) {
 		if base+cfg.MinimumIncrease.Value() > next {
 			next = base + cfg.MinimumIncrease.Value()
 		}
-		if next > p.Spec.ResourceBounds.Memory.Max.Value() {
+		if !p.Spec.ResourceBounds.Memory.NoMaximum && next > p.Spec.ResourceBounds.Memory.Max.Value() {
 			r.CircuitOpen = true
 			r.Reason = "OOM recovery would exceed memory maximum"
 			continue

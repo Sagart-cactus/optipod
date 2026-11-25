@@ -1,0 +1,28 @@
+{{- if and .Values.excludedNamespaces (not .Values.excludedNamespacesPolicyName) }}
+{{- with .Values.excludedNamespaces }}
+apiVersion: optipod.optipod.io/v1alpha1
+kind: OptimizationPolicy
+metadata:
+  name: 00-{{ include "optipod.fullname" $ }}-excluded-namespaces
+  namespace: {{ include "optipod.namespace" $ }}
+  labels:
+    {{- include "optipod.labels" $ | nindent 4 }}
+spec:
+  mode: Disabled
+  weight: 1000
+  selector:
+    namespaces:
+      allow:
+        {{- toYaml . | nindent 8 }}
+    workloadTypes:
+      include: [Deployment, StatefulSet, DaemonSet, ReplicaSet, Rollout, Job, CronJob]
+  # Required by the OptimizationPolicy schema, including for Disabled policies.
+  metricsConfig:
+    provider: {{ $.Values.metricsProvider.type | quote }}
+  resourceBounds:
+    cpu: {min: 1m, max: 1}
+    memory: {min: 1Mi, max: 1Gi}
+  updateStrategy:
+    updateRequestsOnly: true
+{{- end }}
+{{- end }}

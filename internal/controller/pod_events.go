@@ -37,10 +37,14 @@ func (r *OptimizationPolicyReconciler) policyForPod(ctx context.Context, obj cli
 		return nil
 	}
 	p, err := policy.NewPolicySelector(r.Client).SelectBestPolicy(ctx, owner)
-	if err != nil || p == nil {
+	if err != nil || p == nil || (r.acceptsPolicy != nil && !r.acceptsPolicy(p)) {
 		return nil
 	}
 	return []reconcile.Request{{NamespacedName: client.ObjectKeyFromObject(p)}}
+}
+
+func needsAdmissionRefresh(p *api.OptimizationPolicy) bool {
+	return p.Spec.Mode == api.ModeAuto && p.IsWebhookStrategy()
 }
 
 func metricsRefreshInterval(p *api.OptimizationPolicy, interval time.Duration) time.Duration {
@@ -50,6 +54,13 @@ func metricsRefreshInterval(p *api.OptimizationPolicy, interval time.Duration) t
 	age := p.Spec.MetricsConfig.MaxSampleAge.Duration
 	if age <= 0 {
 		age = 5 * time.Minute
+	}
+	if needsAdmissionRefresh(p) {
+		ttl := p.Spec.UpdateStrategy.RecommendationTTL.Duration
+		if ttl <= 0 {
+			ttl = 15 * time.Minute
+		}
+		age = min(age, ttl)
 	}
 	if cap := age / 2; interval > cap {
 		return cap

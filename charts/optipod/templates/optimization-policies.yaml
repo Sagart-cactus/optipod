@@ -1,0 +1,40 @@
+{{- $sink := .Values.excludedNamespacesPolicyName | default "" }}
+{{- if and .Values.excludedNamespaces $sink (not (hasKey .Values.optimizationPolicies $sink)) }}
+{{- fail "excludedNamespacesPolicyName must reference a chart-managed policy" }}
+{{- end }}
+{{- range $name, $policy := .Values.optimizationPolicies }}
+{{- $spec := deepCopy (required (printf "optimizationPolicies.%s.spec is required" $name) $policy.spec) }}
+{{- if and $.Values.excludedNamespaces $sink }}
+{{- if and (ne $name $sink) (ge (int (default 100 $spec.weight)) 1000) (lt $name $sink) }}
+{{- fail "a higher-priority chart policy would override the namespace exclusion" }}
+{{- end }}
+{{- if eq $name $sink }}
+{{- if or (ne $spec.mode "Disabled") (ne (int (default 100 $spec.weight)) 1000) (ne (len $spec.selector) 1) (not $spec.selector.anyOf) }}
+{{- fail "the shared namespace exclusion policy requires Disabled mode, weight 1000, and an anyOf-only selector" }}
+{{- end }}
+{{- $rules := $spec.selector.anyOf }}
+{{- range $.Values.excludedNamespaces }}
+{{- $rules = append $rules (dict "namespacePattern" (printf "^%s$" (regexQuoteMeta .))) }}
+{{- end }}
+{{- $_ := set $spec.selector "anyOf" $rules }}
+{{- $_ := set $spec.selector "workloadTypes" (dict "include" (list "Deployment" "StatefulSet" "DaemonSet" "ReplicaSet" "Rollout" "Job" "CronJob")) }}
+{{- end }}
+{{- end }}
+---
+apiVersion: optipod.optipod.io/v1alpha1
+kind: OptimizationPolicy
+metadata:
+  name: {{ $name | quote }}
+  namespace: {{ include "optipod.namespace" $ }}
+  labels:
+    {{- include "optipod.labels" $ | nindent 4 }}
+    {{- with $policy.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- with $policy.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- toYaml $spec | nindent 2 }}
+{{- end }}

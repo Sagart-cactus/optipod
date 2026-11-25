@@ -177,6 +177,7 @@ func computePercentiles(samples []int64, isMillicore bool) ResourceMetrics {
 
 	return ResourceMetrics{
 		P50:     p50Qty,
+		P80:     sampleQuantity(percentile(sorted, 80), isMillicore),
 		P90:     p90Qty,
 		P95:     sampleQuantity(percentile(sorted, 95), isMillicore),
 		P99:     p99Qty,

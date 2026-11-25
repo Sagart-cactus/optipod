@@ -28,6 +28,9 @@ import (
 
 // OperatorConfig holds global configuration for the OptiPod operator
 type OperatorConfig struct {
+	// Independent policies may reconcile concurrently; each policy key remains serialized.
+	PolicyWorkers    int
+	AdmissionWorkers int
 	// DryRun enables global dry-run mode where recommendations are computed but never applied
 	DryRun bool
 
@@ -35,7 +38,8 @@ type OperatorConfig struct {
 	DefaultMetricsProvider string
 
 	// PrometheusURL is the URL for the Prometheus server (if using Prometheus provider)
-	PrometheusURL string
+	PrometheusURL         string
+	PrometheusReplicaURLs string
 
 	// Prometheus authentication configuration
 	PrometheusAuthType    string
@@ -82,6 +86,7 @@ type OperatorConfig struct {
 // NewOperatorConfig creates a new OperatorConfig with default values
 func NewOperatorConfig() *OperatorConfig {
 	return &OperatorConfig{
+		PolicyWorkers: 1, AdmissionWorkers: 4,
 		DryRun:                           false,
 		DefaultMetricsProvider:           "metrics-server",
 		PrometheusURL:                    "http://prometheus:9090",
@@ -128,6 +133,7 @@ func (c *OperatorConfig) LoadFromDir(dir string) error {
 	stringKeys := map[string]*string{
 		"metrics-provider":          &c.DefaultMetricsProvider,
 		"prometheus-url":            &c.PrometheusURL,
+		"prometheus-replica-urls":   &c.PrometheusReplicaURLs,
 		"metrics-bind-address":      &c.MetricsAddr,
 		"health-probe-bind-address": &c.ProbeAddr,
 	}
@@ -188,6 +194,7 @@ func (c *OperatorConfig) LoadFromEnv() error {
 	stringKeys := map[string]*string{
 		"OPTIPOD_METRICS_PROVIDER":          &c.DefaultMetricsProvider,
 		"OPTIPOD_PROMETHEUS_URL":            &c.PrometheusURL,
+		"OPTIPOD_PROMETHEUS_REPLICA_URLS":   &c.PrometheusReplicaURLs,
 		"OPTIPOD_METRICS_BIND_ADDRESS":      &c.MetricsAddr,
 		"OPTIPOD_HEALTH_PROBE_BIND_ADDRESS": &c.ProbeAddr,
 	}
@@ -228,6 +235,8 @@ func (c *OperatorConfig) LoadFromEnv() error {
 	}
 
 	intKeys := map[string]*int{
+		"OPTIPOD_POLICY_WORKERS":                        &c.PolicyWorkers,
+		"OPTIPOD_ADMISSION_WORKERS":                     &c.AdmissionWorkers,
 		"OPTIPOD_METRICS_SERVER_MAX_SAMPLES_PER_TARGET": &c.MetricsServerMaxSamplesPerTarget,
 		"OPTIPOD_METRICS_SERVER_MIN_SAMPLES_REQUIRED":   &c.MetricsServerMinSamplesRequired,
 		"OPTIPOD_METRICS_MAX_SAMPLES":                   &c.MetricsMaxSamples,
@@ -296,10 +305,13 @@ func readConfigInt(dir, key string) (int, bool, error) {
 
 // BindFlags binds configuration options to command-line flags
 func (c *OperatorConfig) BindFlags() {
+	flag.IntVar(&c.PolicyWorkers, "policy-workers", c.PolicyWorkers, "Concurrent non-admission policy reconciles (1-32)")
+	flag.IntVar(&c.AdmissionWorkers, "admission-workers", c.AdmissionWorkers, "Concurrent Auto webhook policy reconciles (1-32)")
 	flag.BoolVar(&c.DryRun, "dry-run", c.DryRun,
 		"Enable global dry-run mode. When enabled, OptiPod computes recommendations but never applies them.")
 	flag.StringVar(&c.DefaultMetricsProvider, "metrics-provider", c.DefaultMetricsProvider,
 		"Default metrics provider to use (metrics-server, prometheus, or custom)")
+	flag.StringVar(&c.PrometheusReplicaURLs, "prometheus-replica-urls", c.PrometheusReplicaURLs, "Comma-separated direct URLs of HA scrapers of the same cluster; overrides prometheus-url")
 	flag.StringVar(&c.PrometheusURL, "prometheus-url", c.PrometheusURL,
 		"URL for Prometheus server (used when metrics-provider is prometheus)")
 	flag.StringVar(&c.PrometheusAuthType, "prometheus-auth-type", c.PrometheusAuthType,
@@ -455,4 +467,12 @@ func (c *OperatorConfig) GetPrometheusTLSInsecure() bool {
 // GetPrometheusTimeout returns the Prometheus HTTP client timeout.
 func (c *OperatorConfig) GetPrometheusTimeout() time.Duration {
 	return c.PrometheusTimeout
+}
+
+// GetPrometheusReplicaURLs returns the explicit set of independent HA scrapers.
+func (c *OperatorConfig) GetPrometheusReplicaURLs() []string {
+	if c.PrometheusReplicaURLs == "" {
+		return nil
+	}
+	return strings.Split(c.PrometheusReplicaURLs, ",")
 }

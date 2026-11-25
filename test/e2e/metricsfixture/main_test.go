@@ -100,6 +100,21 @@ func TestQueryRangePresentReturnsConfiguredMatrixSamples(t *testing.T) {
 	}
 }
 
+func TestQueryRangeMemoryPeakUsesFixedSampleTimestamps(t *testing.T) {
+	_, ts := newTestServer(t)
+	setSeries(t, ts, `{"series":[{"namespace":"shop","pod":"web-abc","container":"app",
+		"fixedEnd":1295,"spacingSeconds":10,"memoryBytes":[100,200,150]}]}`)
+
+	code, reply := doQueryRange(t, ts, "max_over_time("+memQuery+"[20000ms])")
+	if code != http.StatusOK || len(reply.Data.Result) != 1 {
+		t.Fatalf("expected one matrix series, got code=%d reply=%+v", code, reply)
+	}
+	values := reply.Data.Result[0].Values
+	if len(values) != 1 || values[0][0] != float64(1300) || values[0][1] != "200" {
+		t.Fatalf("expected the peak at evaluation time 1300, got %v", values)
+	}
+}
+
 func TestQueryRangeUnknownSeriesIsMissing(t *testing.T) {
 	_, ts := newTestServer(t)
 	code, reply := doQueryRange(t, ts, cpuQuery)

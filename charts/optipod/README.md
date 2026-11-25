@@ -120,6 +120,18 @@ The auto-detection uses Helm's `lookup` function to check for the `certificates.
 
 See [values.yaml](values.yaml) for all available configuration options.
 
+### Excluding workload namespaces
+
+Set `excludedNamespaces` in your release values to exclude workloads from optimization and Pod admission.
+
+```yaml
+excludedNamespaces:
+  - kube-system
+  - kyverno
+```
+
+Helm adds the names to the Pod webhook's namespace selector and installs a Disabled policy covering those namespaces. The policy uses weight 1000. OptiPod breaks ties by policy name, so give competing policies a lower weight or ensure they sort after the generated `00-<fullname>-excluded-namespaces` policy. Existing Pods keep their resources. Replacement Pods follow their workload templates and any other applicable admission policies. An empty list removes the release's exclusions on the next upgrade.
+
 ## Usage
 
 ### 1. Create an OptimizationPolicy
@@ -324,6 +336,31 @@ helm template optipod charts/optipod \
   --namespace optipod-system \
   --set webhook.enabled=true
 ```
+
+## Shared optimization policies
+
+Set `optimizationPolicies` in your environment values to manage policies with Helm. Each map key is a policy name. Its `spec` takes the same fields as an `OptimizationPolicy` resource. A single selector can cover many workloads. For example, the following policy recommends resources for Deployments in the `apps` namespace.
+
+```yaml
+optimizationPolicies:
+  applications:
+    spec:
+      mode: Recommend
+      selector:
+        namespaces:
+          allow: [apps]
+        workloadTypes:
+          include: [Deployment]
+      metricsConfig:
+        provider: prometheus
+      resourceBounds:
+        cpu: {min: 10m, max: "2"}
+        memory: {min: 32Mi, max: 2Gi}
+      updateStrategy:
+        updateRequestsOnly: true
+```
+
+By default, `excludedNamespaces` creates a separate Disabled policy and excludes those namespaces from Pod admission. To reuse an existing chart-managed Disabled policy, set `excludedNamespacesPolicyName` to its name. Give it weight 1000 and an `anyOf` selector. Include `kinds` on each rule that applies only to specific workload types. The chart adds an exact namespace match for each excluded namespace.
 
 ## Contributing
 

@@ -98,7 +98,7 @@ func Plan(ctx context.Context, c client.Client, pod *corev1.Pod, p *api.Optimiza
 			if current.Requests.Memory().Cmp(floor) > 0 {
 				floor = current.Requests.Memory().DeepCopy()
 			}
-			if floor.Cmp(p.Spec.ResourceBounds.Memory.Max) > 0 {
+			if p.Spec.ResourceBounds.Memory.ExceedsMaximum(floor) {
 				return name, nil, fmt.Errorf("OOM floor exceeds node-sizing memory maximum")
 			}
 			q, err := resource.ParseQuantity(raw.(string))
@@ -173,7 +173,7 @@ func ForNode(pod *corev1.Pod, p *api.OptimizationPolicy, node *corev1.Node) (map
 			if q.Cmp(bounds.Min) < 0 {
 				*q = bounds.Min.DeepCopy()
 			}
-			if q.Cmp(bounds.Max) > 0 {
+			if bounds.ExceedsMaximum(*q) {
 				*q = bounds.Max.DeepCopy()
 			}
 			requests[string(key)] = q.String()

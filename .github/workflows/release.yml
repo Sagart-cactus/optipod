@@ -418,7 +418,7 @@ jobs:
         run: docker load --input /tmp/image-${{ matrix.arch }}.tar
 
       - name: Install cosign
-        uses: sigstore/cosign-installer@v3
+        uses: sigstore/cosign-installer@v4.1.3
 
       - name: Log in to GHCR
         uses: docker/login-action@v4
@@ -492,16 +492,18 @@ jobs:
             ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ needs.setup.outputs.version }}-${{ matrix.arch }}
 
       - name: Verify signature
-        env:
-          COSIGN_EXPERIMENTAL: 1
         run: |
-          cosign verify \
+          set -euo pipefail
+          cosign verify --certificate-identity "https://github.com/$GITHUB_WORKFLOW_REF" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
             ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ needs.setup.outputs.version }}-${{ matrix.arch }} | jq .
 
   publish-ghcr:
     name: Publish to GitHub Container Registry
     runs-on: ubuntu-latest
     needs: [setup, build, security-scan, sign]
+    outputs:
+      image: ${{ steps.sign_index.outputs.image }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -533,27 +535,38 @@ jobs:
           echo "minor=${MAJOR}.${MINOR}" >> $GITHUB_OUTPUT
           echo "patch=${MAJOR}.${MINOR}.${PATCH}" >> $GITHUB_OUTPUT
 
-      - name: Create and push multi-arch manifest
+      - name: Create the release image index
+        env:
+          IMAGE: ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}
+          VERSION: ${{ steps.version.outputs.full }}
         run: |
-          # Create manifest for full version
-          docker buildx imagetools create -t ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ steps.version.outputs.full }} \
-            ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ steps.version.outputs.full }}-amd64 \
-            ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ steps.version.outputs.full }}-arm64
+          docker buildx imagetools create --metadata-file "$RUNNER_TEMP/release-index.json" \
+            -t "$IMAGE:$VERSION" "$IMAGE:$VERSION-amd64" "$IMAGE:$VERSION-arm64"
 
-          # Create manifest for minor version
-          docker buildx imagetools create -t ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ steps.version.outputs.minor }} \
-            ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ steps.version.outputs.full }}-amd64 \
-            ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ steps.version.outputs.full }}-arm64
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v4.1.3
 
-          # Create manifest for major version
-          docker buildx imagetools create -t ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ steps.version.outputs.major }} \
-            ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ steps.version.outputs.full }}-amd64 \
-            ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ steps.version.outputs.full }}-arm64
+      - name: Sign and verify the release image digest
+        id: sign_index
+        env:
+          IMAGE: ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}
+        run: |
+          set -euo pipefail
+          digest=$(jq -er '."containerimage.descriptor".digest | select(test("^sha256:[0-9a-f]{64}$"))' "$RUNNER_TEMP/release-index.json")
+          image="$IMAGE@$digest"
+          cosign sign --yes "$image"
+          cosign verify --certificate-identity "https://github.com/$GITHUB_WORKFLOW_REF" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com "$image"
+          printf 'image=%s\n' "$image" >> "$GITHUB_OUTPUT"
 
-          # Create manifest for latest
-          docker buildx imagetools create -t ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:latest \
-            ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ steps.version.outputs.full }}-amd64 \
-            ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ steps.version.outputs.full }}-arm64
+      - name: Publish aliases for the verified digest
+        env:
+          IMAGE: ${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}
+          SIGNED_IMAGE: ${{ steps.sign_index.outputs.image }}
+          MINOR: ${{ steps.version.outputs.minor }}
+          MAJOR: ${{ steps.version.outputs.major }}
+        run: |
+          docker buildx imagetools create -t "$IMAGE:$MINOR" -t "$IMAGE:$MAJOR" -t "$IMAGE:latest" "$SIGNED_IMAGE"
 
       - name: Verify multi-arch manifest
         run: |
@@ -584,10 +597,12 @@ jobs:
           curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
           sudo mv kustomize /usr/local/bin/
 
-      - name: Update image reference in kustomization
+      - name: Pin the deployment manifest to the signed image
+        env:
+          IMAGE: ${{ needs.publish-ghcr.outputs.image }}
         run: |
           cd config/manager
-          kustomize edit set image controller=${{ env.REGISTRY_GHCR }}/${{ needs.setup.outputs.image_name_lower }}:${{ needs.setup.outputs.version }}
+          kustomize edit set image "controller=$IMAGE"
 
       - name: Build consolidated manifest
         run: |
@@ -740,6 +755,42 @@ jobs:
           name: helm-chart
           path: artifacts
 
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v4.1.3
+
+      - name: Sign and verify release asset checksums
+        env:
+          IMAGE: ${{ needs.publish-ghcr.outputs.image }}
+          VERSION: ${{ needs.setup.outputs.version }}
+        run: |
+          set -euo pipefail
+          identity="https://github.com/$GITHUB_WORKFLOW_REF"
+          issuer=https://token.actions.githubusercontent.com
+          jq -n --arg version "$VERSION" --arg commit "$GITHUB_SHA" --arg image "$IMAGE" \
+            --arg identity "$identity" --arg issuer "$issuer" \
+            '{version:$version,commit:$commit,image:$image,identity:$identity,issuer:$issuer}' > artifacts/IMAGES.json
+          # GitHub release downloads use flat asset filenames.
+          python3 - <<'PYTHON'
+          import hashlib
+          from pathlib import Path
+
+          files = {}
+          for path in Path("artifacts").rglob("*"):
+              if not path.is_file():
+                  continue
+              if path.name in files:
+                  raise ValueError(f"Duplicate release asset name: {path.name}")
+              with path.open("rb") as asset:
+                  files[path.name] = hashlib.file_digest(asset, "sha256").hexdigest()
+
+          Path("artifacts/SHA256SUMS").write_text(
+              "".join(f"{files[name]}  {name}\n" for name in sorted(files))
+          )
+          PYTHON
+          cosign sign-blob --yes --bundle artifacts/SHA256SUMS.sigstore.json artifacts/SHA256SUMS
+          cosign verify-blob --certificate-identity "$identity" --certificate-oidc-issuer "$issuer" \
+            --bundle artifacts/SHA256SUMS.sigstore.json artifacts/SHA256SUMS
+
       - name: Generate release notes
         id: release_notes
         run: |
@@ -811,9 +862,17 @@ jobs:
 
           ### Verification
 
-          Verify image signature:
+          The image index is signed at \`${{ needs.publish-ghcr.outputs.image }}\`.
+          Download \`SHA256SUMS\`, \`SHA256SUMS.sigstore.json\` and \`IMAGES.json\` with the artifacts to verify.
+
           \`\`\`bash
-          cosign verify ghcr.io/${{ github.repository }}:${VERSION}
+          identity='https://github.com/${GITHUB_WORKFLOW_REF}'
+          issuer=https://token.actions.githubusercontent.com
+          cosign verify-blob --certificate-identity "\$identity" --certificate-oidc-issuer "\$issuer" \\
+            --bundle SHA256SUMS.sigstore.json SHA256SUMS
+          sha256sum -c SHA256SUMS
+          cosign verify --certificate-identity "\$identity" --certificate-oidc-issuer "\$issuer" \\
+            '${{ needs.publish-ghcr.outputs.image }}'
           \`\`\`
 
           **Full Changelog**: https://github.com/${{ github.repository }}/compare/${PREV_TAG}...${VERSION}
@@ -844,6 +903,9 @@ jobs:
             artifacts/install.yaml
             artifacts/binaries/*
             artifacts/checksums.txt
+            artifacts/IMAGES.json
+            artifacts/SHA256SUMS
+            artifacts/SHA256SUMS.sigstore.json
             artifacts/sbom/*.json
             artifacts/security-scan/*.json
         env:
