@@ -8,6 +8,7 @@ import (
 	"github.com/optipod/optipod/internal/coexist"
 	"github.com/optipod/optipod/internal/discovery"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 )
 
 // Restore only controlled dimensions whose declared template limit still
@@ -36,69 +37,15 @@ func restoreCapturedLimits(pod *corev1.Pod, template *corev1.PodTemplateSpec, re
 		if exists {
 			r = recs[i]
 		}
+		var original *corev1.ResourceRequirements
+		if present {
+			original = &orig.Container.Resources
+		}
 		applied := false
 		for _, key := range []corev1.ResourceName{corev1.ResourceCPU, corev1.ResourceMemory} {
-			cpu := key == corev1.ResourceCPU
-			if !p.ControlsResource(string(key)) {
-				continue
-			}
-			hold := c.RunningRequests != nil && s.HoldRequestsUntil != nil && time.Now().Before(*s.HoldRequestsUntil) && p.GetRolloutStrategy() == api.RolloutOnNextRestart
-			// A handoff may temporarily have no plan for the new policy UID.
-			// Prefer each fresh dimension as soon as it becomes available.
-			missing := (cpu && r.CPU == nil && !r.RemoveCPURequest) || (!cpu && r.Memory == nil && !r.RemoveMemoryRequest)
-			fallback := missing && c.RunningRequests != nil && s.FallbackRequestsUntil != nil && time.Now().Before(*s.FallbackRequestsUntil)
-			if (hold || fallback) && restrictions.Reason(name, string(key)) == "" && (!present || capturedlimits.Same(orig.Container.Resources.Requests, c.TemplateRequests, key)) {
-				q, found := (*c.RunningRequests)[key]
-				if cpu {
-					r.CPU = nil
-					r.RemoveCPURequest = !found
-					if found {
-						r.CPU = &q
-					}
-				} else {
-					r.Memory = nil
-					r.RemoveMemoryRequest = !found
-					if found {
-						r.Memory = &q
-					}
-				}
+			if p.ControlsResource(string(key)) && restoreCapturedDimension(&r, s, c, original, p, restrictions, key) {
 				applied = true
 			}
-			if restrictions.Reason(name, string(key)) != "" {
-				q, captured := c.HPARequests[key]
-				if !captured || p.GetRolloutStrategy() != api.RolloutOnNextRestart || (present && !capturedlimits.Same(orig.Container.Resources.Requests, c.TemplateRequests, key)) {
-					continue
-				}
-				if cpu {
-					r.CPU = &q
-					r.RemoveCPURequest = false
-				} else {
-					r.Memory = &q
-					r.RemoveMemoryRequest = false
-				}
-				applied = true
-			}
-			if p.LimitMode(cpu) != api.LimitPreserve {
-				continue
-			}
-			if present && !capturedlimits.Same(orig.Container.Resources.Limits, c.Template, key) {
-				continue
-			}
-			q, has := c.Limits[key]
-			if cpu {
-				r.CPULimit = nil
-				r.RemoveCPULimit = !has
-				if has {
-					r.CPULimit = &q
-				}
-			} else {
-				r.MemoryLimit = nil
-				r.RemoveMemoryLimit = !has
-				if has {
-					r.MemoryLimit = &q
-				}
-			}
-			applied = true
 		}
 		if applied {
 			if exists {
@@ -109,4 +56,50 @@ func restoreCapturedLimits(pod *corev1.Pod, template *corev1.PodTemplateSpec, re
 		}
 	}
 	return recs
+}
+
+func restoreCapturedDimension(r *ResourceRecommendation, s *capturedlimits.Snapshot, capture capturedlimits.Container,
+	original *corev1.ResourceRequirements, p *api.OptimizationPolicy, restrictions *coexist.Restrictions, key corev1.ResourceName,
+) bool {
+	cpu := key == corev1.ResourceCPU
+	request, removeRequest := &r.Memory, &r.RemoveMemoryRequest
+	limit, removeLimit := &r.MemoryLimit, &r.RemoveMemoryLimit
+	if cpu {
+		request, removeRequest = &r.CPU, &r.RemoveCPURequest
+		limit, removeLimit = &r.CPULimit, &r.RemoveCPULimit
+	}
+	now := time.Now()
+	deferred := p.GetRolloutStrategy() == api.RolloutOnNextRestart
+	baseline := original == nil || capturedlimits.Same(original.Requests, capture.TemplateRequests, key)
+	var changed bool
+	if restrictions.Reason(r.ContainerName, string(key)) != "" {
+		q, captured := capture.HPARequests[key]
+		if !captured || !deferred || !baseline {
+			return false
+		}
+		*request, *removeRequest = &q, false
+		changed = true
+	} else if capture.RunningRequests != nil && baseline {
+		hold := deferred && s.HoldRequestsUntil != nil && now.Before(*s.HoldRequestsUntil)
+		// Prefer each fresh dimension when it becomes available.
+		missing := *request == nil && !*removeRequest
+		fallback := missing && s.FallbackRequestsUntil != nil && now.Before(*s.FallbackRequestsUntil)
+		if hold || fallback {
+			*request, *removeRequest = capturedQuantity(*capture.RunningRequests, key)
+			changed = true
+		}
+	}
+	if p.LimitMode(cpu) == api.LimitPreserve && (original == nil || capturedlimits.Same(original.Limits, capture.Template, key)) {
+		*limit, *removeLimit = capturedQuantity(capture.Limits, key)
+		return true
+	}
+	return changed
+}
+
+func capturedQuantity(values corev1.ResourceList, key corev1.ResourceName) (*resource.Quantity, bool) {
+	q, exists := values[key]
+	if !exists {
+		return nil, true
+	}
+	return &q, false
 }

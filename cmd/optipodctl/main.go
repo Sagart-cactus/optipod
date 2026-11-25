@@ -18,8 +18,11 @@ func main() {
 	}
 }
 func run(args []string) error {
-	if len(args) > 0 && (args[0] == "capture-limits" || args[0] == "fleet" || args[0] == commandHistory || args[0] == "serve") {
-		return inspect(args)
+	if len(args) > 0 {
+		switch args[0] {
+		case commandCaptureLimits, "fleet", commandHistory, "serve":
+			return inspect(args)
+		}
 	}
 	if len(args) == 0 || args[0] != "migrate" {
 		return fmt.Errorf("usage: optipodctl capture-limits|fleet|history|serve --kubeconfig FILE; or " +

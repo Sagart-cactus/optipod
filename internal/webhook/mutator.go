@@ -23,6 +23,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -46,6 +47,7 @@ var mutatorLog = logf.Log.WithName("webhook-mutator")
 const (
 	// Constants for string literals
 	trueValue      = "true"
+	podKind        = "Pod"
 	appsV1APIGroup = "apps/v1"
 	// patchOpAdd is the JSON patch "add" operation.
 	patchOpAdd = "add"
@@ -154,6 +156,10 @@ func (m *Mutator) MutatePod(req *AdmissionRequest) *AdmissionResponse {
 		}
 	}
 
+	return m.mutateSelectedPod(ctx, req, selectedPolicy, startTime, log)
+}
+
+func (m *Mutator) mutateSelectedPod(ctx context.Context, req *AdmissionRequest, selectedPolicy *optipodv1alpha1.OptimizationPolicy, startTime time.Time, log logr.Logger) *AdmissionResponse {
 	// Extract resource recommendations from annotations
 	owner, err := discovery.ResolvePodWorkload(ctx, m.client, req.Pod)
 	if err != nil {
@@ -162,19 +168,9 @@ func (m *Mutator) MutatePod(req *AdmissionRequest) *AdmissionResponse {
 	if metav1.GetControllerOf(owner.Object) != nil && !selectedPolicy.AllowsOperatorOwnedAdmission() {
 		return &AdmissionResponse{Allowed: true, Message: "Operator-owned workload requires deferred request-only activation"}
 	}
-	var capture *capturedlimits.Snapshot
-	if raw := capturedlimits.ForOwner(selectedPolicy.Annotations, owner.Object.GetUID()); raw != "" && owner.Kind != "Pod" && owner.Object.GetAnnotations()[history.Paused] != trueValue && selectedPolicy.Spec.DaemonSetSizing == nil && selectedPolicy.Spec.UpdateStrategy.UpdateRequestsOnly {
-		snapshot, err := capturedlimits.Parse(raw)
-		if err != nil {
-			return &AdmissionResponse{Allowed: false, Message: "Invalid captured limits: " + err.Error()}
-		}
-		if _, keyed := selectedPolicy.Annotations["optipod.io/capture-"+string(owner.Object.GetUID())]; keyed && snapshot.WorkloadUID != owner.Object.GetUID() {
-			return &AdmissionResponse{Allowed: false, Message: "Captured resource owner UID differs from the policy key"}
-		}
-		capture, err = snapshot.ForPod(ctx, m.client, owner.Kind, owner.Object.GetUID(), req.Pod)
-		if err != nil {
-			return &AdmissionResponse{Allowed: false, Message: err.Error()}
-		}
+	capture, err := m.captureForPod(ctx, req.Pod, owner, selectedPolicy)
+	if err != nil {
+		return &AdmissionResponse{Allowed: false, Message: err.Error()}
 	}
 	recommendations, rollback, failure := m.admissionRecommendations(ctx, req, owner, selectedPolicy)
 	if failure != nil && capture == nil {
@@ -187,7 +183,7 @@ func (m *Mutator) MutatePod(req *AdmissionRequest) *AdmissionResponse {
 	}
 	template, templateErr := discovery.Template(owner.Object)
 	// Ownerless Pod admission remains supported for legacy callers.
-	if owner.Kind == "Pod" {
+	if owner.Kind == podKind {
 		template = &corev1.PodTemplateSpec{Spec: req.Pod.Spec}
 		templateErr = nil
 	}
@@ -209,19 +205,7 @@ func (m *Mutator) MutatePod(req *AdmissionRequest) *AdmissionResponse {
 
 	updates := recommendationUpdates(recommendations)
 	whole := constraints.WholePodRequests(req.Pod, selectedPolicy)
-	project := constraints.Overlay
-	if whole {
-		project = constraints.BudgetCandidate
-		for name, sections := range updates {
-			fields, _ := sections["requests"].(map[string]any)
-			for _, dim := range []string{"cpu", "memory"} {
-				if restrictions.Reason(name, dim) != "" {
-					delete(fields, dim)
-				}
-			}
-		}
-	}
-	candidate, err := project(req.Pod, updates)
+	candidate, err := projectPodResources(req.Pod, updates, whole, restrictions)
 	if err != nil {
 		return &AdmissionResponse{Allowed: capture == nil, Message: "Invalid resource plan"}
 	}
@@ -289,6 +273,38 @@ func (m *Mutator) MutatePod(req *AdmissionRequest) *AdmissionResponse {
 	}
 }
 
+func (m *Mutator) captureForPod(ctx context.Context, pod *corev1.Pod, owner *discovery.Workload, selectedPolicy *optipodv1alpha1.OptimizationPolicy) (*capturedlimits.Snapshot, error) {
+	uid := owner.Object.GetUID()
+	raw := capturedlimits.ForOwner(selectedPolicy.Annotations, uid)
+	if raw == "" || owner.Kind == podKind || owner.Object.GetAnnotations()[history.Paused] == trueValue ||
+		selectedPolicy.Spec.DaemonSetSizing != nil || !selectedPolicy.Spec.UpdateStrategy.UpdateRequestsOnly {
+		return nil, nil
+	}
+	snapshot, err := capturedlimits.Parse(raw)
+	if err != nil {
+		return nil, fmt.Errorf("invalid captured limits: %w", err)
+	}
+	if _, keyed := selectedPolicy.Annotations["optipod.io/capture-"+string(uid)]; keyed && snapshot.WorkloadUID != uid {
+		return nil, fmt.Errorf("captured resource owner UID differs from the policy key")
+	}
+	return snapshot.ForPod(ctx, m.client, owner.Kind, uid, pod)
+}
+
+func projectPodResources(pod *corev1.Pod, updates map[string]map[string]any, whole bool, restrictions *coexist.Restrictions) (*corev1.Pod, error) {
+	if !whole {
+		return constraints.Overlay(pod, updates)
+	}
+	for name, sections := range updates {
+		fields, _ := sections["requests"].(map[string]any)
+		for _, dim := range []string{"cpu", "memory"} {
+			if restrictions.Reason(name, dim) != "" {
+				delete(fields, dim)
+			}
+		}
+	}
+	return constraints.BudgetCandidate(pod, updates)
+}
+
 // Explicit Pod and owner preferences take precedence over policy opt-in.
 func (m *Mutator) webhookPreference(pod *corev1.Pod) (enabled, configured bool) {
 	preference := func(a map[string]string) (bool, bool) {
@@ -311,7 +327,7 @@ func (m *Mutator) webhookPreference(pod *corev1.Pod) (enabled, configured bool) 
 // but allows extra annotations on workload metadata
 func (m *Mutator) getParentDeploymentAnnotations(ctx context.Context, pod *corev1.Pod) map[string]string {
 	owner, err := discovery.ResolvePodWorkload(ctx, m.client, pod)
-	if err != nil || owner.Kind == "Pod" {
+	if err != nil || owner.Kind == podKind {
 		return nil
 	}
 	return owner.Object.GetAnnotations()
