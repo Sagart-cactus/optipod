@@ -57,7 +57,9 @@ func (wp *WorkloadProcessor) observeMetricPods(ctx context.Context, w *discovery
 	}
 	// Historical observations from Recommend cannot authorize automatic sizing
 	// beneath a parent controller whose resource ownership is external.
-	if policy.Spec.Mode == api.ModeAuto && metav1.GetControllerOf(obj) != nil {
+	// An explicit UID activation permits request-only replacement admission.
+	// The parent continues to own the template and rollout timing.
+	if policy.Spec.Mode == api.ModeAuto && metav1.GetControllerOf(obj) != nil && !policy.AllowsOperatorOwnedAdmission() {
 		return nil, fmt.Errorf("automatic pod metrics require a top-level workload")
 	}
 	old := obj.GetAnnotations()[metricsPodsAnnotation]
@@ -74,9 +76,10 @@ func (wp *WorkloadProcessor) observeMetricPods(ctx context.Context, w *discovery
 		return nil, err
 	}
 	now := time.Now()
+	scan := discovery.NewPodOwnerScan(wp.client, w.Namespace)
 	for i := range pods.Items {
 		pod := &pods.Items[i]
-		if !wp.observesPod(ctx, w, policy, pod) {
+		if !scan.Matches(ctx, pod, w, policy.Spec.Mode == api.ModeRecommend) {
 			continue
 		}
 		p := observePod(pod, byUID[pod.UID])

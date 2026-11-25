@@ -1557,6 +1557,28 @@ spec:
                 maximum: 1000
                 minimum: 1
                 type: integer
+              workloadSettings:
+                description: WorkloadSettings scopes activation and rollout exceptions
+                  by immutable workload UID.
+                properties:
+                  byUID:
+                    additionalProperties:
+                      properties:
+                        active:
+                          type: boolean
+                        deferred:
+                          description: Deferred prevents this workload from being
+                            restarted to apply recommendations.
+                          type: boolean
+                        includeInjectedSidecars:
+                          type: boolean
+                      type: object
+                    type: object
+                  requireActivation:
+                    description: RequireActivation keeps matched workloads in Recommend
+                      until explicitly active.
+                    type: boolean
+                type: object
             required:
             - metricsConfig
             - mode

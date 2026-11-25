@@ -99,6 +99,9 @@ const (
 
 // OptimizationPolicySpec defines the desired state of OptimizationPolicy
 type OptimizationPolicySpec struct {
+	// WorkloadSettings scopes activation and rollout exceptions by immutable workload UID.
+	// +optional
+	WorkloadSettings *WorkloadSettings `json:"workloadSettings,omitempty"`
 	// HorizontalScaling explicitly manages a native HPA for each selected scalable workload.
 	// +optional
 	HorizontalScaling *HorizontalScalingConfig `json:"horizontalScaling,omitempty"`
@@ -617,6 +620,8 @@ type ContainerRecommendation struct {
 
 // OptimizationPolicy is the Schema for the optimizationpolicies API
 type OptimizationPolicy struct {
+	workloadActivated bool
+
 	metav1.TypeMeta `json:",inline"`
 
 	// metadata is a standard object metadata

@@ -18,11 +18,11 @@ func main() {
 	}
 }
 func run(args []string) error {
-	if len(args) > 0 && (args[0] == "fleet" || args[0] == commandHistory || args[0] == "serve") {
+	if len(args) > 0 && (args[0] == "capture-limits" || args[0] == "fleet" || args[0] == commandHistory || args[0] == "serve") {
 		return inspect(args)
 	}
 	if len(args) == 0 || args[0] != "migrate" {
-		return fmt.Errorf("usage: optipodctl fleet|history|serve --kubeconfig FILE; or " +
+		return fmt.Errorf("usage: optipodctl capture-limits|fleet|history|serve --kubeconfig FILE; or " +
 			"optipodctl migrate -f configuration.yaml --namespace TARGET --name POLICY " +
 			"--startup-mode ignore --coverage-percent 90 --minimum-history 24h")
 	}

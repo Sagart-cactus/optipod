@@ -365,6 +365,7 @@ func main() {
 	eventRecorder := observability.NewEventRecorder(mgr.GetEventRecorderFor("optimizationpolicy-controller"))
 
 	if err := (&controller.OptimizationPolicyReconciler{
+		PolicyWorkers: operatorConfig.PolicyWorkers, AdmissionWorkers: operatorConfig.AdmissionWorkers,
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
 		//nolint:staticcheck // SA1019: events API migration tracked separately

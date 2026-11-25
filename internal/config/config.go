@@ -28,6 +28,9 @@ import (
 
 // OperatorConfig holds global configuration for the OptiPod operator
 type OperatorConfig struct {
+	// Independent policies may reconcile concurrently; each policy key remains serialized.
+	PolicyWorkers    int
+	AdmissionWorkers int
 	// DryRun enables global dry-run mode where recommendations are computed but never applied
 	DryRun bool
 
@@ -83,6 +86,7 @@ type OperatorConfig struct {
 // NewOperatorConfig creates a new OperatorConfig with default values
 func NewOperatorConfig() *OperatorConfig {
 	return &OperatorConfig{
+		PolicyWorkers: 1, AdmissionWorkers: 4,
 		DryRun:                           false,
 		DefaultMetricsProvider:           "metrics-server",
 		PrometheusURL:                    "http://prometheus:9090",
@@ -231,6 +235,8 @@ func (c *OperatorConfig) LoadFromEnv() error {
 	}
 
 	intKeys := map[string]*int{
+		"OPTIPOD_POLICY_WORKERS":                        &c.PolicyWorkers,
+		"OPTIPOD_ADMISSION_WORKERS":                     &c.AdmissionWorkers,
 		"OPTIPOD_METRICS_SERVER_MAX_SAMPLES_PER_TARGET": &c.MetricsServerMaxSamplesPerTarget,
 		"OPTIPOD_METRICS_SERVER_MIN_SAMPLES_REQUIRED":   &c.MetricsServerMinSamplesRequired,
 		"OPTIPOD_METRICS_MAX_SAMPLES":                   &c.MetricsMaxSamples,
@@ -299,6 +305,8 @@ func readConfigInt(dir, key string) (int, bool, error) {
 
 // BindFlags binds configuration options to command-line flags
 func (c *OperatorConfig) BindFlags() {
+	flag.IntVar(&c.PolicyWorkers, "policy-workers", c.PolicyWorkers, "Concurrent non-admission policy reconciles (1-32)")
+	flag.IntVar(&c.AdmissionWorkers, "admission-workers", c.AdmissionWorkers, "Concurrent Auto webhook policy reconciles (1-32)")
 	flag.BoolVar(&c.DryRun, "dry-run", c.DryRun,
 		"Enable global dry-run mode. When enabled, OptiPod computes recommendations but never applies them.")
 	flag.StringVar(&c.DefaultMetricsProvider, "metrics-provider", c.DefaultMetricsProvider,

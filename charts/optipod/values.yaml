@@ -9,6 +9,17 @@ fullnameOverride: ""
 # Namespace configuration
 namespaceOverride: ""
 
+# Workload namespaces excluded from controller optimization and Pod admission.
+# The Helm-managed Disabled policy uses the maximum weight (1000).
+excludedNamespaces: []
+
+# Named OptimizationPolicy resources owned by this release. Each entry requires spec.
+optimizationPolicies: {}
+
+# Optional shared Disabled policy to also match excludedNamespaces. Supply a weight
+# of 1000 and an anyOf-only selector. Set kinds on rules that target specific kinds.
+excludedNamespacesPolicyName: ""
+
 # Image configuration
 image:
   repository: ghcr.io/sagart-cactus/optipod

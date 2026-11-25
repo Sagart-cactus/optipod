@@ -14,11 +14,27 @@ import (
 )
 
 type Change struct {
-	Before, After *corev1.Pod
-	NewPod        bool
+	Before, After    *corev1.Pod
+	NewPod           bool
+	WholePodRequests bool
 }
 
 func QoS(p *corev1.Pod) corev1.PodQOSClass {
+	if budget := p.Spec.Resources; budget != nil {
+		requested, guaranteed := false, true
+		for _, key := range []corev1.ResourceName{corev1.ResourceCPU, corev1.ResourceMemory} {
+			r, l := budget.Requests[key], budget.Limits[key]
+			requested = requested || r.Sign() > 0 || l.Sign() > 0
+			guaranteed = guaranteed && r.Sign() > 0 && r.Cmp(l) == 0
+		}
+		if guaranteed {
+			return corev1.PodQOSGuaranteed
+		}
+		if requested {
+			return corev1.PodQOSBurstable
+		}
+		return corev1.PodQOSBestEffort
+	}
 	guaranteed, anyResource := true, false
 	for _, c := range append(append([]corev1.Container{}, p.Spec.Containers...), p.Spec.InitContainers...) {
 		for _, name := range []corev1.ResourceName{corev1.ResourceCPU, corev1.ResourceMemory} {
@@ -43,7 +59,7 @@ func Validate(ctx context.Context, c client.Reader, namespace string, changes []
 	}
 	for _, change := range changes {
 		p := change.After
-		if p.Spec.Resources != nil {
+		if p.Spec.Resources != nil && !change.WholePodRequests {
 			return fmt.Errorf("pod-level resources require a separate policy; container-only optimization is blocked")
 		}
 		if preserveQoS && change.Before != nil && QoS(change.Before) != QoS(p) {

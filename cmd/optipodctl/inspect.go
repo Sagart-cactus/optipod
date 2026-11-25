@@ -17,8 +17,10 @@ import (
 	"time"
 
 	api "github.com/optipod/optipod/api/v1alpha1"
+	"github.com/optipod/optipod/internal/capturedlimits"
 	"github.com/optipod/optipod/internal/report"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/clientcmd"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -32,6 +34,17 @@ func inspect(args []string) error {
 	namespace := flags.String("namespace", "", "workload namespace filter (all if omitted)")
 	output := flags.String("output", outputJSON, "json, csv, or table for fleet; json for history")
 	uid := flags.String("workload-uid", "", "history workload UID filter")
+	var kind, name string
+	var includeHPARequests bool
+	var nodeHandoff, replicaHandoff, ordinalHandoff time.Duration
+	if command == "capture-limits" {
+		flags.DurationVar(&ordinalHandoff, "ordinal-handoff-duration", 0, "preserve each existing StatefulSet ordinal’s requests for this duration and its captured limits")
+		flags.DurationVar(&replicaHandoff, "replica-maximum-handoff-duration", 0, "preserve the highest running request and limit across stable Deployment replicas for the handoff; an absent limit is unbounded")
+		flags.DurationVar(&nodeHandoff, "node-handoff-duration", 0, "capture DaemonSet limits per node and preserve that node’s requests for this duration")
+		flags.BoolVar(&includeHPARequests, "include-hpa-requests", false, "also capture running requests used by utilization-based horizontal scalers")
+		flags.StringVar(&kind, "kind", "Deployment", "Deployment, StatefulSet or DaemonSet")
+		flags.StringVar(&name, "name", "", "workload name")
+	}
 	port := flags.Int("port", 8765, "serve port on 127.0.0.1 only (0 chooses an available port)")
 	if err := flags.Parse(args[1:]); err != nil {
 		return err
@@ -88,6 +101,30 @@ func inspect(args []string) error {
 	defer cancelRead()
 	encoder := json.NewEncoder(os.Stdout)
 	encoder.SetIndent("", "  ")
+	if command == "capture-limits" {
+		if *namespace == "" || name == "" || *uid == "" || *output != outputJSON {
+			return fmt.Errorf("capture-limits requires --namespace, --name, --workload-uid and JSON output")
+		}
+		key := client.ObjectKey{Namespace: *namespace, Name: name}
+		var snapshot *capturedlimits.Snapshot
+		if ordinalHandoff != 0 {
+			if kind != "StatefulSet" || nodeHandoff != 0 || replicaHandoff != 0 {
+				return fmt.Errorf("ordinal handoff requires a StatefulSet and no other handoff mode")
+			}
+			snapshot, err = capturedlimits.ReadStatefulOrdinals(ctx, c, key, types.UID(*uid), includeHPARequests, ordinalHandoff)
+		} else if replicaHandoff != 0 {
+			if kind != "Deployment" || nodeHandoff != 0 {
+				return fmt.Errorf("replica maximum requires a Deployment and is incompatible with a node handoff")
+			}
+			snapshot, err = capturedlimits.ReadDeploymentMaximum(ctx, c, key, types.UID(*uid), includeHPARequests, replicaHandoff)
+		} else {
+			snapshot, err = capturedlimits.Read(ctx, c, kind, key, types.UID(*uid), includeHPARequests, nodeHandoff)
+		}
+		if err != nil {
+			return err
+		}
+		return encoder.Encode(snapshot)
+	}
 	if command == commandHistory {
 		journal, err := collector.History(ctx, *namespace, *uid)
 		if err != nil {

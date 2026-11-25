@@ -41,12 +41,17 @@ func (e *Engine) validateConstraints(ctx context.Context, w *Workload, recs []Co
 	changes := []constraints.Change{}
 	hasChange := false
 	for i := range pods {
-		next, err := constraints.Overlay(&pods[i], updates)
+		whole := constraints.WholePodRequests(&pods[i], p)
+		project := constraints.Overlay
+		if whole {
+			project = constraints.BudgetCandidate
+		}
+		next, err := project(&pods[i], updates)
 		if err != nil {
 			return err
 		}
 		hasChange = hasChange || !equality.Semantic.DeepEqual(pods[i].Spec, next.Spec)
-		changes = append(changes, constraints.Change{Before: &pods[i], After: next, NewPod: noPods})
+		changes = append(changes, constraints.Change{Before: &pods[i], After: next, NewPod: noPods, WholePodRequests: whole})
 	}
 	// A zero-unavailable Deployment requires room for at least one surge pod.
 	// Without this preflight a template change can leave a rollout stuck forever.

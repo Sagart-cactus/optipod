@@ -27,11 +27,25 @@ func PodBelongsTo(ctx context.Context, c client.Reader, pod *corev1.Pod, w *Work
 }
 
 func resolvePodWorkload(ctx context.Context, c client.Reader, pod *corev1.Pod, stop types.UID) (*Workload, error) {
+	return walkPodOwners(ctx, func(ctx context.Context, _ string, key client.ObjectKey, obj client.Object) error {
+		return c.Get(ctx, key, obj)
+	}, pod, stop)
+}
+func walkPodOwners(ctx context.Context, get func(context.Context, string, client.ObjectKey, client.Object) error, pod *corev1.Pod, stop types.UID) (*Workload, error) {
 	var obj client.Object = pod
 	kind := "Pod"
 	for depth := 0; depth < 8; depth++ {
 		owner := metav1.GetControllerOf(obj)
-		if owner == nil || (stop != "" && obj.GetUID() == stop) {
+		// Operators may own a native workload without providing a supported
+		// optimization target of their own. The native controller was already
+		// fetched and UID-checked on the preceding iteration.
+		native := kind == kindDeployment || kind == kindStatefulSet || kind == kindDaemonSet
+		var operatorOwned bool
+		if owner != nil && native {
+			_, err := GVR(owner.Kind)
+			operatorOwned = err != nil
+		}
+		if owner == nil || operatorOwned || (stop != "" && obj.GetUID() == stop) {
 			return &Workload{Kind: kind, Namespace: obj.GetNamespace(), Name: obj.GetName(), Labels: obj.GetLabels(), Object: obj}, nil
 		}
 		parent, err := WorkloadObject(owner.Kind)
@@ -43,7 +57,7 @@ func resolvePodWorkload(ctx context.Context, c client.Reader, pod *corev1.Pod, s
 			return nil, fmt.Errorf("unsupported owner API %s", owner.APIVersion)
 		}
 
-		if err := c.Get(ctx, client.ObjectKey{Namespace: pod.Namespace, Name: owner.Name}, parent); err != nil {
+		if err := get(ctx, owner.Kind, client.ObjectKey{Namespace: pod.Namespace, Name: owner.Name}, parent); err != nil {
 			return nil, err
 		}
 		if parent.GetUID() != owner.UID {

@@ -38,11 +38,13 @@ type Reference struct {
 	Generation            int64
 }
 type PodSnapshot struct {
+	PodBudget *corev1.ResourceRequirements `json:"podBudget,omitempty"`
 	Name      string
 	UID       types.UID
 	Resources map[string]corev1.ResourceRequirements
 }
 type Record struct {
+	BeforePodBudget     *corev1.ResourceRequirements           `json:"beforePodBudget,omitempty"`
 	PolicySpec          *api.OptimizationPolicySpec            `json:"policySpec,omitempty"`
 	EffectivePolicySpec *api.OptimizationPolicySpec            `json:"effectivePolicySpec,omitempty"`
 	Decision            *DecisionSnapshot                      `json:"decision,omitempty"`
@@ -156,6 +158,7 @@ func Prepare(ctx context.Context, c client.Client, w *discovery.Workload, p *api
 		return nil, err
 	}
 	r := &Record{Version: 1, Name: name, Workload: Reference{Kind: w.Kind, Namespace: w.Namespace, Name: w.Name, UID: w.Object.GetUID(), Generation: current.GetGeneration()}, Policy: Reference{Kind: policyKind, Namespace: p.Namespace, Name: p.Name, UID: p.UID, Generation: p.Generation}, Mode: p.Spec.Mode, PlanHash: fingerprint, Previous: previous, Plan: plan, BeforeTemplate: Resources(&template.Spec), Phase: "Prepared", Created: time.Now().UTC(), Updated: time.Now().UTC()}
+	r.BeforePodBudget = template.Spec.Resources.DeepCopy()
 	r.TemplateIdentity = TemplateIdentity(template)
 	if err := snapshotPolicy(ctx, c, p, r); err != nil {
 		return nil, err
@@ -170,16 +173,16 @@ func Prepare(ctx context.Context, c client.Client, w *discovery.Workload, p *api
 	if err := c.List(ctx, pods, client.InNamespace(w.Namespace)); err != nil {
 		return nil, err
 	}
+	scan := discovery.NewPodOwnerScan(c, w.Namespace)
 	for i := range pods.Items {
 		pod := &pods.Items[i]
 		if pod.DeletionTimestamp != nil || pod.Status.Phase == corev1.PodSucceeded || pod.Status.Phase == corev1.PodFailed {
 			continue
 		}
-		owner, err := discovery.ResolvePodWorkload(ctx, c, pod)
-		if err != nil || owner.Object.GetUID() != w.Object.GetUID() {
+		if !scan.Matches(ctx, pod, w, false) {
 			continue
 		}
-		r.BeforePods = append(r.BeforePods, PodSnapshot{Name: pod.Name, UID: pod.UID, Resources: Resources(&pod.Spec)})
+		r.BeforePods = append(r.BeforePods, PodSnapshot{Name: pod.Name, UID: pod.UID, Resources: Resources(&pod.Spec), PodBudget: pod.Spec.Resources.DeepCopy()})
 	}
 	data, err := json.Marshal(r)
 	if err != nil {

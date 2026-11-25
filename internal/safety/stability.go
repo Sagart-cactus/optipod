@@ -62,10 +62,10 @@ func Load(ctx context.Context, c client.Client, w *discovery.Workload, container
 		return nil, err
 	}
 	seen := map[string]bool{}
+	scan := discovery.NewPodOwnerScan(c, w.Namespace)
 	for i := range pods.Items {
 		pod := &pods.Items[i]
-		owner, err := discovery.ResolvePodWorkload(ctx, c, pod)
-		if err != nil || owner.Object.GetUID() != w.Object.GetUID() {
+		if !scan.Matches(ctx, pod, w, false) {
 			continue
 		}
 		s.Pods = append(s.Pods, *pod)
@@ -73,6 +73,17 @@ func Load(ctx context.Context, c client.Client, w *discovery.Workload, container
 			continue
 		}
 		for _, co := range append(append([]corev1.Container{}, pod.Spec.Containers...), pod.Spec.InitContainers...) {
+			// A sole application container with no init containers owns the entire
+			// native Pod budget for the purpose of the safety baseline.
+			if len(pod.Spec.Containers) == 1 && len(pod.Spec.InitContainers) == 0 && pod.Spec.Resources != nil {
+				co.Resources = *co.Resources.DeepCopy()
+				if co.Resources.Requests == nil {
+					co.Resources.Requests = corev1.ResourceList{}
+				}
+				for key, q := range pod.Spec.Resources.Requests {
+					co.Resources.Requests[key] = q.DeepCopy()
+				}
+			}
 			prev, ok := s.Current[co.Name]
 			if !ok {
 				continue
@@ -247,6 +258,14 @@ func (s *State) Accept(ctx context.Context, c client.Client, w *discovery.Worklo
 		latest, err := storedState(obj)
 		if err != nil {
 			return err
+		}
+		// The first successful plan, or a newly added container, can precede
+		// persistence of its observation. Keep any concurrently saved recovery.
+		for _, rec := range recs {
+			prior := s.Containers[rec.Container]
+			if latest.Containers[rec.Container] == nil && prior != nil {
+				latest.Containers[rec.Container] = &ContainerState{InitialMemory: prior.InitialMemory.DeepCopy(), InitialLimit: prior.InitialLimit.DeepCopy(), Recovery: prior.Recovery}
+			}
 		}
 		prior := latest.PlanHash
 		if err := latest.acceptPlan(recs, now); err != nil {

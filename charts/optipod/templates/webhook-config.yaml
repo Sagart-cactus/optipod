@@ -21,7 +21,12 @@ webhooks:
     apiGroups: [""]
     apiVersions: ["v1"]
     resources: ["pods"]
-  {{- with .Values.webhook.namespaceSelector }}
+  {{- $selector := deepCopy (default dict .Values.webhook.namespaceSelector) }}
+  {{- with .Values.excludedNamespaces }}
+  {{- $exclude := dict "key" "kubernetes.io/metadata.name" "operator" "NotIn" "values" . }}
+  {{- $_ := set $selector "matchExpressions" (append (default list $selector.matchExpressions) $exclude) }}
+  {{- end }}
+  {{- with $selector }}
   namespaceSelector:
     {{- toYaml . | nindent 4 }}
   {{- end }}

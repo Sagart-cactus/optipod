@@ -22,9 +22,11 @@ import (
 	"testing"
 	"time"
 
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	optipodv1alpha1 "github.com/optipod/optipod/api/v1alpha1"
 )
@@ -492,4 +494,43 @@ func mustReMarshal(t *testing.T, v interface{}) string {
 		t.Fatalf("failed to marshal: %v", err)
 	}
 	return string(raw)
+}
+
+func TestMutatePodRequiresUIDActivationForOperatorOwnedWorkload(t *testing.T) {
+	namespace := "operator-owned"
+	p := mutatorTestPolicy(namespace)
+	p.Spec.UpdateStrategy.UpdateRequestsOnly = true
+	rollout := string(optipodv1alpha1.RolloutOnNextRestart)
+	p.Spec.UpdateStrategy.RolloutStrategy = &rollout
+	p.Spec.UpdateStrategy.AllowInPlaceResize = false
+	pod := newMutatorTestPod("worker-0", namespace, map[string]string{
+		optipodv1alpha1.AnnotationWebhookEnabled: "true",
+	}, []corev1.Container{{Name: "app"}})
+	operator := &corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: "operator", Namespace: namespace, UID: "operator-uid"}}
+	workload := &appsv1.StatefulSet{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "worker", Namespace: namespace, UID: "worker-uid",
+			OwnerReferences: []metav1.OwnerReference{*metav1.NewControllerRef(operator, corev1.SchemeGroupVersion.WithKind("ConfigMap"))},
+			Annotations:     map[string]string{optipodv1alpha1.AnnotationCPURequestPrefix + ".app": "250m"},
+		},
+		Spec: appsv1.StatefulSetSpec{Template: corev1.PodTemplateSpec{Spec: *pod.Spec.DeepCopy()}},
+	}
+	StampRecommendations(workload.Annotations, p, time.Now())
+	pod.OwnerReferences = []metav1.OwnerReference{*metav1.NewControllerRef(workload, appsv1.SchemeGroupVersion.WithKind("StatefulSet"))}
+	mutate := func() *AdmissionResponse {
+		k8s := createFakeClientWithWorkloads([]*optipodv1alpha1.OptimizationPolicy{p}, []client.Object{workload, operator})
+		return NewMutator(k8s, nil).MutatePod(&AdmissionRequest{Pod: pod})
+	}
+	withoutActivation := mutate()
+	if !withoutActivation.Allowed || len(withoutActivation.Patches) != 0 || withoutActivation.Message != "Operator-owned workload requires deferred request-only activation" {
+		t.Fatalf("unexpected admission without UID activation: %+v", withoutActivation)
+	}
+	p.Spec.WorkloadSettings = &optipodv1alpha1.WorkloadSettings{
+		RequireActivation: true,
+		ByUID:             map[string]optipodv1alpha1.WorkloadSetting{string(workload.UID): {Active: true}},
+	}
+	withActivation := mutate()
+	if !withActivation.Allowed || len(withActivation.Patches) == 0 {
+		t.Fatalf("expected request patch with UID activation: %+v", withActivation)
+	}
 }

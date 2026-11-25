@@ -125,7 +125,7 @@ func (ps *PolicySelector) SelectBestPolicy(ctx context.Context, workload *discov
 			"weight", selectedPolicy.GetWeight())
 	}
 
-	return selectedPolicy, nil
+	return effectivePolicy(selectedPolicy, workload), nil
 }
 
 // policyMatchesWorkload checks if a policy's selectors match a workload
@@ -246,5 +246,16 @@ func (ps *PolicySelector) GetMatchingPolicies(ctx context.Context, workload *dis
 		return matches[i].Policy.Name < matches[j].Policy.Name
 	})
 
+	for i := range matches {
+		matches[i].Policy = effectivePolicy(matches[i].Policy, workload)
+	}
 	return matches, nil
+}
+
+func effectivePolicy(p *optipodv1alpha1.OptimizationPolicy, workload *discovery.Workload) *optipodv1alpha1.OptimizationPolicy {
+	var uid string
+	if workload.Object != nil {
+		uid = string(workload.Object.GetUID())
+	}
+	return p.ForWorkload(uid)
 }
