@@ -10,6 +10,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+const nativeSidecarField = "initContainers"
+
 func (wp *WorkloadProcessor) selectedContainers(ctx context.Context, w *discovery.Workload, p *api.OptimizationPolicy) ([]corev1.Container, error) {
 	t, err := discovery.Template(w.Object)
 	if err != nil {
@@ -19,7 +21,7 @@ func (wp *WorkloadProcessor) selectedContainers(ctx context.Context, w *discover
 	seen := map[string]bool{}
 	for _, slot := range discovery.ContainerSlots(&t.Spec) {
 		seen[slot.Container.Name] = true
-		if slot.Field == "initContainers" && !p.IncludesNativeSidecars() {
+		if slot.Field == nativeSidecarField && !p.IncludesNativeSidecars() {
 			continue
 		}
 		result = append(result, slot.Container)
@@ -38,7 +40,7 @@ func (wp *WorkloadProcessor) selectedContainers(ctx context.Context, w *discover
 			continue
 		}
 		for _, slot := range discovery.ContainerSlots(&pod.Spec) {
-			if seen[slot.Container.Name] || p.ExcludesContainer(slot.Container.Name) || (slot.Field == "initContainers" && !p.IncludesNativeSidecars()) {
+			if seen[slot.Container.Name] || p.ExcludesContainer(slot.Container.Name) || (slot.Field == nativeSidecarField && !p.IncludesNativeSidecars()) {
 				continue
 			}
 			if !p.IsWebhookStrategy() {

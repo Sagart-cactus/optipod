@@ -167,7 +167,8 @@ func populateContainers(row *Workload, spec *corev1.PodSpec, a map[string]string
 	for _, slot := range discovery.ContainerSlots(spec) {
 		co := Container{Name: slot.Container.Name, Current: slot.Container.Resources, Recommended: map[string]string{}}
 		for _, field := range []string{"cpu-request", "memory-request", "cpu-limit", "memory-limit", "explanation"} {
-			value := a[api.RecommendationAnnotationKey(co.Name, field)]
+			recommended := a[api.RecommendationAnnotationKey(co.Name, field)]
+			value := recommended
 			if mode == api.ModeAuto {
 				if v := a["optipod.io/"+field+"."+co.Name]; v != "" {
 					value = v
@@ -175,6 +176,14 @@ func populateContainers(row *Workload, spec *corev1.PodSpec, a map[string]string
 			}
 			if value != "" {
 				co.Recommended[field] = value
+			}
+			// An older applied plan can still be visible while a new recommendation is pending.
+			// Pair raw and effective requests only when they belong to the same recommendation.
+			if (field == "cpu-request" || field == "memory-request") && value != "" && value == recommended {
+				rawField := "raw-" + field
+				if raw := a[api.RecommendationAnnotationKey(co.Name, rawField)]; raw != "" {
+					co.Recommended[rawField] = raw
+				}
 			}
 		}
 		row.Containers = append(row.Containers, co)

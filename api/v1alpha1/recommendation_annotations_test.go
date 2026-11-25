@@ -8,7 +8,7 @@ import (
 )
 
 func TestRecommendationAnnotationKeysAcceptEveryContainerNameLength(t *testing.T) {
-	fields := []string{"cpu-request", "memory-request", "cpu-limit", "memory-limit", "explanation"}
+	fields := []string{"cpu-request", "memory-request", "cpu-limit", "memory-limit", "explanation", "raw-cpu-request", "raw-memory-request"}
 	seen := map[string]string{}
 	for length := 1; length <= 63; length++ {
 		container := strings.Repeat("a", length)
@@ -27,5 +27,13 @@ func TestRecommendationAnnotationKeysAcceptEveryContainerNameLength(t *testing.T
 				t.Fatalf("valid legacy key changed: %s -> %s", legacy, key)
 			}
 		}
+	}
+}
+
+func TestExistingHashedRecommendationKeyRemainsStable(t *testing.T) {
+	got := RecommendationAnnotationKey(strings.Repeat("a", 63), "memory-request")
+	const want = "optipod.io/recommendation._7d3e74a05d7db15bce4ad9ec0658ea98.memory-request"
+	if got != want {
+		t.Fatalf("existing hashed key changed: got %s, want %s", got, want)
 	}
 }

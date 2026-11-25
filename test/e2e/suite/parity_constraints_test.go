@@ -52,6 +52,10 @@ var _ = Describe("Parity: resource constraints", Label("parity", "constraints"),
 		if kind == "qos" {
 			p.Spec.UpdateStrategy.PreserveQoS = true
 		}
+		if kind == "preserved-limit" {
+			p.Spec.ResourcePolicy = &api.ResourcePolicy{ControlledResources: []api.ControlledResource{"cpu"}}
+			p.Spec.ResourceBounds.CPU.Min = resource.MustParse("250m")
+		}
 		before := podUIDs(ctx, ns.Name, "app=bounded")
 		Expect(env.Clients.Ctrl.Create(ctx, p)).To(Succeed())
 		waitForWorkloadReason(ctx, p, reason)
@@ -66,7 +70,7 @@ var _ = Describe("Parity: resource constraints", Label("parity", "constraints"),
 				return dep.Annotations[api.AnnotationCPURequestPrefix+".app"]
 			}, time.Minute, time.Second).Should(Equal("300m"))
 		}
-	}, Entry("namespace quota", "quota", "ResourceQuota"), Entry("namespace LimitRange", "limit-range", "LimitRange"), Entry("preserved container limit", "preserved-limit", "request exceeds preserved limit"), Entry("QoS preservation", "qos", "QoS preservation"))
+	}, Entry("namespace quota", "quota", "ResourceQuota"), Entry("namespace LimitRange", "limit-range", "LimitRange"), Entry("preserved container limit below a required minimum", "preserved-limit", "Preserved limits prevent a recommendation that meets required minimums"), Entry("QoS preservation", "qos", "QoS preservation"))
 
 	DescribeTable("requires explicit field ownership takeover for every template patch path", func(ctx context.Context, removeLimit bool) {
 		ns := specNamespace(ctx, "ownership")

@@ -606,6 +606,14 @@ type ContainerRecommendation struct {
 	// +optional
 	Memory *resource.Quantity `json:"memory,omitempty"`
 
+	// RawCPU is the CPU request before checking the preserved limit.
+	// +optional
+	RawCPU *resource.Quantity `json:"rawCPU,omitempty"`
+
+	// RawMemory is the memory request before checking the preserved limit.
+	// +optional
+	RawMemory *resource.Quantity `json:"rawMemory,omitempty"`
+
 	// Explanation describes how the recommendation was computed
 	// +optional
 	Explanation string `json:"explanation,omitempty"`
@@ -620,7 +628,7 @@ type ContainerRecommendation struct {
 
 // OptimizationPolicy is the Schema for the optimizationpolicies API
 type OptimizationPolicy struct {
-	workloadActivated bool
+	workloadActivated bool `json:"-"`
 
 	metav1.TypeMeta `json:",inline"`
 

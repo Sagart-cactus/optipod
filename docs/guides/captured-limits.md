@@ -16,6 +16,10 @@ On Pod creation the webhook applies the recorded limits to eligible containers i
 
 Once the workload is enrolled in webhook admission, a fixed capture can preserve limits when a request recommendation expires. Constraint checks still apply. A request above a captured limit, for example, can block admission. Verify a server-side dry-run owned by the actual ReplicaSet or workload before a rollout. With webhook failurePolicy set to Ignore, Kubernetes can admit template defaults when the webhook is unavailable.
 
+When OptiPod calculates a container request above a finite preserved limit, it uses the limit as the effective request if the request still satisfies its safety minimums. It evaluates CPU and memory independently for each container. A deferred policy can renew this plan while the existing Pods continue at their running requests. Check scheduler capacity for the effective request before the next replacement.
+
+In the console, inspect the workload's container recommendations to see the raw and effective requests when a cap applies. Decision history also records the original quantity, effective quantity, and reason in the recommendation explanation. For example, a raw memory request of 9Gi under an 8Gi preserved limit yields an effective request of 8Gi.
+
 ## Preserve horizontal scaling on replacement Pods
 
 Add `--include-hpa-requests` to the capture command to record the CPU or memory requests used by utilization-based HPA or KEDA targets. Resource targets apply to all eligible containers. ContainerResource targets apply only to the named container. Verify the running replicas agree before capture. Use an Auto, request-only webhook policy with `onNextRestart` and enroll the workload in the webhook, including workloads with every dimension reserved.

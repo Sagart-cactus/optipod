@@ -16,5 +16,8 @@ func RecommendationAnnotationKey(container, field string) string {
 		return key
 	}
 	digest := sha256.Sum256([]byte(container))
-	return fmt.Sprintf("%s._%x.%s", AnnotationRecommendationPrefix, digest[:16], field)
+	prefix := AnnotationRecommendationPrefix[strings.IndexByte(AnnotationRecommendationPrefix, '/')+1:]
+	// Longer fields need a shorter digest to fit; existing keys retain 16 bytes.
+	digestBytes := max(1, min(16, (63-len(prefix)-len(field)-3)/2))
+	return fmt.Sprintf("%s._%x.%s", AnnotationRecommendationPrefix, digest[:digestBytes], field)
 }

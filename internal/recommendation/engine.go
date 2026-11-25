@@ -29,15 +29,17 @@ import (
 // Recommendation represents a computed resource recommendation for a container
 type Recommendation struct {
 	// ResourceOverride is internal-only and used for an explicitly requested journal rollback.
-	ResourceOverride   map[string]any
-	PreserveCPU        bool
-	PreserveMemory     bool
-	Emergency          bool
-	MinimumMemoryLimit *resource.Quantity
-	ValidUntil         time.Time
-	CPU                resource.Quantity
-	Memory             resource.Quantity
-	Explanation        string
+	ResourceOverride     map[string]any
+	PreserveCPU          bool
+	PreserveMemory       bool
+	Emergency            bool
+	MinimumCPURequest    *resource.Quantity
+	MinimumMemoryRequest *resource.Quantity
+	MinimumMemoryLimit   *resource.Quantity
+	ValidUntil           time.Time
+	CPU                  resource.Quantity
+	Memory               resource.Quantity
+	Explanation          string
 }
 
 // Engine computes resource recommendations based on metrics and policy configuration
@@ -67,6 +69,7 @@ func (e *Engine) ComputeRecommendation(
 	memoryPercentile := selectPercentile(containerMetrics.Memory, memoryConfig.Percentile)
 
 	var replay cpuReplay
+	var cpuFloor, memoryFloor *resource.Quantity
 	baseCPU := cpuPercentile.MilliValue()
 	if containerMetrics.HPAHistory != nil {
 		var candidate int64
@@ -75,7 +78,8 @@ func (e *Engine) ComputeRecommendation(
 		if err != nil {
 			return nil, err
 		}
-		cpuPercentile = *resource.NewMilliQuantity(candidate, resource.DecimalSI)
+		cpuFloor = resource.NewMilliQuantity(candidate, resource.DecimalSI)
+		cpuPercentile = *cpuFloor
 	}
 
 	// Apply safety factor
@@ -88,7 +92,8 @@ func (e *Engine) ComputeRecommendation(
 	memoryWithSafety := multiplyQuantity(memoryPercentile, *memoryConfig.SafetyFactor)
 
 	if policy.Spec.MetricsConfig.JVM != nil && policy.ControlsResource("memory") {
-		floor := containerMetrics.Memory.P100
+		floor := containerMetrics.Memory.P100.DeepCopy()
+		memoryFloor = &floor
 		if policy.Spec.ResourceBounds.Memory.ExceedsMaximum(floor) {
 			return nil, fmt.Errorf("JVM memory floor exceeds policy maximum; raise the bound or review JVM heap/native configuration")
 		}
@@ -145,10 +150,12 @@ func (e *Engine) ComputeRecommendation(
 		explanation += "; " + forecastExplanation
 	}
 	return &Recommendation{
-		ValidUntil:  containerMetrics.ValidUntil,
-		CPU:         cpuRecommendation,
-		Memory:      memoryRecommendation,
-		Explanation: explanation,
+		ValidUntil:           containerMetrics.ValidUntil,
+		MinimumCPURequest:    cpuFloor,
+		MinimumMemoryRequest: memoryFloor,
+		CPU:                  cpuRecommendation,
+		Memory:               memoryRecommendation,
+		Explanation:          explanation,
 	}, nil
 }
 

@@ -141,7 +141,8 @@ func (wp *WorkloadProcessor) ProcessWorkload(
 		}
 	}
 
-	recommendations, hasMetricsError, metricsErrorMsg, err := wp.computeRecommendations(ctx, workload, policy, status, containers, safetyState, restrictions)
+	requestFloors := map[string]corev1.ResourceList{}
+	recommendations, hasMetricsError, metricsErrorMsg, err := wp.computeRecommendations(ctx, workload, policy, status, containers, safetyState, restrictions, requestFloors)
 	if err != nil {
 		return status, err
 	}
@@ -179,9 +180,25 @@ func (wp *WorkloadProcessor) ProcessWorkload(
 		return status, nil
 	}
 
+	return wp.finalizeRecommendations(ctx, workload, policy, status, safetyState, restrictions, recommendations, requestFloors)
+}
+
+func (wp *WorkloadProcessor) finalizeRecommendations(
+	ctx context.Context, workload *discovery.Workload, policy *optipodv1alpha1.OptimizationPolicy,
+	status *optipodv1alpha1.WorkloadStatus, safetyState *safety.State, restrictions *coexist.Restrictions,
+	recommendations []optipodv1alpha1.ContainerRecommendation, requestFloors map[string]corev1.ResourceList,
+) (*optipodv1alpha1.WorkloadStatus, error) {
 	if safetyState != nil {
 		safetyState.Guard(recommendations, policy, time.Now())
 		safetyState.ApplyRecovery(recommendations, policy, time.Now())
+	}
+	if err := wp.capPreservedLimits(ctx, workload, policy, safetyState, restrictions, recommendations, requestFloors); err != nil {
+		if wp.client != nil && policy.Spec.Mode == optipodv1alpha1.ModeAuto {
+			err = errors.Join(err, webhook.InvalidateRecommendations(ctx, wp.client, workload.Object, policy))
+		}
+		status.Status = StatusError
+		status.Reason = fmt.Sprintf("Failed to resolve preserved limits: %v", err)
+		return status, err
 	}
 	// Update status with recommendations
 	status.Recommendations = recommendations
@@ -200,7 +217,23 @@ func (wp *WorkloadProcessor) ProcessWorkload(
 		}
 	}
 
-	return wp.publishRecommendations(ctx, workload, policy, status, recommendations, safetyState)
+	effective := make([]optipodv1alpha1.ContainerRecommendation, 0, len(recommendations))
+	for _, rec := range recommendations {
+		if rec.CPU != nil || rec.Memory != nil {
+			effective = append(effective, rec)
+		}
+	}
+	if len(effective) == 0 {
+		if wp.client != nil && policy.Spec.Mode == optipodv1alpha1.ModeAuto {
+			if err := webhook.InvalidateRecommendations(ctx, wp.client, workload.Object, policy); err != nil {
+				return status, err
+			}
+		}
+		status.Status = StatusSkipped
+		status.Reason = "Preserved limits prevent a recommendation that meets required minimums"
+		return status, nil
+	}
+	return wp.publishRecommendations(ctx, workload, policy, status, effective, safetyState)
 }
 
 // Keep an inactive target distinct from a telemetry outage. Require the
@@ -407,6 +440,19 @@ func (wp *WorkloadProcessor) addRecommendationAnnotations(ctx context.Context, w
 					key := optipodv1alpha1.RecommendationAnnotationKey(container, name+"-"+strings.TrimSuffix(section, "s"))
 					annotations[key] = value.(string)
 				}
+			}
+		}
+
+		for _, rec := range recommendations {
+			if rec.RawCPU == nil && rec.RawMemory == nil {
+				continue
+			}
+			annotations[optipodv1alpha1.RecommendationAnnotationKey(rec.Container, "explanation")] = rec.Explanation
+			if rec.RawCPU != nil {
+				annotations[optipodv1alpha1.RecommendationAnnotationKey(rec.Container, "raw-cpu-request")] = rec.RawCPU.String()
+			}
+			if rec.RawMemory != nil {
+				annotations[optipodv1alpha1.RecommendationAnnotationKey(rec.Container, "raw-memory-request")] = rec.RawMemory.String()
 			}
 		}
 
@@ -710,7 +756,7 @@ func (wp *WorkloadProcessor) minimumSamples(containerMetrics *metrics.ContainerM
 	return ""
 }
 
-func (wp *WorkloadProcessor) computeRecommendations(ctx context.Context, workload *discovery.Workload, policy *optipodv1alpha1.OptimizationPolicy, status *optipodv1alpha1.WorkloadStatus, containers []corev1.Container, safetyState *safety.State, restrictions *coexist.Restrictions) ([]optipodv1alpha1.ContainerRecommendation, bool, string, error) {
+func (wp *WorkloadProcessor) computeRecommendations(ctx context.Context, workload *discovery.Workload, policy *optipodv1alpha1.OptimizationPolicy, status *optipodv1alpha1.WorkloadStatus, containers []corev1.Container, safetyState *safety.State, restrictions *coexist.Restrictions, requestFloors map[string]corev1.ResourceList) ([]optipodv1alpha1.ContainerRecommendation, bool, string, error) {
 	var recommendations []optipodv1alpha1.ContainerRecommendation //nolint:prealloc // Size unknown
 	hasMetricsError := false
 	metricsErrorMsg := ""
@@ -794,11 +840,19 @@ func (wp *WorkloadProcessor) computeRecommendations(ctx context.Context, workloa
 			t := metav1.NewTime(rec.ValidUntil)
 			entry.ValidUntil = &t
 		}
+		floors := corev1.ResourceList{}
 		if !containerPolicy.ControlsResource("cpu") {
 			entry.CPU = nil
+		} else if rec.MinimumCPURequest != nil {
+			floors[corev1.ResourceCPU] = *rec.MinimumCPURequest
 		}
 		if !containerPolicy.ControlsResource("memory") {
 			entry.Memory = nil
+		} else if rec.MinimumMemoryRequest != nil {
+			floors[corev1.ResourceMemory] = *rec.MinimumMemoryRequest
+		}
+		if len(floors) > 0 {
+			requestFloors[container.Name] = floors
 		}
 		recommendations = append(recommendations, entry)
 	}

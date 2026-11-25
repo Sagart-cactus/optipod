@@ -99,10 +99,28 @@ function renderRows() {
   $('more').hidden = !state.cursor; $('pageinfo').textContent = `${state.items.length} observations shown${state.cursor ? ' · more available' : ''}`;
 }
 function jsonSection(title, value) {const d = node('details'); d.append(node('summary', title), node('pre', JSON.stringify(value, null, 2))); return d;}
+function recommendationCell(recommended, field) {
+  const effective = recommended?.[field];
+  const raw = recommended?.['raw-' + field];
+  if (!raw || !effective) return node('td', effective || 'Collecting');
+  const cell = node('td');
+  const rawValue = node('div', 'Raw ' + raw);
+  if (field === 'memory-request' && /^\d+$/.test(raw) && Number(raw) >= 1073741824) {
+    rawValue.textContent = 'Raw ' + memory(Number(raw));
+    rawValue.title = raw + ' bytes';
+  }
+  cell.append(rawValue, node('div', 'Effective ' + effective), node('small', 'Capped at preserved limit'));
+  return cell;
+}
 function resourceTable(containers) {
   const table = node('table', undefined, 'detailtable'), head = node('tr');
   ['Container', 'Current CPU', 'Recommended CPU', 'Current memory', 'Recommended memory'].forEach(x => head.append(node('th', x))); table.append(head);
-  for (const c of containers || []) {const row = node('tr'); [c.name, c.current?.requests?.cpu || 'Unset', c.recommended?.['cpu-request'] || 'Collecting', c.current?.requests?.memory || 'Unset', c.recommended?.['memory-request'] || 'Collecting'].forEach(x => row.append(node('td', x))); table.append(row);}
+  for (const c of containers || []) {
+    const row = node('tr');
+    row.append(node('td', c.name), node('td', c.current?.requests?.cpu || 'Unset'), recommendationCell(c.recommended, 'cpu-request'),
+      node('td', c.current?.requests?.memory || 'Unset'), recommendationCell(c.recommended, 'memory-request'));
+    table.append(row);
+  }
   return table;
 }
 function chart(samples) {
