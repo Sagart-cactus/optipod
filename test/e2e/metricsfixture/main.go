@@ -250,7 +250,7 @@ func (s *server) handleQueryRange(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	start, end, _ := parseRange(r)
+	start, end, evaluationStep := parseRange(r)
 	var step float64
 	// Compact synthetic observations fit within the lifetime of the real
 	// freshly created test pod. Tests can explicitly model old/sparse history.
@@ -286,6 +286,9 @@ func (s *server) handleQueryRange(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	valuesFor := func(points []float64) [][2]interface{} {
+		if series.FixedEnd > 0 && strings.Contains(query, "max_over_time(") {
+			return fixedMemoryPeaks(query, points, sampleEnd, step, start, end, evaluationStep)
+		}
 		values := make([][2]interface{}, 0, len(points))
 		for i, v := range points {
 			ts := sampleEnd - float64(len(points)-1-i)*step
@@ -313,6 +316,37 @@ func (s *server) handleQueryRange(w http.ResponseWriter, r *http.Request) {
 		Status: statusSuccess,
 		Data:   &apiData{ResultType: resultTypeMatrix, Result: result},
 	})
+}
+
+// Fixed samples keep their original scrape timestamps. Prometheus returns the
+// maximum at each evaluation time over the samples in the range selector.
+func fixedMemoryPeaks(query string, points []float64, sampleEnd, spacing, start, end, evaluationStep float64) [][2]interface{} {
+	values := make([][2]interface{}, 0, len(points))
+	open, close := strings.LastIndexByte(query, '['), strings.LastIndexByte(query, ']')
+	if open < 0 || close <= open {
+		return values
+	}
+	width, err := time.ParseDuration(query[open+1 : close])
+	if err != nil || width <= 0 {
+		return values
+	}
+	for evaluation := start; evaluation <= end; evaluation += evaluationStep {
+		var peak float64
+		found := false
+		for i, sample := range points {
+			scraped := sampleEnd - float64(len(points)-1-i)*spacing
+			if scraped <= evaluation && scraped > evaluation-width.Seconds() {
+				if !found || sample > peak {
+					peak = sample
+				}
+				found = true
+			}
+		}
+		if found {
+			values = append(values, [2]interface{}{evaluation, strconv.FormatFloat(peak, 'f', -1, 64)})
+		}
+	}
+	return values
 }
 
 var cpuMetricPattern = regexp.MustCompile(`container_cpu_usage_seconds_total`)
