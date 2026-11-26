@@ -541,7 +541,8 @@ func (r *OptimizationPolicyReconciler) processWorkloadsWithPolicySelection(ctx c
 			}
 			results[i].processed, results[i].err = r.processSelected(ctx, triggeringPolicy, selector, &workloads[i])
 		}
-		effective := triggeringPolicy.ForWorkload(string(workloads[i].Object.GetUID()))
+		w := &workloads[i]
+		effective := triggeringPolicy.ForWorkloadRef(string(w.Object.GetUID()), w.Namespace, w.Kind, w.Name)
 		if r.admissionSlots != nil && effective.GetRolloutStrategy() == optipodv1alpha1.RolloutOnNextRestart && effective.Spec.UpdateStrategy.UpdateRequestsOnly && effective.Spec.HorizontalScaling == nil {
 			pending.Go(run)
 		} else {

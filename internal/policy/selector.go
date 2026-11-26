@@ -257,5 +257,5 @@ func effectivePolicy(p *optipodv1alpha1.OptimizationPolicy, workload *discovery.
 	if workload.Object != nil {
 		uid = string(workload.Object.GetUID())
 	}
-	return p.ForWorkload(uid)
+	return p.ForWorkloadRef(uid, workload.Namespace, workload.Kind, workload.Name)
 }

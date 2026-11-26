@@ -139,7 +139,7 @@ func (m *Mutator) MutatePod(req *AdmissionRequest) *AdmissionResponse {
 
 	// Use the highest weight policy
 	selectedPolicy := matchingPolicies[0]
-	if !configured && !selectedPolicy.WorkloadActivated() {
+	if !configured && !selectedPolicy.AllowsPolicyWebhook() {
 		return &AdmissionResponse{Allowed: true, Message: "Webhook strategy not enabled"}
 	}
 	if selectedPolicy.Spec.Mode != optipodv1alpha1.ModeAuto {
