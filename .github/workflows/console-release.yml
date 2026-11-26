@@ -57,7 +57,7 @@ jobs:
           fetch-depth: 0
       - name: Require a reviewed main-branch commit
         run: git merge-base --is-ancestor HEAD origin/main
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         with:
           name: console-release-bundle
           path: release
