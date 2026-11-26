@@ -1558,8 +1558,8 @@ spec:
                 minimum: 1
                 type: integer
               workloadSettings:
-                description: WorkloadSettings scopes activation and rollout exceptions
-                  by immutable workload UID.
+                description: WorkloadSettings configures activation and workload-specific
+                  rollout exceptions.
                 properties:
                   byUID:
                     additionalProperties:
@@ -1574,11 +1574,47 @@ spec:
                           type: boolean
                       type: object
                     type: object
+                  byWorkload:
+                    additionalProperties:
+                      properties:
+                        includeInjectedSidecars:
+                          type: boolean
+                        operatorOwned:
+                          description: OperatorOwned allows deferred request-only
+                            admission for this operator-owned workload.
+                          type: boolean
+                        recommendOnly:
+                          description: RecommendOnly prevents this workload from receiving
+                            automatic changes.
+                          type: boolean
+                        rolloutStrategy:
+                          description: RolloutStrategyType defines when resource changes
+                            take effect
+                          enum:
+                          - immediate
+                          - onNextRestart
+                          type: string
+                      type: object
+                    description: ByWorkload holds exceptions keyed by namespace/kind/name.
+                    type: object
+                  policyActivation:
+                    description: PolicyActivation opts elected Auto workloads into
+                      webhook admission.
+                    type: boolean
                   requireActivation:
                     description: RequireActivation keeps matched workloads in Recommend
                       until explicitly active.
                     type: boolean
                 type: object
+                x-kubernetes-validations:
+                - message: choose one activation mode
+                  rule: '!(has(self.policyActivation) && self.policyActivation &&
+                    has(self.requireActivation) && self.requireActivation)'
+                - message: named exceptions require policy activation
+                  rule: '!has(self.byWorkload) || (has(self.policyActivation) && self.policyActivation)'
+                - message: UID settings cannot be combined with policy activation
+                  rule: '!(has(self.policyActivation) && self.policyActivation &&
+                    has(self.byUID) && size(self.byUID) > 0)'
             required:
             - metricsConfig
             - mode

@@ -139,7 +139,7 @@ func (m *Mutator) MutatePod(req *AdmissionRequest) *AdmissionResponse {
 
 	// Use the highest weight policy
 	selectedPolicy := matchingPolicies[0]
-	if !configured && !selectedPolicy.WorkloadActivated() {
+	if !configured && !selectedPolicy.AllowsPolicyWebhook() {
 		return &AdmissionResponse{Allowed: true, Message: "Webhook strategy not enabled"}
 	}
 	if selectedPolicy.Spec.Mode != optipodv1alpha1.ModeAuto {
@@ -274,20 +274,14 @@ func (m *Mutator) mutateSelectedPod(ctx context.Context, req *AdmissionRequest, 
 }
 
 func (m *Mutator) captureForPod(ctx context.Context, pod *corev1.Pod, owner *discovery.Workload, selectedPolicy *optipodv1alpha1.OptimizationPolicy) (*capturedlimits.Snapshot, error) {
-	uid := owner.Object.GetUID()
-	raw := capturedlimits.ForOwner(selectedPolicy.Annotations, uid)
-	if raw == "" || owner.Kind == podKind || owner.Object.GetAnnotations()[history.Paused] == trueValue ||
-		selectedPolicy.Spec.DaemonSetSizing != nil || !selectedPolicy.Spec.UpdateStrategy.UpdateRequestsOnly {
+	if owner.Kind == podKind || owner.Object.GetAnnotations()[history.Paused] == trueValue {
 		return nil, nil
 	}
-	snapshot, err := capturedlimits.Parse(raw)
-	if err != nil {
-		return nil, fmt.Errorf("invalid captured limits: %w", err)
+	snapshot, err := capturedlimits.PolicySnapshot(selectedPolicy, owner.Object)
+	if err != nil || snapshot == nil {
+		return nil, err
 	}
-	if _, keyed := selectedPolicy.Annotations["optipod.io/capture-"+string(uid)]; keyed && snapshot.WorkloadUID != uid {
-		return nil, fmt.Errorf("captured resource owner UID differs from the policy key")
-	}
-	return snapshot.ForPod(ctx, m.client, owner.Kind, uid, pod)
+	return snapshot.ForPod(ctx, m.client, owner.Kind, owner.Object.GetUID(), pod)
 }
 
 func projectPodResources(pod *corev1.Pod, updates map[string]map[string]any, whole bool, restrictions *coexist.Restrictions) (*corev1.Pod, error) {

@@ -14,22 +14,15 @@ import (
 // Restore only controlled dimensions whose declared template limit still
 // matches the capture. A deliberate template edit takes effect independently.
 func restoreCapturedLimits(pod *corev1.Pod, template *corev1.PodTemplateSpec, recs []ResourceRecommendation, s *capturedlimits.Snapshot, p *api.OptimizationPolicy, restrictions *coexist.Restrictions) []ResourceRecommendation {
-	declared := map[string]discovery.ContainerSlot{}
-	for _, slot := range discovery.ContainerSlots(&template.Spec) {
-		declared[slot.Container.Name] = slot
-	}
+	declared := capturedlimits.DeclaredSlots(&template.Spec)
 	index := map[string]int{}
 	for i, r := range recs {
 		index[r.ContainerName] = i
 	}
 	for _, slot := range discovery.ContainerSlots(&pod.Spec) {
 		name := slot.Container.Name
-		c, ok := s.Containers[name]
-		if !ok || slot.Field != c.Field || p.ExcludesContainer(name) || (slot.Field == "initContainers" && !p.IncludesNativeSidecars()) {
-			continue
-		}
-		orig, present := declared[name]
-		if present != (c.Template != nil) || (present && orig.Field != slot.Field) || (!present && !p.IncludesInjectedSidecars()) {
+		c, original, applies := s.ContainerForSlot(slot, declared, p)
+		if !applies {
 			continue
 		}
 		i, exists := index[name]
@@ -37,10 +30,7 @@ func restoreCapturedLimits(pod *corev1.Pod, template *corev1.PodTemplateSpec, re
 		if exists {
 			r = recs[i]
 		}
-		var original *corev1.ResourceRequirements
-		if present {
-			original = &orig.Container.Resources
-		}
+
 		applied := false
 		for _, key := range []corev1.ResourceName{corev1.ResourceCPU, corev1.ResourceMemory} {
 			if p.ControlsResource(string(key)) && restoreCapturedDimension(&r, s, c, original, p, restrictions, key) {
@@ -89,7 +79,7 @@ func restoreCapturedDimension(r *ResourceRecommendation, s *capturedlimits.Snaps
 			changed = true
 		}
 	}
-	if p.LimitMode(cpu) == api.LimitPreserve && (original == nil || capturedlimits.Same(original.Limits, capture.Template, key)) {
+	if p.LimitMode(cpu) == api.LimitPreserve && capture.AppliesToLimit(original, key) {
 		*limit, *removeLimit = capturedQuantity(capture.Limits, key)
 		return true
 	}

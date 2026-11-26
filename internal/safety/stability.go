@@ -167,6 +167,16 @@ func (s *State) Guard(recs []api.ContainerRecommendation, p *api.OptimizationPol
 	}
 }
 
+// GuardMemoryRequest applies the existing decrease floor when a later
+// preserved-limit check proposes a lower request.
+func (s *State) GuardMemoryRequest(name string, target *resource.Quantity, p *api.OptimizationPolicy) *resource.Quantity {
+	if state := s.Containers[name]; state != nil {
+		current := s.Current[name]
+		return memoryFloor(target, current.Requests.Memory(), &state.InitialMemory, p)
+	}
+	return copyQ(target)
+}
+
 func threshold(target, current *resource.Quantity, p *api.OptimizationPolicy, cpu bool) *resource.Quantity {
 	s := p.Spec.UpdateStrategy.Stability
 	if s == nil {
