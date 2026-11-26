@@ -1,4 +1,4 @@
-FROM --platform=$BUILDPLATFORM golang:1.27 AS builder
+FROM --platform=$BUILDPLATFORM golang:1.27 AS source
 ARG TARGETOS
 ARG TARGETARCH
 ARG VERSION=0.3.1-dev
@@ -6,9 +6,19 @@ WORKDIR /workspace
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
+
+FROM source AS agent-builder
+RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -trimpath -o /optipod-agent ./cmd/optipod-agent
+
+FROM source AS console-builder
 RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -trimpath -ldflags "-X github.com/optipod/optipod/internal/consoleversion.Version=${VERSION}" -o /optipod-console ./cmd/optipod-console
 
-FROM gcr.io/distroless/static:nonroot
-COPY --from=builder /optipod-console /optipod-console
+FROM gcr.io/distroless/static:nonroot AS agent
+COPY --from=agent-builder /optipod-agent /optipod-agent
+USER 65532:65532
+ENTRYPOINT ["/optipod-agent"]
+
+FROM gcr.io/distroless/static:nonroot AS console
+COPY --from=console-builder /optipod-console /optipod-console
 USER 65532:65532
 ENTRYPOINT ["/optipod-console"]
